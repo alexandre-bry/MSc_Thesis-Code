@@ -1,0 +1,16 @@
+run mode *ARGS:
+  @just build {{ mode }}
+  @echo "Running..."
+  @find build/executable/ -type f -exec ./{} {{ ARGS }} \;
+
+build mode:
+  @just cmake {{ mode }}
+  @echo "Building..."
+  @cmake --build build
+
+cmake mode:
+  @echo "Running cmake with CMAKE_BUILD_TYPE={{ uppercamelcase(mode) }}..."
+  @cmake -B build -S . -D CMAKE_BUILD_TYPE={{ uppercamelcase(mode) }}
+
+clean:
+  @rm -rf build

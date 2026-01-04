@@ -1,0 +1,19 @@
+cmake_minimum_required(VERSION 3.22)   # 3.22+ gives good Qt6 support
+project(AHN_Classification_by_3DBAG LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/executable)
+
+set(${PROJECT_NAME}_VERSION_MAJOR 1)
+set(${PROJECT_NAME}_VERSION_MINOR 0)
+
+find_package(CGAL REQUIRED)
+
+FILE(GLOB SRC_FILES src/*.cpp)
+add_executable(${PROJECT_NAME} ${SRC_FILES})
+
+install(TARGETS ${PROJECT_NAME}
+        RUNTIME DESTINATION bin)
