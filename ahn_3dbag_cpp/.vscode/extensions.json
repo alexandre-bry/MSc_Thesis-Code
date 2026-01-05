@@ -1,6 +1,8 @@
 {
     "recommendations": [
         "llvm-vs-code-extensions.vscode-clangd",
-        "nefrob.vscode-just-syntax"
+        "nefrob.vscode-just-syntax",
+        "ms-azuretools.vscode-containers",
+        "davidanson.vscode-markdownlint"
     ]
 }

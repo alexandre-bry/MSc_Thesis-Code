@@ -1,4 +1,4 @@
-#include "minkowski.h"
+#include "extension.h"
 #include "geometries.h"
 
 struct PlaneProjector {
