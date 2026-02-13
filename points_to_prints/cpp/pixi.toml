@@ -1,0 +1,13 @@
+[workspace]
+authors = ["Alexandre Bry <alexandre.bry@ign.fr>"]
+channels = ["conda-forge"]
+name = "points_to_prints"
+platforms = ["linux-64"]
+version = "0.1.0"
+
+[dependencies]
+gdal = ">=3.12"
+geos = "*"
+cgal = "*"
+pdal = ">=2.9.3"
+libarrow-all = "*"

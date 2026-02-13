@@ -30,13 +30,36 @@ sudo apt install -y \
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ``` -->
 
+## Install Arrow/Parquet C++ support
+
+Instructions come from the [official Arrow website](https://arrow.apache.org/install/).
+
+```bash
+sudo apt update
+sudo apt install -y -V ca-certificates lsb-release wget
+wget https://packages.apache.org/artifactory/arrow/$(lsb_release --id --short | tr 'A-Z' 'a-z')/apache-arrow-apt-source-latest-$(lsb_release --codename --short).deb
+sudo apt install -y -V ./apache-arrow-apt-source-latest-$(lsb_release --codename --short).deb
+rm apache-arrow-apt-source-latest-$(lsb_release --codename --short).deb
+sudo apt update
+sudo apt install -y -V libarrow-dev libarrow-dataset-dev libparquet-dev 
+```
+
 ## Install GDAL
 
 There are many ways to install GDAL, but the two ways below are from my experience the simplest that allow to get the latest version of GDAL.
 
+### GDAL with Pixi
+
+[GDAL's website](https://gdal.org/en/stable/download.html#pixi) provides instructions to install GDAL with Pixi, either locally or globally.
+To install it globally, use:
+
+```bash
+pixi global install gdal libgdal-arrow-parquet
+```
+
 ### GDAL with conda
 
-[GDAL's website](https://gdal.org/en/stable/download.html) provides instructions to install GDAL with conda.
+[GDAL's website](https://gdal.org/en/stable/download.html#conda) provides instructions to install GDAL with conda.
 
 ### GDAL from source
 
@@ -72,9 +95,18 @@ sudo cmake --build . --target install
 
 ## Install PDAL
 
+### PDAL with Pixi
+
+[PDAL's website](https://pdal.io/en/stable/quickstart.html#experimental-install-via-pixi) provides instructions to install PDAL with Pixi, either locally or globally.
+To install it globally, use:
+
+```bash
+pixi global install pdal
+```
+
 ### PDAL with conda
 
-[The website](https://pdal.io/en/stable/quickstart.html) provides instructions to install PDAL with conda.
+[PDAL's website](https://pdal.io/en/stable/quickstart.html#install-the-pdal-package) provides instructions to install PDAL with conda.
 
 ### PDAL from source
 
@@ -138,20 +170,6 @@ sudo apt install just
 sudo apt install libcgal-dev
 ```
 
-## Install Arrow/Parquet C++ support
-
-Instructions come from the [official Arrow website](https://arrow.apache.org/install/).
-
-```bash
-sudo apt update
-sudo apt install -y -V ca-certificates lsb-release wget
-wget https://packages.apache.org/artifactory/arrow/$(lsb_release --id --short | tr 'A-Z' 'a-z')/apache-arrow-apt-source-latest-$(lsb_release --codename --short).deb
-sudo apt install -y -V ./apache-arrow-apt-source-latest-$(lsb_release --codename --short).deb
-rm apache-arrow-apt-source-latest-$(lsb_release --codename --short).deb
-sudo apt update
-sudo apt install -y -V libarrow-dev libarrow-dataset-dev libparquet-dev 
-```
-
 ## Install pipx
 
 Instructions come from the [official pipx website](https://pipx.pypa.io/stable/installation/).
@@ -169,3 +187,20 @@ Instructions come from the [official pipx website](https://geoparquet.io/getting
 ```bash
 pipx install geoparquet-io
 ```
+
+## Install C++ libraries
+
+First create the include folder.
+
+```bash
+# From points_to_prints
+mkdir cpp/include
+```
+
+### CLI11
+
+```bash
+curl -L https://github.com/CLIUtils/CLI11/releases/download/v2.6.1/CLI11.hpp --output cpp/include/CLI11.hpp
+```
+
+###

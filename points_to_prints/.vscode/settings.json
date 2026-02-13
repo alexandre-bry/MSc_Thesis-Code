@@ -3,5 +3,5 @@
     "python.venvPath": ".",
     "python.terminal.activateEnvironment": true,
     "python.analysis.typeCheckingMode": "standard",
-    "cmake.sourceDirectory": "/workspaces/MSc_Thesis-Code/roof_foot_extraction/cpp"
+    "editor.formatOnSave": true
 }
