@@ -1,7 +1,7 @@
 #include <cstdint>
 #include <string>
 
-#include <CLI11/CLI.hpp>
+#include <CLI11/CLI11.hpp>
 
 #include "distances.hpp"
 #include "parquet.hpp"
@@ -63,7 +63,7 @@ void setup_test_parquet(CLI::App &app) {
     CLI::App *sub =
         app.add_subcommand("test_parquet", "Test Parquet Read/Write");
     std::string input_file;
-    sub->add_option("-i,--input", opt->input_file, "Input LAS file")
+    sub->add_option("-i,--input", opt->input_file, "Input Parquet file")
         ->required();
 
     sub->callback([opt]() { return open_parquet(opt->input_file); });

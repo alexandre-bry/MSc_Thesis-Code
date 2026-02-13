@@ -9,7 +9,7 @@ data/
 output/
 
 # C++ includes
-cpp/include/
+# cpp/include/
 
 # Rust experiments
 rust/target/

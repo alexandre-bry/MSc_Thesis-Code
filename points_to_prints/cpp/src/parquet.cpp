@@ -4,8 +4,6 @@
 #include <arrow/scalar.h>
 #include <cstddef>
 #include <format>
-#include <geom/Geometry.h>
-#include <geom/Polygon.h>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -16,7 +14,9 @@
 #include "arrow/status.h"
 #include "parquet/arrow/reader.h"
 
+#include <geos/geom/Geometry.h>
 #include <geos/geom/GeometryFactory.h>
+#include <geos/geom/Polygon.h>
 #include <geos/io/WKBReader.h>
 
 struct WKBReader {
@@ -60,7 +60,7 @@ arrow::Status open_parquet(std::string &input_file) {
     std::cout << "Opening the reader..." << std::endl;
     // Open Parquet file reader
     std::unique_ptr<parquet::arrow::FileReader> arrow_reader;
-    ARROW_ASSIGN_OR_RAISE(arrow_reader, parquet::arrow::OpenFile(input, pool));
+    ARROW_RETURN_NOT_OK(parquet::arrow::OpenFile(input, pool, &arrow_reader));
 
     std::cout << "Reading into a table..." << std::endl;
     // Read entire file as a single Arrow table
