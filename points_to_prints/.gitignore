@@ -1,0 +1,19 @@
+# Binaries, cache, build
+.venv/
+.cache/
+.temp/
+**/build/
+
+# Data
+data/
+output/
+
+# C++ includes
+cpp/include/
+
+# Rust experiments
+rust/target/
+rust/
+
+# Python experiments
+python/

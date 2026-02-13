@@ -1,0 +1,19 @@
+{
+    "recommendations": [
+        "ms-python.black-formatter",
+        "njpwerner.autodocstring",
+        "ms-python.isort",
+        "ms-python.python",
+        "ms-python.vscode-python-envs",
+        "ms-python.debugpy",
+        "ms-python.vscode-pylance",
+        "tamasfe.even-better-toml",
+        "ms-vscode.cpptools-extension-pack",
+        "streetsidesoftware.code-spell-checker",
+        "davidanson.vscode-markdownlint",
+        "esbenp.prettier-vscode",
+        "ms-vscode.cmake-tools",
+        "aaron-bond.better-comments",
+        "stackbreak.comment-divider"
+    ]
+}
