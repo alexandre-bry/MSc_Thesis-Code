@@ -15,6 +15,9 @@ FILE(GLOB SRC_FILES src/*.cpp)
 add_executable(${PROJECT_NAME} ${SRC_FILES})
 
 # CGAL
+if(POLICY CMP0167)
+  cmake_policy(SET CMP0167 NEW)
+endif()
 find_package( CGAL QUIET COMPONENTS )
 if ( CGAL_FOUND )
   message(STATUS "CGAL found")
@@ -24,7 +27,7 @@ else()
 endif()
 
 # PDAL
-find_package(PDAL 2.0.0 REQUIRED CONFIG)
+find_package(PDAL CONFIG REQUIRED)
 if ( PDAL_FOUND )
   message(STATUS "PDAL found")
 else()
@@ -34,7 +37,7 @@ endif()
 target_link_libraries(${PROJECT_NAME} PRIVATE ${PDAL_LIBRARIES})
 
 # GEOS
-find_package(GEOS REQUIRED)
+find_package(GEOS CONFIG REQUIRED)
 if (GEOS_FOUND)
   message(STATUS "GEOS found")
 else()
@@ -44,8 +47,8 @@ endif()
 target_link_libraries(${PROJECT_NAME} PRIVATE GEOS::geos GEOS::geos_c)
 
 # Arrow
-find_package(Arrow REQUIRED)
-find_package(Parquet REQUIRED)
+find_package(Arrow CONFIG REQUIRED QUIET)
+find_package(Parquet CONFIG REQUIRED QUIET)
 if ( Arrow_FOUND )
   message(STATUS "Arrow found")
 else()

@@ -14,6 +14,8 @@
         "esbenp.prettier-vscode",
         "ms-vscode.cmake-tools",
         "aaron-bond.better-comments",
-        "stackbreak.comment-divider"
+        "stackbreak.comment-divider",
+        "llvm-vs-code-extensions.vscode-clangd",
+        "nefrob.vscode-just-syntax"
     ]
 }
