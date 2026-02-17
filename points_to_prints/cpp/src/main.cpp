@@ -4,7 +4,28 @@
 #include <CLI11/CLI11.hpp>
 
 #include "distances.hpp"
+#include "las_filter.hpp"
 #include "parquet.hpp"
+
+void setup_sort_by_gps_time(CLI::App &app) {
+    auto opt = std::make_shared<SortByGpsTimeOptions>();
+
+    CLI::App *sub =
+        app.add_subcommand("sort_by_gps_time", "Sort points by GPS time");
+    std::string input_file;
+    sub->add_option("-i,--input", opt->input_file, "Input LAS file")
+        ->required();
+    std::string output_file;
+    sub->add_option("-o,--output", opt->output_file, "Output LAS file")
+        ->required();
+    bool overwrite = false;
+    sub->add_flag("-f,--overwrite", opt->overwrite,
+                  "Overwrite the output file if it exists");
+
+    sub->callback([opt]() {
+        sort_by_gps_time(opt->input_file, opt->output_file, opt->overwrite);
+    });
+}
 
 void setup_distances_in_order(CLI::App &app) {
     auto opt = std::make_shared<DistancesInOrderOptions>();
@@ -57,6 +78,26 @@ void setup_extract_random_lines(CLI::App &app) {
     });
 }
 
+void setup_split_flight_axes(CLI::App &app) {
+    auto opt = std::make_shared<ExtractRandomLinesOptions>();
+
+    CLI::App *sub =
+        app.add_subcommand("split_flight_axes", "Split the flight axes");
+    std::string input_file;
+    sub->add_option("-i,--input", opt->input_file, "Input LAS file")
+        ->required();
+    std::string output_folder;
+    sub->add_option("-o,--output", opt->output_folder, "Output folder")
+        ->required();
+    bool overwrite = false;
+    sub->add_flag("-f,--overwrite", opt->overwrite,
+                  "Overwrite the output folder if it exists");
+
+    sub->callback([opt]() {
+        split_flight_axes(opt->input_file, opt->output_folder, opt->overwrite);
+    });
+}
+
 void setup_test_parquet(CLI::App &app) {
     auto opt = std::make_shared<TestParquetOptions>();
 
@@ -72,8 +113,10 @@ void setup_test_parquet(CLI::App &app) {
 int main(int argc, char **argv) {
     CLI::App app{"Roofprint and Footprint Extraction"};
 
-    setup_distances_in_order(app);
+    setup_sort_by_gps_time(app);
+    setup_split_flight_axes(app);
     setup_extract_random_lines(app);
+    setup_distances_in_order(app);
     setup_test_parquet(app);
 
     app.require_subcommand(1);

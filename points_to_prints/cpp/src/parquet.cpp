@@ -4,8 +4,10 @@
 #include <arrow/scalar.h>
 #include <cstddef>
 #include <format>
+// #include <iomanip>
 #include <iostream>
 #include <memory>
+#include <ostream>
 #include <string>
 #include <utility>
 
@@ -18,6 +20,15 @@
 #include <geos/geom/GeometryFactory.h>
 #include <geos/geom/Polygon.h>
 #include <geos/io/WKBReader.h>
+
+// std::string wkbToHex(const std::string &wkb_str) {
+//     std::ostringstream oss;
+//     oss << std::hex << std::uppercase << std::setfill('0');
+//     for (unsigned char byte : wkb_str) {
+//         oss << std::setw(2) << static_cast<unsigned int>(byte);
+//     }
+//     return oss.str();
+// }
 
 struct WKBReader {
     geos::io::WKBReader reader;
@@ -32,10 +43,30 @@ struct WKBReader {
         return reader.read(wkb_bytes, wkb_size_t);
     }
 
-    std::string hex_to_wkt(std::shared_ptr<arrow::Scalar> scalar_ptr) {
-        auto [wkb_bytes, wkb_size_t] = process_scalar_ptr(scalar_ptr);
-        return reader.read(wkb_bytes, wkb_size_t)->toString();
-    }
+    // std::string hex_to_wkt(std::shared_ptr<arrow::Scalar> scalar_ptr) {
+    //     geos::io::WKBReader reader(
+    //         *geos::geom::GeometryFactory::create()); // Fresh instance
+
+    //     auto [wkb_bytes, wkb_size_t] = process_scalar_ptr(scalar_ptr);
+    //     std::string wkb_str(reinterpret_cast<const char *>(wkb_bytes),
+    //                         wkb_size_t);
+
+    //     std::string hex_output = wkbToHex(wkb_str);
+    //     std::cout << hex_output << std::endl;
+
+    //     std::istringstream wkb_stream_hex(hex_output);
+    //     // auto geom = reader.readHEX(wkb_stream_hex); // Read once
+    //     auto geom = reader.read(wkb_bytes, wkb_size_t); // Direct binary read
+
+    //     if (!geom) {
+    //         throw std::runtime_error("Failed to parse HEX WKB");
+    //     }
+
+    //     std::string wkt = geom->toString();
+    //     std::cout << "Hu" << wkt << std::endl;
+
+    //     return wkt;
+    // }
 
   private:
     std::pair<const uint8_t *, std::size_t>
@@ -49,6 +80,15 @@ struct WKBReader {
         std::size_t wkb_size_t = static_cast<std::size_t>(wkb_size);
         return {wkb_bytes, wkb_size_t};
     }
+
+    // std::istringstream process_scalar_ptr_to_hex_stream(
+    //     std::shared_ptr<arrow::Scalar> scalar_ptr) {
+    //     auto [wkb_bytes, wkb_size_t] = process_scalar_ptr(scalar_ptr);
+    //     std::string wkb_str(reinterpret_cast<const char *>(wkb_bytes),
+    //                         wkb_size_t);
+    //     std::string hex_output = wkbToHex(wkb_str);
+    //     return std::istringstream(hex_output);
+    // }
 };
 
 arrow::Status open_parquet(std::string &input_file) {
@@ -90,7 +130,7 @@ arrow::Status open_parquet(std::string &input_file) {
     int64_t max_rows_to_print = 10;
     int64_t num_rows_to_print = std::min(max_rows_to_print, table->num_rows());
     for (int64_t row = 0; row < num_rows_to_print; ++row) {
-        std::cout << "Row " << row << ": ";
+        std::cout << "Row " << row << ": " << std::endl;
         for (int col = 0; col < num_fields; ++col) {
             auto field = schema->field(col);
             auto chunk = table->column(col)->chunk(
@@ -99,12 +139,16 @@ arrow::Status open_parquet(std::string &input_file) {
                 std::cout << "NULL";
             } else {
                 auto scalar = chunk->GetScalar(row);
+                if (!scalar.ok()) {
+                    std::cerr << "Not OK!" << std::endl;
+                }
                 auto scalar_ptr = scalar.ValueOrDie();
 
                 if (col == geom_field_idx) {
-                    std::cout << wkb_reader.hex_to_wkt(scalar_ptr);
-                    geometries.emplace_back(
-                        wkb_reader.hex_to_geometry(scalar_ptr));
+                    auto geometry =
+                        wkb_reader.hex_to_geometry(scalar_ptr).release();
+                    std::cout << geometry->toString();
+                    geometries.emplace_back(geometry);
                 } else {
                     std::cout << scalar_ptr->ToString();
                 }

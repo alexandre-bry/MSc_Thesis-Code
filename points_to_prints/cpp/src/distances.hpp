@@ -1,6 +1,5 @@
 #pragma once
 
-#include <cstdint>
 #include <string>
 
 /**
@@ -24,16 +23,5 @@ struct DistancesInOrderOptions {
     std::string input_file;
     std::string output_distances_file;
     std::string output_edges_file;
-    bool overwrite;
-};
-
-void extract_random_scanner_lines(const std::string &input_file,
-                                  const std::string &output_folder,
-                                  uint16_t lines_count, bool overwrite);
-
-struct ExtractRandomLinesOptions {
-    std::string input_file;
-    std::string output_folder;
-    uint16_t lines_count;
     bool overwrite;
 };

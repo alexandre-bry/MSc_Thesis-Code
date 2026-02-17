@@ -15,19 +15,20 @@
 const double NEIGHBOUR_MAX_GPS_TIME = 1e-5;
 const double NEIGHBOUR_MAX_HORIZONTAL_DISTANCE = 10.0;
 
-struct PointAttributes {
-    double gps_time;
-    int return_number;
-    int number_of_returns;
-    LASclassification classification;
+// struct PointAttributes {
+//     double gps_time;
+//     int return_number;
+//     int number_of_returns;
+//     LASclassification classification;
 
-    PointAttributes() = default;
-    PointAttributes(double gps_time_, int return_number_,
-                    int number_of_returns_, LASclassification classification_)
-        : gps_time(gps_time_), return_number(return_number_),
-          number_of_returns(number_of_returns_),
-          classification(classification_) {}
-};
+//     PointAttributes() = default;
+//     PointAttributes(double gps_time_, int return_number_,
+//                     int number_of_returns_, LASclassification
+//                     classification_)
+//         : gps_time(gps_time_), return_number(return_number_),
+//           number_of_returns(number_of_returns_),
+//           classification(classification_) {}
+// };
 
 struct Point {
     double x;
@@ -84,23 +85,31 @@ struct Point {
 };
 
 struct PointWithAttributes : Point {
-    PointAttributes attributes;
+    double gps_time;
+    int return_number;
+    int number_of_returns;
+    LASclassification classification;
+    int point_source_id;
 
     PointWithAttributes() = default;
-    PointWithAttributes(double x_, double y_, double z_,
-                        PointAttributes attributes_)
-        : Point(x_, y_, z_), attributes(attributes_) {}
+    PointWithAttributes(double x_, double y_, double z_, double gps_time_,
+                        int return_number_, int number_of_returns_,
+                        LASclassification classification_, int point_source_id_)
+        : Point(x_, y_, z_), gps_time(gps_time_), return_number(return_number_),
+          number_of_returns(number_of_returns_),
+          classification(classification_), point_source_id(point_source_id_) {}
     PointWithAttributes(pdal::PointViewPtr view, pdal::PointId idx) {
         x = view->getFieldAs<double>(pdal::Dimension::Id::X, idx);
         y = view->getFieldAs<double>(pdal::Dimension::Id::Y, idx);
         z = view->getFieldAs<double>(pdal::Dimension::Id::Z, idx);
-        attributes.gps_time =
-            view->getFieldAs<double>(pdal::Dimension::Id::GpsTime, idx);
-        attributes.return_number =
+        gps_time = view->getFieldAs<double>(pdal::Dimension::Id::GpsTime, idx);
+        return_number =
             view->getFieldAs<int>(pdal::Dimension::Id::ReturnNumber, idx);
-        attributes.number_of_returns =
+        number_of_returns =
             view->getFieldAs<int>(pdal::Dimension::Id::NumberOfReturns, idx);
-        attributes.classification =
+        point_source_id =
+            view->getFieldAs<int>(pdal::Dimension::Id::PointSourceId, idx);
+        classification =
             static_cast<LASclassification>(view->getFieldAs<uint8_t>(
                 pdal::Dimension::Id::Classification, idx));
     }
@@ -131,17 +140,14 @@ struct PointsWithAttributes {
         // Sort the points by GPS time
         std::sort(indices_sorted_to_in.begin(), indices_sorted_to_in.end(),
                   [this](std::size_t a, std::size_t b) {
-                      auto gps_time_a = points[a].attributes.gps_time;
-                      auto gps_time_b = points[b].attributes.gps_time;
+                      auto gps_time_a = points[a].gps_time;
+                      auto gps_time_b = points[b].gps_time;
                       if (gps_time_a == gps_time_b) {
-                          auto return_number_a =
-                              points[a].attributes.return_number;
-                          auto return_number_b =
-                              points[b].attributes.return_number;
+                          auto return_number_a = points[a].return_number;
+                          auto return_number_b = points[b].return_number;
                           return return_number_a < return_number_b;
                       } else {
-                          return points[a].attributes.gps_time <
-                                 points[b].attributes.gps_time;
+                          return points[a].gps_time < points[b].gps_time;
                       }
                   });
 
@@ -155,15 +161,15 @@ struct PointsWithAttributes {
 
         // Create the mapping from GPS time to indices
         for (auto i : indices_sorted_to_in) {
-            gps_time_to_in_indices[points[i].attributes.gps_time].push_back(i);
+            gps_time_to_in_indices[points[i].gps_time].push_back(i);
         }
     }
 
     bool are_neighbours(std::size_t index_1, std::size_t index_2) const {
         const PointWithAttributes &p1 = points[index_1];
         const PointWithAttributes &p2 = points[index_2];
-        double gps_time1 = p1.attributes.gps_time;
-        double gps_time2 = p2.attributes.gps_time;
+        double gps_time1 = p1.gps_time;
+        double gps_time2 = p2.gps_time;
         double horizontal_distance = p1.horizontal_distance_to(p2);
         return std::abs(gps_time1 - gps_time2) < NEIGHBOUR_MAX_GPS_TIME &&
                horizontal_distance < NEIGHBOUR_MAX_HORIZONTAL_DISTANCE;
@@ -241,8 +247,8 @@ struct PointsWithAttributes {
         const auto &indices = get_indices_for_gps_time(gps_time);
         std::size_t index_of_highest_return = indices[0];
         for (std::size_t index : indices) {
-            if (points[index].attributes.return_number >
-                points[index_of_highest_return].attributes.return_number) {
+            if (points[index].return_number >
+                points[index_of_highest_return].return_number) {
                 index_of_highest_return = index;
             }
         }
@@ -253,8 +259,8 @@ struct PointsWithAttributes {
         const auto &indices = get_indices_for_gps_time(gps_time);
         std::size_t index_of_lowest_return = indices[0];
         for (std::size_t index : indices) {
-            if (points[index].attributes.return_number <
-                points[index_of_lowest_return].attributes.return_number) {
+            if (points[index].return_number <
+                points[index_of_lowest_return].return_number) {
                 index_of_lowest_return = index;
             }
         }
@@ -265,7 +271,7 @@ struct PointsWithAttributes {
      * @brief Returns an iterator over groups of points with the same GPS
      * time, in order of GPS time.
      */
-    std::vector<std::vector<std::size_t>> get_groups_by_gps_time() const {
+    std::vector<std::vector<std::size_t>> get_groups_in_gps_time_order() const {
         std::vector<std::vector<std::size_t>> groups;
         for (const auto &entry : gps_time_to_in_indices) {
             groups.push_back(entry.second);
