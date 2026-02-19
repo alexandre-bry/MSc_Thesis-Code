@@ -109,7 +109,7 @@ void extract_random_scanner_lines(const std::string &input_file,
             output_folder + "/line_" + std::to_string(line_number) + ".laz";
         las_writer.write(output_file, {});
 
-        bar.update(1);
+        bar.increment(1);
     }
     bar.finish();
     std::cout << "Done." << std::endl;
@@ -175,7 +175,7 @@ void split_flight_axes(const std::string &input_file,
             las_writer->setField(dim, out_idx, value);
         }
 
-        bar.update(1);
+        bar.increment(1);
     }
     bar.finish();
 
@@ -237,7 +237,7 @@ void sort_by_gps_time(const std::string &input_file,
             }
         }
 
-        bar.update(1);
+        bar.increment(1);
     }
     bar.finish();
 

@@ -30,7 +30,16 @@ enum class LASclassification : uint8_t {
     Water = 9,
     Rail = 10,
     RoadSurface = 11,
-    Overlap = 12
+    Overlap = 12,
+    WireGuard = 13,
+    WireConductor = 14,
+    TransmissionTower = 15,
+    WireConnector = 16,
+    BridgeDeck = 17,
+    HighNoise = 18,
+    PermanentOverground = 64,    // Specific to LiDAR HD
+    VirtualPoints = 66,          // Specific to LiDAR HD
+    MiscellaneousBuildings = 67, // Specific to LiDAR HD
 };
 
 namespace CustomDimensions {

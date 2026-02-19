@@ -277,7 +277,7 @@ void compute_distances_in_order(const std::string &input_file,
                                          edge_idx, true);
             }
         }
-        bar.update(1);
+        bar.increment(1);
     }
     bar.finish();
 
@@ -286,10 +286,12 @@ void compute_distances_in_order(const std::string &input_file,
 
     // Filter out points with classification not in the allowed classes
     const std::vector<LASclassification> allowed_classes = {
-        LASclassification::Unclassified,
-        LASclassification::Unassigned,
-        LASclassification::Ground,
-        LASclassification::Building,
+        // LASclassification::Unclassified,
+        // LASclassification::Unassigned,
+        // LASclassification::Ground,
+        // LASclassification::Building,
+        // LASclassification::PermanentOverground,
+        // LASclassification::MiscellaneousBuildings,
     };
 
     std::cout << "Writing output LAS file..." << std::endl;

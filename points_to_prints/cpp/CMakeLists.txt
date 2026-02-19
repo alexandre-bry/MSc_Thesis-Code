@@ -14,17 +14,17 @@ set(${PROJECT_NAME}_VERSION_MINOR 1)
 FILE(GLOB SRC_FILES src/*.cpp)
 add_executable(${PROJECT_NAME} ${SRC_FILES})
 
-# CGAL
-if(POLICY CMP0167)
-  cmake_policy(SET CMP0167 NEW)
-endif()
-find_package( CGAL QUIET COMPONENTS )
-if ( CGAL_FOUND )
-  message(STATUS "CGAL found")
-else()
-  message(SEND_ERROR "CGAL library is required")
-  return()  
-endif()
+# # CGAL
+# if(POLICY CMP0167)
+#   cmake_policy(SET CMP0167 NEW)
+# endif()
+# find_package( CGAL QUIET COMPONENTS )
+# if ( CGAL_FOUND )
+#   message(STATUS "CGAL found")
+# else()
+#   message(SEND_ERROR "CGAL library is required")
+#   return()  
+# endif()
 
 # PDAL
 find_package(PDAL CONFIG REQUIRED)
@@ -36,15 +36,15 @@ else()
 endif()
 target_link_libraries(${PROJECT_NAME} PRIVATE ${PDAL_LIBRARIES})
 
-# GEOS
-find_package(GEOS CONFIG REQUIRED)
-if (GEOS_FOUND)
-  message(STATUS "GEOS found")
-else()
-  message(SEND_ERROR "GEOS library is required")
-  return()
-endif()
-target_link_libraries(${PROJECT_NAME} PRIVATE GEOS::geos GEOS::geos_c)
+# # GEOS
+# find_package(GEOS CONFIG REQUIRED)
+# if (GEOS_FOUND)
+#   message(STATUS "GEOS found")
+# else()
+#   message(SEND_ERROR "GEOS library is required")
+#   return()
+# endif()
+# target_link_libraries(${PROJECT_NAME} PRIVATE GEOS::geos GEOS::geos_c)
 
 # Arrow
 find_package(Arrow CONFIG REQUIRED QUIET)
@@ -56,6 +56,16 @@ else()
   return()  
 endif()
 target_link_libraries(${PROJECT_NAME} PRIVATE Arrow::arrow_shared Parquet::parquet_shared)
+
+# GDAL
+find_package(GDAL REQUIRED)
+if (GDAL_FOUND)
+  message(STATUS "GDAL found")
+else()
+  message(SEND_ERROR "GDAL library is required")
+  return()
+endif()
+target_link_libraries(${PROJECT_NAME} PRIVATE GDAL::GDAL)
 
 # Header-only libraries
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/include)
