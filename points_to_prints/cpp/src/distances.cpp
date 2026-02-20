@@ -35,14 +35,14 @@ void compute_distances_in_order(const std::string &input_file,
     std::cout << "Reading LAS file..." << std::endl;
     CustomLasReader las_reader(input_file);
     las_reader.execute();
-    auto in_view = las_reader.pointView();
+    auto in_view = las_reader.point_view();
     auto [predefined_dims, proprietary_dims] = las_reader.dimensions();
-    auto n_features = las_reader.pointCount();
+    auto n_features = las_reader.point_count();
 
     std::cout << "Number of points: " << n_features << std::endl;
 
     // Prepare the points with attributes
-    PointsWithAttributes points(in_view);
+    Points3DWithAttributes points(in_view);
 
     std::cout << "Preparing output objects..." << std::endl;
     std::vector<pdal::Dimension::Id> distances_dims = predefined_dims;
@@ -164,7 +164,8 @@ void compute_distances_in_order(const std::string &input_file,
                                              p0.z);
                     las_edge_writer.setField(
                         pdal::Dimension::Id::Classification, edge_idx,
-                        static_cast<std::underlying_type_t<LASclassification>>(
+                        static_cast<
+                            std::underlying_type_t<LASclassification::Value>>(
                             p0.classification));
                     las_edge_writer.setField(CustomDimensions::Id::IsGenerated,
                                              edge_idx, false);
@@ -188,13 +189,13 @@ void compute_distances_in_order(const std::string &input_file,
             // Only consider the last return of a multi-echo neighbour
             double down_signed_vert_gap = 0.0;
             double up_signed_vert_gap = 0.0;
-            std::optional<Point> p_down;
-            std::optional<Point> p_other;
+            std::optional<Point3D> p_down;
+            std::optional<Point3D> p_other;
 
             if (!prev_group.empty() && prev_gps_time.has_value()) {
                 auto prev_idx_lowest_return =
                     points.get_index_of_lowest_return(prev_gps_time.value());
-                Point p1 = points[prev_idx_lowest_return];
+                Point3D p1 = points[prev_idx_lowest_return];
                 double signed_vert_gap = p.signed_vertical_distance_to(p1);
                 if (signed_vert_gap < down_signed_vert_gap) {
                     down_signed_vert_gap = signed_vert_gap;
@@ -203,7 +204,7 @@ void compute_distances_in_order(const std::string &input_file,
                     double distance_p_down =
                         std::numeric_limits<double>::infinity();
                     for (auto idx : next_group) {
-                        Point p2 = points[idx];
+                        Point3D p2 = points[idx];
                         double distance = p2.distance_to(*p_down);
                         if (distance < distance_p_down) {
                             distance_p_down = distance;
@@ -216,7 +217,7 @@ void compute_distances_in_order(const std::string &input_file,
                 }
             }
             if (!next_group.empty() && next_gps_time.has_value()) {
-                Point p1 = points[points.get_index_of_lowest_return(
+                Point3D p1 = points[points.get_index_of_lowest_return(
                     next_gps_time.value())];
                 double signed_vert_gap = p.signed_vertical_distance_to(p1);
                 if (signed_vert_gap < down_signed_vert_gap) {
@@ -226,7 +227,7 @@ void compute_distances_in_order(const std::string &input_file,
                     double distance_p_down =
                         std::numeric_limits<double>::infinity();
                     for (auto idx : prev_group) {
-                        Point p2 = points[idx];
+                        Point3D p2 = points[idx];
                         double distance = p2.distance_to(*p_down);
                         if (distance < distance_p_down) {
                             distance_p_down = distance;
@@ -256,12 +257,12 @@ void compute_distances_in_order(const std::string &input_file,
             // Add the points that are roof edges
             if (is_roof_edge && p_down && p_other) {
                 std::size_t edge_idx = las_edge_writer.pointCount();
-                Point edge_point;
+                Point3D edge_point;
                 if (p_other->is_neighbour_in_distance(p)) {
                     edge_point = p + (p - *p_other) / 2;
                 } else {
-                    Point p_average = (*p_down + p) / 2;
-                    edge_point = Point(p_average.x, p_average.y, p.z);
+                    Point3D p_average = (*p_down + p) / 2;
+                    edge_point = Point3D(p_average.x, p_average.y, p.z);
                 }
                 las_edge_writer.setField(pdal::Dimension::Id::X, edge_idx,
                                          edge_point.x);
@@ -271,7 +272,8 @@ void compute_distances_in_order(const std::string &input_file,
                                          edge_point.z);
                 las_edge_writer.setField(
                     pdal::Dimension::Id::Classification, edge_idx,
-                    static_cast<std::underlying_type_t<LASclassification>>(
+                    static_cast<
+                        std::underlying_type_t<LASclassification::Value>>(
                         p.classification));
                 las_edge_writer.setField(CustomDimensions::Id::IsGenerated,
                                          edge_idx, true);
@@ -285,7 +287,7 @@ void compute_distances_in_order(const std::string &input_file,
               << multi_echo_missing_return_count << std::endl;
 
     // Filter out points with classification not in the allowed classes
-    const std::vector<LASclassification> allowed_classes = {
+    const std::vector<LASclassification::Value> allowed_classes = {
         // LASclassification::Unclassified,
         // LASclassification::Unassigned,
         // LASclassification::Ground,

@@ -1,7 +1,9 @@
 #include "parquet.hpp"
 
 #include <arrow/array/builder_binary.h>
+#include <arrow/array/builder_nested.h>
 #include <arrow/scalar.h>
+#include <arrow/type.h>
 #include <arrow/type_fwd.h>
 #include <cstddef>
 #include <cstdint>
@@ -23,6 +25,7 @@
 
 #include "json/json.hpp"
 
+#include "geometry.hpp"
 #include "pbar.hpp"
 
 using json = nlohmann::json;
@@ -202,6 +205,8 @@ arrow::Status read_building_outlines_from_bd_topo(
     }
 
     long num_rows = table->num_rows();
+    // num_rows = std::min(
+    //     num_rows, static_cast<long>(10)); // Limit to 100k rows for testing
     std::cout << "Number of features: " << num_rows << std::endl;
     std::cout << "Number of columns: " << num_fields << std::endl;
     // std::cout << "Geometry column index: " << geom_field_idx << std::endl;
@@ -318,18 +323,30 @@ arrow::Status write_multi_polygons_to_parquet(
     // Inspired from
     // https://gist.github.com/jpswinski/13074fc773f92a529f98b274e5ad5283
 
-    const int64_t max_row_group_length = 100000;
+    const int64_t max_row_group_length = 500000;
     const int64_t batch_size = 50000;
 
     if (std::filesystem::exists(output_file) && !overwrite) {
         throw std::runtime_error("Output file already exists: " + output_file);
     }
 
+    std::cout << std::format("Writing {} building outlines to {}...",
+                             multi_polygons.size(), output_file)
+              << std::endl;
+
     // Build Schema
-    std::vector<std::shared_ptr<arrow::Field>> schema_vector;
-    schema_vector.push_back(arrow::field("cleabs", arrow::utf8()));
-    schema_vector.push_back(arrow::field("origine_du_batiment", arrow::utf8()));
-    schema_vector.push_back(arrow::field("geometry", arrow::binary()));
+    std::cout << "Building schema..." << std::endl;
+    auto bbox_type = std::make_shared<arrow::StructType>(
+        std::vector<std::shared_ptr<arrow::Field>>{
+            arrow::field("xmin", arrow::float64()),
+            arrow::field("ymin", arrow::float64()),
+            arrow::field("xmax", arrow::float64()),
+            arrow::field("ymax", arrow::float64())});
+    std::vector<std::shared_ptr<arrow::Field>> schema_vector{
+        arrow::field("cleabs", arrow::utf8()),
+        arrow::field("origine_du_batiment", arrow::utf8()),
+        arrow::field("geometry", arrow::binary()),
+        arrow::field("bbox", bbox_type)};
     auto schema = std::make_shared<arrow::Schema>(schema_vector);
 
     // Create Arrow Output Stream
@@ -349,6 +366,7 @@ arrow::Status write_multi_polygons_to_parquet(
         parquet::ArrowWriterProperties::Builder().store_schema()->build();
 
     // Build GeoParquet MetaData
+    std::cout << "Building GeoParquet metadata..." << std::endl;
     auto metadata = schema->metadata()
                         ? schema->metadata()->Copy()
                         : std::make_shared<arrow::KeyValueMetadata>();
@@ -366,6 +384,7 @@ arrow::Status write_multi_polygons_to_parquet(
                                          arrow_writer_props));
 
     // Write data in batches
+    std::cout << "Writing data in batches..." << std::endl;
     ProgressBarTotal progress_bar(multi_polygons.size(),
                                   "Writing building outlines to Parquet");
     int64_t num_rows = multi_polygons.size();
@@ -394,7 +413,8 @@ arrow::Status write_multi_polygons_to_parquet(
         }
 
         // Build arrays for each column in the batch
-        std::vector<std::shared_ptr<arrow::Array>> columns(3);
+        std::vector<std::shared_ptr<arrow::Array>> columns(
+            schema_vector.size());
         {
             arrow::StringBuilder builder;
             (void)builder.Reserve(batch_rows);
@@ -406,6 +426,7 @@ arrow::Status write_multi_polygons_to_parquet(
             }
             (void)builder.ReserveData(total_string_size);
 
+            // Append all strings in this batch
             for (int row = start; row < end; row++) {
                 builder.UnsafeAppend(multi_polygons[row].id);
             }
@@ -425,6 +446,7 @@ arrow::Status write_multi_polygons_to_parquet(
             }
             (void)builder.ReserveData(total_string_size);
 
+            // Append all strings in this batch
             for (int row = start; row < end; row++) {
                 builder.UnsafeAppend(
                     OutlineSource::name(multi_polygons[row].outline_source));
@@ -440,14 +462,56 @@ arrow::Status write_multi_polygons_to_parquet(
             size_t total_wkb_size = 0;
             for (size_t size : wkb_sizes)
                 total_wkb_size += size;
-            (void)builder.ReserveData(
-                total_wkb_size); // Pre-allocate data buffer
+            (void)builder.ReserveData(total_wkb_size);
 
+            // Append all WKBs in this batch
             for (int row = start; row < end; row++) {
                 int idx = row - start;
                 builder.UnsafeAppend(wkb_buffers[idx].data(), wkb_sizes[idx]);
             }
             ARROW_RETURN_NOT_OK(builder.Finish(&columns[2]));
+        }
+
+        {
+            auto x_min_builder = std::make_shared<arrow::DoubleBuilder>();
+            auto y_min_builder = std::make_shared<arrow::DoubleBuilder>();
+            auto x_max_builder = std::make_shared<arrow::DoubleBuilder>();
+            auto y_max_builder = std::make_shared<arrow::DoubleBuilder>();
+
+            arrow::StructBuilder builder(
+                bbox_type, arrow::default_memory_pool(),
+                {x_min_builder, y_min_builder, x_max_builder, y_max_builder});
+
+            (void)builder.Reserve(batch_rows);
+
+            // Pre-allocate vectors for bbox values
+            std::vector<double> x_mins, y_mins, x_maxs, y_maxs;
+            x_mins.reserve(batch_rows);
+            y_mins.reserve(batch_rows);
+            x_maxs.reserve(batch_rows);
+            y_maxs.reserve(batch_rows);
+
+            // Extract all bbox values
+            for (int row = start; row < end; row++) {
+                OGREnvelopePtr bbox = multi_polygons[row].bounding_box();
+                x_mins.push_back(bbox->MinX);
+                y_mins.push_back(bbox->MinY);
+                x_maxs.push_back(bbox->MaxX);
+                y_maxs.push_back(bbox->MaxY);
+            }
+
+            // Bulk append values to each field
+            (void)x_min_builder->AppendValues(x_mins);
+            (void)y_min_builder->AppendValues(y_mins);
+            (void)x_max_builder->AppendValues(x_maxs);
+            (void)y_max_builder->AppendValues(y_maxs);
+
+            // Finalize each struct
+            for (int row = start; row < end; row++) {
+                (void)builder.Append();
+            }
+
+            ARROW_RETURN_NOT_OK(builder.Finish(&columns[3]));
         }
 
         auto batch = arrow::RecordBatch::Make(schema, batch_rows, columns);
@@ -458,6 +522,7 @@ arrow::Status write_multi_polygons_to_parquet(
 
     // Close the writer
     ARROW_RETURN_NOT_OK(parquet_writer->Close());
+    std::cout << "Finished writing Parquet file." << std::endl;
     return arrow::Status::OK();
 }
 

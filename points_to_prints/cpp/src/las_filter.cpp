@@ -31,14 +31,14 @@ void extract_random_scanner_lines(const std::string &input_file,
     std::cout << "Reading LAS file..." << std::endl;
     CustomLasReader las_reader(input_file);
     las_reader.execute();
-    auto in_view = las_reader.pointView();
+    auto in_view = las_reader.point_view();
     auto [predefined_dims, proprietary_dims] = las_reader.dimensions();
-    auto n_features = las_reader.pointCount();
+    auto n_features = las_reader.point_count();
 
     std::cout << "Number of points: " << n_features << std::endl;
 
     // Prepare the points with attributes
-    PointsWithAttributes points(in_view);
+    Points3DWithAttributes points(in_view);
 
     std::cout << "Preparing output objects..." << std::endl;
 
@@ -55,7 +55,7 @@ void extract_random_scanner_lines(const std::string &input_file,
     for (auto line_number = 0; line_number < lines_count; line_number++) {
         // Select a random point in the file
         std::size_t idx0 = uint_dist(rng);
-        PointWithAttributes p0 = points[idx0];
+        Point3DWithAttributes p0 = points[idx0];
 
         // Select all the points in the same line
         std::vector<std::size_t> line_idxs({idx0});
@@ -129,9 +129,9 @@ void split_flight_axes(const std::string &input_file,
     std::cout << "Reading LAS file..." << std::endl;
     CustomLasReader las_reader(input_file);
     las_reader.execute();
-    auto in_view = las_reader.pointView();
+    auto in_view = las_reader.point_view();
     auto [predefined_dims, proprietary_dims] = las_reader.dimensions();
-    auto n_features = las_reader.pointCount();
+    auto n_features = las_reader.point_count();
 
     std::cout << "Number of points: " << n_features << std::endl;
 
@@ -144,14 +144,14 @@ void split_flight_axes(const std::string &input_file,
     bar.start();
 
     // Prepare the points with attributes
-    PointsWithAttributes points(in_view);
+    Points3DWithAttributes points(in_view);
 
     // Initialize the map of writers
     std::unordered_map<int, CustomLasWriter *> source_id_to_writers;
 
     for (auto initial_idx = 0; initial_idx < n_features; initial_idx++) {
         // Get the point and its attributes
-        PointWithAttributes p = points[initial_idx];
+        Point3DWithAttributes p = points[initial_idx];
 
         // Get the writer for the point source ID, or create it if it doesn't
         // exist
@@ -199,9 +199,9 @@ void sort_by_gps_time(const std::string &input_file,
     std::cout << "Reading LAS file..." << std::endl;
     CustomLasReader las_reader(input_file);
     las_reader.execute();
-    auto in_view = las_reader.pointView();
+    auto in_view = las_reader.point_view();
     auto [predefined_dims, proprietary_dims] = las_reader.dimensions();
-    auto n_features = las_reader.pointCount();
+    auto n_features = las_reader.point_count();
 
     std::cout << "Number of points: " << n_features << std::endl;
 
@@ -214,7 +214,7 @@ void sort_by_gps_time(const std::string &input_file,
     bar.start();
 
     // Prepare the points with attributes
-    PointsWithAttributes points(in_view);
+    Points3DWithAttributes points(in_view);
 
     // Initialize writer
     CustomLasWriter *las_writer = new CustomLasWriter(
@@ -223,7 +223,7 @@ void sort_by_gps_time(const std::string &input_file,
     for (auto initial_idx_group : points.get_groups_in_gps_time_order()) {
         for (auto initial_idx : initial_idx_group) {
             // Get the point and its attributes
-            PointWithAttributes p = points[initial_idx];
+            Point3DWithAttributes p = points[initial_idx];
 
             // Add this point to the writer
             auto out_idx = las_writer->pointCount();

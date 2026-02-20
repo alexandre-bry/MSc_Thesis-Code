@@ -1,6 +1,11 @@
 #include "las.hpp"
+#include "geometry.hpp"
+#include "points.hpp"
 
 #include <cstddef>
+#include <memory>
+#include <ogr_core.h>
+#include <pdal/util/Bounds.hpp>
 #include <string>
 #include <vector>
 
@@ -41,19 +46,30 @@ CustomLasReader::dimensions() const {
     return {predefined_dims, proprietary_dims};
 }
 pdal::LasHeader CustomLasReader::header() const { return reader.header(); }
-unsigned int CustomLasReader::pointCount() const {
+unsigned int CustomLasReader::point_count() const {
     return reader.header().pointCount();
 }
-pdal::SpatialReference CustomLasReader::spatialReference() const {
+pdal::SpatialReference CustomLasReader::spatial_reference() const {
     return table.spatialReference();
 }
-pdal::PointViewPtr CustomLasReader::pointView() const { return view; }
+pdal::PointViewPtr CustomLasReader::point_view() const { return view; }
+
+OGREnvelopePtr CustomLasReader::bounding_box() const {
+    pdal::BOX2D bounds;
+    view->calculateBounds(bounds);
+    OGREnvelope env;
+    env.MinX = bounds.minx;
+    env.MinY = bounds.miny;
+    env.MaxX = bounds.maxx;
+    env.MaxY = bounds.maxy;
+    return std::make_unique<OGREnvelope>(env);
+}
 
 std::size_t CustomLasWriter::pointCount() { return view->size(); }
 
 void CustomLasWriter::write(
     const std::string &filename,
-    const std::vector<LASclassification> &allowed_classes) {
+    const std::vector<LASclassification::Value> &allowed_classes) {
 
     pdal::StageFactory factory;
 
@@ -87,7 +103,7 @@ void CustomLasWriter::write(
 }
 
 std::string CustomLasWriter::get_class_limits(
-    const std::vector<LASclassification> &allowed_classes) const {
+    const std::vector<LASclassification::Value> &allowed_classes) const {
     std::string class_limits = "";
     for (const auto &cls : allowed_classes) {
         if (!class_limits.empty()) {

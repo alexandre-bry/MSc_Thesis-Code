@@ -8,97 +8,223 @@
 
 #include <pdal/Dimension.hpp>
 #include <pdal/PointView.hpp>
+#include <string>
 #include <vector>
-
-#include "las.hpp"
 
 const double NEIGHBOUR_MAX_GPS_TIME = 1e-5;
 const double NEIGHBOUR_MAX_HORIZONTAL_DISTANCE = 10.0;
 
-// struct PointAttributes {
-//     double gps_time;
-//     int return_number;
-//     int number_of_returns;
-//     LASclassification classification;
+namespace LASclassification {
+enum class Value : uint8_t {
+    Unclassified = 0,
+    Unassigned = 1,
+    Ground = 2,
+    LowVegetation = 3,
+    MediumVegetation = 4,
+    HighVegetation = 5,
+    Building = 6,
+    LowPoint = 7,
+    ModelKeyPoint = 8,
+    Water = 9,
+    Rail = 10,
+    RoadSurface = 11,
+    Overlap = 12,
+    WireGuard = 13,
+    WireConductor = 14,
+    TransmissionTower = 15,
+    WireConnector = 16,
+    BridgeDeck = 17,
+    HighNoise = 18,
+    PermanentOverground = 64,    // Specific to LiDAR HD
+    VirtualPoints = 66,          // Specific to LiDAR HD
+    MiscellaneousBuildings = 67, // Specific to LiDAR HD
+};
+inline std::string name(Value value) {
+    switch (value) {
+    case Value::Unclassified:
+        return "Unclassified";
+    case Value::Unassigned:
+        return "Unassigned";
+    case Value::Ground:
+        return "Ground";
+    case Value::LowVegetation:
+        return "Low Vegetation";
+    case Value::MediumVegetation:
+        return "Medium Vegetation";
+    case Value::HighVegetation:
+        return "High Vegetation";
+    case Value::Building:
+        return "Building";
+    case Value::LowPoint:
+        return "Low Point";
+    case Value::ModelKeyPoint:
+        return "Model Key Point";
+    case Value::Water:
+        return "Water";
+    case Value::Rail:
+        return "Rail";
+    case Value::RoadSurface:
+        return "Road Surface";
+    case Value::Overlap:
+        return "Overlap";
+    case Value::WireGuard:
+        return "Wire Guard";
+    case Value::WireConductor:
+        return "Wire Conductor";
+    case Value::TransmissionTower:
+        return "Transmission Tower";
+    case Value::WireConnector:
+        return "Wire Connector";
+    case Value::BridgeDeck:
+        return "Bridge Deck";
+    case Value::HighNoise:
+        return "High Noise";
+    case Value::PermanentOverground:
+        return "Permanent Overground (LiDAR HD)";
+    case Value::VirtualPoints:
+        return "Virtual Points (LiDAR HD)";
+    case Value::MiscellaneousBuildings:
+        return "Miscellaneous Buildings (LiDAR HD)";
+    default:
+        throw std::runtime_error("Unknown LAS classification value: " +
+                                 std::to_string(static_cast<uint8_t>(value)));
+    }
+}
+} // namespace LASclassification
 
-//     PointAttributes() = default;
-//     PointAttributes(double gps_time_, int return_number_,
-//                     int number_of_returns_, LASclassification
-//                     classification_)
-//         : gps_time(gps_time_), return_number(return_number_),
-//           number_of_returns(number_of_returns_),
-//           classification(classification_) {}
-// };
+namespace CustomDimensions {
+enum class Id {
+    DownSignedVertGap,
+    UpSignedVertGap,
+    IsRoofEdge,
+    IsFootEdge,
+    IsGenerated,
+};
+inline std::string name(Id id) {
+    switch (id) {
+    case Id::DownSignedVertGap:
+        return "DownSignedVertGap";
+    case Id::UpSignedVertGap:
+        return "UpSignedVertGap";
+    case Id::IsRoofEdge:
+        return "IsRoofEdge";
+    case Id::IsFootEdge:
+        return "IsFootEdge";
+    case Id::IsGenerated:
+        return "IsGenerated";
+    default:
+        throw std::runtime_error("Unknown custom dimension ID");
+    }
+}
 
-struct Point {
+inline pdal::Dimension::Type type(Id id) {
+    switch (id) {
+    case Id::DownSignedVertGap:
+        return pdal::Dimension::Type::Double;
+    case Id::UpSignedVertGap:
+        return pdal::Dimension::Type::Double;
+    case Id::IsRoofEdge:
+        return pdal::Dimension::Type::Unsigned8;
+    case Id::IsFootEdge:
+        return pdal::Dimension::Type::Unsigned8;
+    case Id::IsGenerated:
+        return pdal::Dimension::Type::Unsigned8;
+    default:
+        throw std::runtime_error("Unknown custom dimension ID");
+    }
+}
+
+} // namespace CustomDimensions
+
+struct ProprietaryDimension {
+    std::string name;
+    pdal::Dimension::Type type;
+
+    ProprietaryDimension(const std::string &n, pdal::Dimension::Type t)
+        : name(n), type(t) {}
+
+    ProprietaryDimension(const CustomDimensions::Id id)
+        : name(CustomDimensions::name(id)), type(CustomDimensions::type(id)) {}
+};
+
+struct Point2D {
+    double x;
+    double y;
+
+    Point2D() = default;
+    Point2D(double x_, double y_) : x(x_), y(y_) {}
+};
+
+struct Point3D {
     double x;
     double y;
     double z;
 
-    Point() = default;
-    Point(double x_, double y_, double z_) : x(x_), y(y_), z(z_) {}
-    Point(pdal::PointViewPtr view, pdal::PointId idx) {
+    Point3D() = default;
+    Point3D(double x_, double y_, double z_) : x(x_), y(y_), z(z_) {}
+    Point3D(pdal::PointViewPtr view, pdal::PointId idx) {
         x = view->getFieldAs<double>(pdal::Dimension::Id::X, idx);
         y = view->getFieldAs<double>(pdal::Dimension::Id::Y, idx);
         z = view->getFieldAs<double>(pdal::Dimension::Id::Z, idx);
     }
 
-    const Point operator+(const Point &other) const {
-        return Point(x + other.x, y + other.y, z + other.z);
+    const Point3D operator+(const Point3D &other) const {
+        return Point3D(x + other.x, y + other.y, z + other.z);
     }
 
-    const Point operator-(const Point &other) const {
-        return Point(x - other.x, y - other.y, z - other.z);
+    const Point3D operator-(const Point3D &other) const {
+        return Point3D(x - other.x, y - other.y, z - other.z);
     }
 
-    const Point operator*(double scalar) const {
-        return Point(x * scalar, y * scalar, z * scalar);
+    const Point3D operator*(double scalar) const {
+        return Point3D(x * scalar, y * scalar, z * scalar);
     }
 
-    const Point operator/(double scalar) const {
-        return Point(x / scalar, y / scalar, z / scalar);
+    const Point3D operator/(double scalar) const {
+        return Point3D(x / scalar, y / scalar, z / scalar);
     }
 
-    double distance_to(const Point &other) const {
+    double distance_to(const Point3D &other) const {
         return sqrt((x - other.x) * (x - other.x) +
                     (y - other.y) * (y - other.y) +
                     (z - other.z) * (z - other.z));
     }
 
-    double horizontal_distance_to(const Point &other) const {
+    double horizontal_distance_to(const Point3D &other) const {
         return sqrt((x - other.x) * (x - other.x) +
                     (y - other.y) * (y - other.y));
     }
 
-    double vertical_distance_to(const Point &other) const {
+    double vertical_distance_to(const Point3D &other) const {
         return std::abs(z - other.z);
     }
 
-    double signed_vertical_distance_to(const Point &other) const {
+    double signed_vertical_distance_to(const Point3D &other) const {
         return other.z - z;
     }
 
-    bool is_neighbour_in_distance(const Point &other) const {
+    bool is_neighbour_in_distance(const Point3D &other) const {
         return horizontal_distance_to(other) <
                NEIGHBOUR_MAX_HORIZONTAL_DISTANCE;
     }
 };
 
-struct PointWithAttributes : Point {
+struct Point3DWithAttributes : Point3D {
     double gps_time;
     int return_number;
     int number_of_returns;
-    LASclassification classification;
+    LASclassification::Value classification;
     int point_source_id;
 
-    PointWithAttributes() = default;
-    PointWithAttributes(double x_, double y_, double z_, double gps_time_,
-                        int return_number_, int number_of_returns_,
-                        LASclassification classification_, int point_source_id_)
-        : Point(x_, y_, z_), gps_time(gps_time_), return_number(return_number_),
-          number_of_returns(number_of_returns_),
+    Point3DWithAttributes() = default;
+    Point3DWithAttributes(double x_, double y_, double z_, double gps_time_,
+                          int return_number_, int number_of_returns_,
+                          LASclassification::Value classification_,
+                          int point_source_id_)
+        : Point3D(x_, y_, z_), gps_time(gps_time_),
+          return_number(return_number_), number_of_returns(number_of_returns_),
           classification(classification_), point_source_id(point_source_id_) {}
-    PointWithAttributes(pdal::PointViewPtr view, pdal::PointId idx) {
+    Point3DWithAttributes(pdal::PointViewPtr view, pdal::PointId idx) {
         x = view->getFieldAs<double>(pdal::Dimension::Id::X, idx);
         y = view->getFieldAs<double>(pdal::Dimension::Id::Y, idx);
         z = view->getFieldAs<double>(pdal::Dimension::Id::Z, idx);
@@ -110,21 +236,21 @@ struct PointWithAttributes : Point {
         point_source_id =
             view->getFieldAs<int>(pdal::Dimension::Id::PointSourceId, idx);
         classification =
-            static_cast<LASclassification>(view->getFieldAs<uint8_t>(
+            static_cast<LASclassification::Value>(view->getFieldAs<uint8_t>(
                 pdal::Dimension::Id::Classification, idx));
     }
 };
 
-struct PointsWithAttributes {
-    std::vector<PointWithAttributes> points;
+struct Points3DWithAttributes {
+    std::vector<Point3DWithAttributes> points;
     std::map<double, std::vector<std::size_t>> gps_time_to_in_indices;
     std::vector<std::size_t> indices_sorted_to_in; // Mapping from sorted
                                                    // indices to input indices
     std::vector<std::size_t> indices_in_to_sorted; // Mapping from input indices
                                                    // to sorted indices
 
-    PointsWithAttributes() = default;
-    PointsWithAttributes(pdal::PointViewPtr view) {
+    Points3DWithAttributes() = default;
+    Points3DWithAttributes(pdal::PointViewPtr view) {
         // Initialize the points vector
         pdal::PointId num_points = view->size();
         points.reserve(num_points);
@@ -166,8 +292,8 @@ struct PointsWithAttributes {
     }
 
     bool are_neighbours(std::size_t index_1, std::size_t index_2) const {
-        const PointWithAttributes &p1 = points[index_1];
-        const PointWithAttributes &p2 = points[index_2];
+        const Point3DWithAttributes &p1 = points[index_1];
+        const Point3DWithAttributes &p2 = points[index_2];
         double gps_time1 = p1.gps_time;
         double gps_time2 = p2.gps_time;
         double horizontal_distance = p1.horizontal_distance_to(p2);
@@ -279,9 +405,9 @@ struct PointsWithAttributes {
         return groups;
     }
 
-    std::vector<const PointWithAttributes *>
+    std::vector<const Point3DWithAttributes *>
     get_points_by_in_indices(const std::vector<std::size_t> &indices) const {
-        std::vector<const PointWithAttributes *> result;
+        std::vector<const Point3DWithAttributes *> result;
         result.reserve(indices.size());
         for (std::size_t index : indices) {
             result.push_back(&points.at(index));
@@ -293,7 +419,7 @@ struct PointsWithAttributes {
      * @brief Operator [] to access points by initial index.
      *
      */
-    const PointWithAttributes &operator[](std::size_t index) const {
+    const Point3DWithAttributes &operator[](std::size_t index) const {
         return points[index];
     }
 

@@ -17,85 +17,8 @@
 #include <pdal/io/LasReader.hpp>
 #include <pdal/pdal_types.hpp>
 
-enum class LASclassification : uint8_t {
-    Unclassified = 0,
-    Unassigned = 1,
-    Ground = 2,
-    LowVegetation = 3,
-    MediumVegetation = 4,
-    HighVegetation = 5,
-    Building = 6,
-    LowPoint = 7,
-    ModelKeyPoint = 8,
-    Water = 9,
-    Rail = 10,
-    RoadSurface = 11,
-    Overlap = 12,
-    WireGuard = 13,
-    WireConductor = 14,
-    TransmissionTower = 15,
-    WireConnector = 16,
-    BridgeDeck = 17,
-    HighNoise = 18,
-    PermanentOverground = 64,    // Specific to LiDAR HD
-    VirtualPoints = 66,          // Specific to LiDAR HD
-    MiscellaneousBuildings = 67, // Specific to LiDAR HD
-};
-
-namespace CustomDimensions {
-enum class Id {
-    DownSignedVertGap,
-    UpSignedVertGap,
-    IsRoofEdge,
-    IsFootEdge,
-    IsGenerated,
-};
-inline std::string name(Id id) {
-    switch (id) {
-    case Id::DownSignedVertGap:
-        return "DownSignedVertGap";
-    case Id::UpSignedVertGap:
-        return "UpSignedVertGap";
-    case Id::IsRoofEdge:
-        return "IsRoofEdge";
-    case Id::IsFootEdge:
-        return "IsFootEdge";
-    case Id::IsGenerated:
-        return "IsGenerated";
-    default:
-        throw std::runtime_error("Unknown custom dimension ID");
-    }
-}
-
-inline pdal::Dimension::Type type(Id id) {
-    switch (id) {
-    case Id::DownSignedVertGap:
-        return pdal::Dimension::Type::Double;
-    case Id::UpSignedVertGap:
-        return pdal::Dimension::Type::Double;
-    case Id::IsRoofEdge:
-        return pdal::Dimension::Type::Unsigned8;
-    case Id::IsFootEdge:
-        return pdal::Dimension::Type::Unsigned8;
-    case Id::IsGenerated:
-        return pdal::Dimension::Type::Unsigned8;
-    default:
-        throw std::runtime_error("Unknown custom dimension ID");
-    }
-}
-
-} // namespace CustomDimensions
-
-struct ProprietaryDimension {
-    std::string name;
-    pdal::Dimension::Type type;
-
-    ProprietaryDimension(const std::string &n, pdal::Dimension::Type t)
-        : name(n), type(t) {}
-
-    ProprietaryDimension(const CustomDimensions::Id id)
-        : name(CustomDimensions::name(id)), type(CustomDimensions::type(id)) {}
-};
+#include "geometry.hpp"
+#include "points.hpp"
 
 struct CustomLasReader {
   public:
@@ -114,12 +37,13 @@ struct CustomLasReader {
 
     pdal::PointViewSet execute();
     pdal::LasHeader header() const;
-    unsigned int pointCount() const;
+    unsigned int point_count() const;
     std::pair<std::vector<pdal::Dimension::Id>,
               std::vector<ProprietaryDimension>>
     dimensions() const;
-    pdal::SpatialReference spatialReference() const;
-    pdal::PointViewPtr pointView() const;
+    pdal::SpatialReference spatial_reference() const;
+    pdal::PointViewPtr point_view() const;
+    OGREnvelopePtr bounding_box() const;
 
     template <typename T>
     T getFieldAs(pdal::Dimension::Id dim, pdal::PointId idx) const {
@@ -201,11 +125,11 @@ struct CustomLasWriter {
     }
 
     void write(const std::string &filename,
-               const std::vector<LASclassification> &allowed_classes);
+               const std::vector<LASclassification::Value> &allowed_classes);
 
   private:
     std::vector<ProprietaryDimension> custom_dims;
 
     std::string get_class_limits(
-        const std::vector<LASclassification> &allowed_classes) const;
+        const std::vector<LASclassification::Value> &allowed_classes) const;
 };
