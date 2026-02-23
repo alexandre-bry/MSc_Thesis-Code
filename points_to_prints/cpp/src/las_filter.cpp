@@ -38,7 +38,7 @@ void extract_random_scanner_lines(const std::string &input_file,
     std::cout << "Number of points: " << n_features << std::endl;
 
     // Prepare the points with attributes
-    Points3DWithAttributes points(in_view);
+    Points3DAttrGPSSorted points(in_view);
 
     std::cout << "Preparing output objects..." << std::endl;
 
@@ -144,7 +144,7 @@ void split_flight_axes(const std::string &input_file,
     bar.start();
 
     // Prepare the points with attributes
-    Points3DWithAttributes points(in_view);
+    Points3DAttrGPSSorted points(in_view);
 
     // Initialize the map of writers
     std::unordered_map<int, CustomLasWriter *> source_id_to_writers;
@@ -214,7 +214,7 @@ void sort_by_gps_time(const std::string &input_file,
     bar.start();
 
     // Prepare the points with attributes
-    Points3DWithAttributes points(in_view);
+    Points3DAttrGPSSorted points(in_view);
 
     // Initialize writer
     CustomLasWriter *las_writer = new CustomLasWriter(

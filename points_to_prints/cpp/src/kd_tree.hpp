@@ -1,18 +1,14 @@
 #pragma once
 
-#include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
+#include <vector>
+
 #include <CGAL/Fuzzy_iso_box.h>
 #include <CGAL/Fuzzy_sphere.h>
 #include <CGAL/Kd_tree.h>
 #include <CGAL/Search_traits_2.h>
 #include <CGAL/Search_traits_3.h>
-#include <vector>
 
-typedef CGAL::Exact_predicates_inexact_constructions_kernel K;
-
-typedef K::Point_2 Point_2;
-typedef K::Vector_2 Vector_2;
-typedef K::Line_2 Line_2;
+#include "math.hpp"
 
 // definition of a non-mutable lvalue property map,
 // with the get function as a friend function to give it

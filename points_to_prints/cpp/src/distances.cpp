@@ -42,12 +42,14 @@ void compute_distances_in_order(const std::string &input_file,
     std::cout << "Number of points: " << n_features << std::endl;
 
     // Prepare the points with attributes
-    Points3DWithAttributes points(in_view);
+    Points3DAttrGPSSorted points(in_view);
 
     std::cout << "Preparing output objects..." << std::endl;
     std::vector<pdal::Dimension::Id> distances_dims = predefined_dims;
     std::vector<ProprietaryDimension> distances_custom_dims = proprietary_dims;
     std::vector<ProprietaryDimension> new_distances_custom_dims = {
+        CustomDimensions::Id::ReturnNumberComputed,
+        CustomDimensions::Id::NumberOfReturnsComputed,
         CustomDimensions::Id::DownSignedVertGap,
         CustomDimensions::Id::UpSignedVertGap,
         CustomDimensions::Id::IsRoofEdge,
@@ -115,7 +117,7 @@ void compute_distances_in_order(const std::string &input_file,
             const auto number_of_returns = group.size();
             std::optional<std::size_t> lowest_return_idx, highest_return_idx;
             for (auto idx : group) {
-                auto return_number = points[idx].return_number;
+                auto return_number = points[idx].get_return_number_computed();
                 if (return_number == number_of_returns) {
                     lowest_return_idx = idx;
                 } else if (return_number == 1) {
@@ -142,6 +144,12 @@ void compute_distances_in_order(const std::string &input_file,
                 bool is_foot_edge = up_signed_vert_gap > MIN_VERT_GAP_ROOF;
 
                 std::size_t out_idx = points.to_sorted_index(idx);
+                las_distances_writer.setField(
+                    CustomDimensions::Id::ReturnNumberComputed, out_idx,
+                    points[idx].get_return_number_computed());
+                las_distances_writer.setField(
+                    CustomDimensions::Id::NumberOfReturnsComputed, out_idx,
+                    points[idx].get_number_of_returns_computed());
                 las_distances_writer.setField(
                     CustomDimensions::Id::DownSignedVertGap, out_idx,
                     down_signed_vert_gap);
@@ -245,6 +253,12 @@ void compute_distances_in_order(const std::string &input_file,
 
             std::size_t out_idx = points.to_sorted_index(idx);
             las_distances_writer.setField(
+                CustomDimensions::Id::ReturnNumberComputed, out_idx,
+                points[idx].get_return_number_computed());
+            las_distances_writer.setField(
+                CustomDimensions::Id::NumberOfReturnsComputed, out_idx,
+                points[idx].get_number_of_returns_computed());
+            las_distances_writer.setField(
                 CustomDimensions::Id::DownSignedVertGap, out_idx,
                 down_signed_vert_gap);
             las_distances_writer.setField(CustomDimensions::Id::UpSignedVertGap,
@@ -288,12 +302,12 @@ void compute_distances_in_order(const std::string &input_file,
 
     // Filter out points with classification not in the allowed classes
     const std::vector<LASclassification::Value> allowed_classes = {
-        // LASclassification::Unclassified,
-        // LASclassification::Unassigned,
-        // LASclassification::Ground,
-        // LASclassification::Building,
-        // LASclassification::PermanentOverground,
-        // LASclassification::MiscellaneousBuildings,
+        LASclassification::Value::Unclassified,
+        LASclassification::Value::Unassigned,
+        LASclassification::Value::Ground,
+        LASclassification::Value::Building,
+        LASclassification::Value::PermanentOverground,
+        LASclassification::Value::MiscellaneousBuildings,
     };
 
     std::cout << "Writing output LAS file..." << std::endl;

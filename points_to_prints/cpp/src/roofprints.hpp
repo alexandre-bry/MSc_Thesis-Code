@@ -23,7 +23,7 @@ void select_outlines_in_las(
     double buffer_distance,
     std::vector<MultiPolygonZWithAttributes> &selected_outlines);
 
-void select_points_for_outline(
+void select_points_per_outlines(
     CustomLasReader &las_reader,
     const std::vector<MultiPolygonZWithAttributes> &outlines,
     double buffer_distance,

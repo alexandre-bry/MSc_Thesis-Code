@@ -94,6 +94,8 @@ inline std::string name(Value value) {
 
 namespace CustomDimensions {
 enum class Id {
+    ReturnNumberComputed,
+    NumberOfReturnsComputed,
     DownSignedVertGap,
     UpSignedVertGap,
     IsRoofEdge,
@@ -102,6 +104,10 @@ enum class Id {
 };
 inline std::string name(Id id) {
     switch (id) {
+    case Id::ReturnNumberComputed:
+        return "ReturnNumberComputed";
+    case Id::NumberOfReturnsComputed:
+        return "NumberOfReturnsComputed";
     case Id::DownSignedVertGap:
         return "DownSignedVertGap";
     case Id::UpSignedVertGap:
@@ -119,6 +125,10 @@ inline std::string name(Id id) {
 
 inline pdal::Dimension::Type type(Id id) {
     switch (id) {
+    case Id::ReturnNumberComputed:
+        return pdal::Dimension::Type::Unsigned8;
+    case Id::NumberOfReturnsComputed:
+        return pdal::Dimension::Type::Unsigned8;
     case Id::DownSignedVertGap:
         return pdal::Dimension::Type::Double;
     case Id::UpSignedVertGap:
@@ -210,28 +220,33 @@ struct Point3D {
 };
 
 struct Point3DWithAttributes : Point3D {
+  private:
+    std::optional<int> return_number_computed;
+    std::optional<int> number_of_returns_computed;
+
+  public:
     double gps_time;
-    int return_number;
-    int number_of_returns;
+    int return_number_attribute;
+    int number_of_returns_attribute;
     LASclassification::Value classification;
     int point_source_id;
 
     Point3DWithAttributes() = default;
-    Point3DWithAttributes(double x_, double y_, double z_, double gps_time_,
-                          int return_number_, int number_of_returns_,
-                          LASclassification::Value classification_,
-                          int point_source_id_)
-        : Point3D(x_, y_, z_), gps_time(gps_time_),
-          return_number(return_number_), number_of_returns(number_of_returns_),
-          classification(classification_), point_source_id(point_source_id_) {}
+    // Point3DWithAttributes(double x_, double y_, double z_, double gps_time_,
+    //                       int return_number_, int number_of_returns_,
+    //                       LASclassification::Value classification_,
+    //                       int point_source_id_)
+    // : Point3D(x_, y_, z_), gps_time(gps_time_),
+    //   return_number(return_number_), number_of_returns(number_of_returns_),
+    //   classification(classification_), point_source_id(point_source_id_) {}
     Point3DWithAttributes(pdal::PointViewPtr view, pdal::PointId idx) {
         x = view->getFieldAs<double>(pdal::Dimension::Id::X, idx);
         y = view->getFieldAs<double>(pdal::Dimension::Id::Y, idx);
         z = view->getFieldAs<double>(pdal::Dimension::Id::Z, idx);
         gps_time = view->getFieldAs<double>(pdal::Dimension::Id::GpsTime, idx);
-        return_number =
+        return_number_attribute =
             view->getFieldAs<int>(pdal::Dimension::Id::ReturnNumber, idx);
-        number_of_returns =
+        number_of_returns_attribute =
             view->getFieldAs<int>(pdal::Dimension::Id::NumberOfReturns, idx);
         point_source_id =
             view->getFieldAs<int>(pdal::Dimension::Id::PointSourceId, idx);
@@ -239,18 +254,65 @@ struct Point3DWithAttributes : Point3D {
             static_cast<LASclassification::Value>(view->getFieldAs<uint8_t>(
                 pdal::Dimension::Id::Classification, idx));
     }
+
+    void set_return_number_computed(int return_number) {
+        return_number_computed = return_number;
+    }
+
+    void set_number_of_returns_computed(int number_of_returns) {
+        number_of_returns_computed = number_of_returns;
+    }
+
+    int get_return_number_computed() const {
+        if (!return_number_computed) {
+            throw std::runtime_error(
+                "Return number computed is not set for this point");
+        }
+        return *return_number_computed;
+    }
+
+    int get_number_of_returns_computed() const {
+        if (!number_of_returns_computed) {
+            throw std::runtime_error(
+                "Number of returns computed is not set for this point");
+        }
+        return *number_of_returns_computed;
+    }
 };
 
 struct Points3DWithAttributes {
     std::vector<Point3DWithAttributes> points;
+    // Additional data structures for efficient queries can be added here
+
+    Points3DWithAttributes() = default;
+    Points3DWithAttributes(pdal::PointViewPtr view) {
+        pdal::PointId num_points = view->size();
+        points.reserve(num_points);
+        for (pdal::PointId i = 0; i < num_points; ++i) {
+            points.emplace_back(view, i);
+        }
+    }
+
+    std::size_t size() const { return points.size(); }
+
+    /**
+     * @brief Operator [] to access points by initial index.
+     *
+     */
+    const Point3DWithAttributes &operator[](std::size_t index) const {
+        return points[index];
+    }
+};
+
+struct Points3DAttrGPSSorted : Points3DWithAttributes {
     std::map<double, std::vector<std::size_t>> gps_time_to_in_indices;
     std::vector<std::size_t> indices_sorted_to_in; // Mapping from sorted
                                                    // indices to input indices
     std::vector<std::size_t> indices_in_to_sorted; // Mapping from input indices
                                                    // to sorted indices
 
-    Points3DWithAttributes() = default;
-    Points3DWithAttributes(pdal::PointViewPtr view) {
+    Points3DAttrGPSSorted() = default;
+    Points3DAttrGPSSorted(pdal::PointViewPtr view) {
         // Initialize the points vector
         pdal::PointId num_points = view->size();
         points.reserve(num_points);
@@ -264,20 +326,26 @@ struct Points3DWithAttributes {
         }
 
         // Sort the points by GPS time
+        std::cout << "Sorting points by GPS time..." << std::endl;
         std::sort(indices_sorted_to_in.begin(), indices_sorted_to_in.end(),
                   [this](std::size_t a, std::size_t b) {
                       auto gps_time_a = points[a].gps_time;
                       auto gps_time_b = points[b].gps_time;
-                      if (gps_time_a == gps_time_b) {
-                          auto return_number_a = points[a].return_number;
-                          auto return_number_b = points[b].return_number;
-                          return return_number_a < return_number_b;
-                      } else {
-                          return points[a].gps_time < points[b].gps_time;
-                      }
+                      //   if (gps_time_a == gps_time_b) {
+                      //       auto return_number_a =
+                      //           points[a].return_number_attribute;
+                      //       auto return_number_b =
+                      //           points[b].return_number_attribute;
+                      //       return return_number_a < return_number_b;
+                      //   } else {
+                      //       return gps_time_a < gps_time_b;
+                      //   }
+                      return gps_time_a < gps_time_b;
                   });
 
         // Create the mapping from input indices to sorted indices
+        std::cout << "Creating mapping from input indices to sorted indices..."
+                  << std::endl;
         indices_in_to_sorted.resize(num_points);
         for (std::size_t sorted_idx = 0;
              sorted_idx < indices_sorted_to_in.size(); ++sorted_idx) {
@@ -286,9 +354,34 @@ struct Points3DWithAttributes {
         }
 
         // Create the mapping from GPS time to indices
+        std::cout << "Creating mapping from GPS time to indices..."
+                  << std::endl;
         for (auto i : indices_sorted_to_in) {
             gps_time_to_in_indices[points[i].gps_time].push_back(i);
         }
+
+        // Compute the number of returns and return number for each group of
+        // points with the same GPS time
+        std::cout << "Computing return numbers and number of returns for each "
+                     "group of points with the same GPS time..."
+                  << std::endl;
+        for (const auto &entry : gps_time_to_in_indices) {
+            auto indices = entry.second;
+            int number_of_returns = indices.size();
+            std::sort(indices.begin(), indices.end(),
+                      [this](std::size_t a, std::size_t b) {
+                          return points[a].return_number_attribute <
+                                 points[b].return_number_attribute;
+                      });
+            for (uint8_t i = 0; i < indices.size(); ++i) {
+                std::size_t index = indices[i];
+                points[index].set_number_of_returns_computed(number_of_returns);
+                points[index].set_return_number_computed(i + 1);
+            }
+        }
+
+        std::cout << "Finished initializing Points3DWithAttributes."
+                  << std::endl;
     }
 
     bool are_neighbours(std::size_t index_1, std::size_t index_2) const {
@@ -373,8 +466,8 @@ struct Points3DWithAttributes {
         const auto &indices = get_indices_for_gps_time(gps_time);
         std::size_t index_of_highest_return = indices[0];
         for (std::size_t index : indices) {
-            if (points[index].return_number >
-                points[index_of_highest_return].return_number) {
+            if (points[index].get_return_number_computed() >
+                points[index_of_highest_return].get_return_number_computed()) {
                 index_of_highest_return = index;
             }
         }
@@ -385,8 +478,8 @@ struct Points3DWithAttributes {
         const auto &indices = get_indices_for_gps_time(gps_time);
         std::size_t index_of_lowest_return = indices[0];
         for (std::size_t index : indices) {
-            if (points[index].return_number <
-                points[index_of_lowest_return].return_number) {
+            if (points[index].get_return_number_computed() <
+                points[index_of_lowest_return].get_return_number_computed()) {
                 index_of_lowest_return = index;
             }
         }
@@ -414,16 +507,6 @@ struct Points3DWithAttributes {
         }
         return result;
     }
-
-    /**
-     * @brief Operator [] to access points by initial index.
-     *
-     */
-    const Point3DWithAttributes &operator[](std::size_t index) const {
-        return points[index];
-    }
-
-    std::size_t size() const { return points.size(); }
 
     /**
      * @brief Converts an input index to a GPS time sorted index.
