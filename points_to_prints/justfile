@@ -2,22 +2,22 @@
 @run mode *ARGS:
     just build {{ mode }}
     just _print "Running in {{ uppercamelcase(mode) }} mode"
-    find build/{{ uppercamelcase(mode) }}/executable/ -type f -exec ./{} {{ ARGS }} \;
+    find cpp/build/{{ uppercamelcase(mode) }}/executable/ -type f -exec ./{} {{ ARGS }} \;
 
 # Builds the binary in the given mode. It will configure the build system if necessary.
 @build mode:
     just cmake {{ mode }}
     just _print "Building in {{ uppercamelcase(mode) }} mode"
-    cmake --build build/{{ uppercamelcase(mode) }}
+    cmake --build cpp/build/{{ uppercamelcase(mode) }}
 
 # Configures the build system for the given mode.
 @cmake mode:
     just _print "Configuring for {{ uppercamelcase(mode) }} mode"
-    cmake -B build/{{ uppercamelcase(mode) }} -S . -D CMAKE_BUILD_TYPE={{ uppercamelcase(mode) }} -Wno-dev
+    cmake -B cpp/build/{{ uppercamelcase(mode) }} -S cpp -D CMAKE_BUILD_TYPE={{ uppercamelcase(mode) }} -Wno-dev
 
 # Removes the build directory.
 @clean:
-    rm -rf build
+    rm -rf cpp/build
 
 @_print message:
-  echo '{{BOLD + CYAN}}----- {{ message }} -----{{NORMAL}}'
+    echo '{{ BOLD + CYAN }}----- {{ message }} -----{{ NORMAL }}'
