@@ -7,6 +7,7 @@
 #include <ogr_geometry.h>
 #include <vector>
 
+#include "cgal.hpp"
 #include "points.hpp"
 
 namespace OutlineSource {
@@ -70,11 +71,35 @@ static OGRSpatialReference *getLAMB93() {
 // outline
 
 using OGRGeometryPtr = std::unique_ptr<OGRGeometry>;
+using OGRMultiLineStringPtr = std::unique_ptr<OGRMultiLineString>;
 using OGRPolygonPtr = std::unique_ptr<OGRPolygon>;
 using OGRMultiPolygonPtr = std::unique_ptr<OGRMultiPolygon>;
 using OGREnvelopePtr = std::unique_ptr<OGREnvelope>;
 
-struct PolygonZ {
+// Abstract base class for all geometries
+class Geometry {
+  public:
+    virtual ~Geometry() = default;
+
+    // Pure virtual functions that all geometries must implement
+    virtual OGRGeometryPtr get_geom() const = 0;
+    virtual OGREnvelopePtr bounding_box() const = 0;
+
+    // Clone pattern for copying (since constructors can't be virtual)
+    virtual std::unique_ptr<Geometry> clone() const = 0;
+};
+
+// Abstract base class for geometries with attributes
+class GeometryWithAttributes : public virtual Geometry {
+  public:
+    virtual ~GeometryWithAttributes() = default;
+
+    // Additional pure virtual functions for attributed geometries
+    virtual std::string get_id() const = 0;
+    virtual OutlineSource::Id get_outline_source() const = 0;
+};
+
+struct PolygonZ : public virtual Geometry {
     OGRPolygonPtr polygon;
 
     PolygonZ(OGRPolygonPtr polygon_) : polygon(std::move(polygon_)) {}
@@ -95,12 +120,6 @@ struct PolygonZ {
         }
     };
 
-    OGREnvelopePtr bounding_box() const {
-        OGREnvelope env;
-        polygon->getEnvelope(&env);
-        return std::make_unique<OGREnvelope>(env);
-    }
-
     // Copy constructor
     PolygonZ(const PolygonZ &other) {
         OGRPolygon *polygon_copy =
@@ -110,9 +129,27 @@ struct PolygonZ {
         }
         polygon.reset(polygon_copy);
     }
+
+    OGRGeometryPtr get_geom() const override {
+        OGRPolygon *polygon_copy = dynamic_cast<OGRPolygon *>(polygon->clone());
+        if (!polygon_copy) {
+            throw std::runtime_error("Failed to clone polygon");
+        }
+        return OGRGeometryPtr(polygon_copy);
+    }
+
+    OGREnvelopePtr bounding_box() const override {
+        OGREnvelope env;
+        polygon->getEnvelope(&env);
+        return std::make_unique<OGREnvelope>(env);
+    }
+
+    std::unique_ptr<Geometry> clone() const override {
+        return std::make_unique<PolygonZ>(*this);
+    }
 };
 
-struct PolygonZWithAttributes : PolygonZ {
+struct PolygonZWithAttributes : PolygonZ, GeometryWithAttributes {
     std::string id;
     OutlineSource::Id outline_source;
 
@@ -124,9 +161,19 @@ struct PolygonZWithAttributes : PolygonZ {
                            const OutlineSource::Id outline_source_)
         : PolygonZ(std::move(geometry)), id(id_),
           outline_source(outline_source_) {};
+
+    // Implement GeometryWithAttributes interface
+    std::string get_id() const override { return id; }
+    OutlineSource::Id get_outline_source() const override {
+        return outline_source;
+    }
+
+    std::unique_ptr<Geometry> clone() const override {
+        return std::make_unique<PolygonZWithAttributes>(*this);
+    }
 };
 
-struct MultiPolygonZ {
+struct MultiPolygonZ : public virtual Geometry {
     OGRMultiPolygonPtr multi_polygon;
 
     MultiPolygonZ() = default;
@@ -175,9 +222,28 @@ struct MultiPolygonZ {
         }
         multi_polygon.reset(multi_polygon_copy);
     }
+
+    OGRGeometryPtr get_geom() const override {
+        OGRMultiPolygon *multi_polygon_copy =
+            dynamic_cast<OGRMultiPolygon *>(multi_polygon->clone());
+        if (!multi_polygon_copy) {
+            throw std::runtime_error("Failed to clone multipolygon");
+        }
+        return OGRGeometryPtr(multi_polygon_copy);
+    }
+
+    OGREnvelopePtr bounding_box() const override {
+        OGREnvelope env;
+        multi_polygon->getEnvelope(&env);
+        return std::make_unique<OGREnvelope>(env);
+    }
+
+    std::unique_ptr<Geometry> clone() const override {
+        return std::make_unique<MultiPolygonZ>(*this);
+    }
 };
 
-struct MultiPolygonZWithAttributes : MultiPolygonZ {
+struct MultiPolygonZWithAttributes : MultiPolygonZ, GeometryWithAttributes {
     std::string id;
     OutlineSource::Id outline_source;
 
@@ -227,7 +293,7 @@ struct MultiPolygonZWithAttributes : MultiPolygonZ {
         return polygons;
     }
 
-    OGREnvelopePtr bounding_box() const {
+    OGREnvelopePtr bounding_box() const override {
         OGREnvelope env;
         multi_polygon->getEnvelope(&env);
         return std::make_unique<OGREnvelope>(env);
@@ -240,5 +306,119 @@ struct MultiPolygonZWithAttributes : MultiPolygonZ {
             boxes[i] = polygon.bounding_box();
         }
         return boxes;
+    }
+
+    // Implement GeometryWithAttributes interface
+    std::string get_id() const override { return id; }
+    OutlineSource::Id get_outline_source() const override {
+        return outline_source;
+    }
+
+    std::unique_ptr<Geometry> clone() const override {
+        return std::make_unique<MultiPolygonZWithAttributes>(*this);
+    }
+};
+
+struct MultiLineStringZ : public virtual Geometry {
+    OGRMultiLineStringPtr multi_line_string;
+
+    MultiLineStringZ() = default;
+    MultiLineStringZ(OGRMultiLineStringPtr multi_line_string_)
+        : multi_line_string(std::move(multi_line_string_)) {}
+    MultiLineStringZ(OGRGeometryPtr geometry) {
+        if (geometry->IsSimple()) {
+            throw std::runtime_error("Geometry is simple");
+        }
+        if (geometry->getCoordinateDimension() != 3) {
+            throw std::runtime_error("Geometry is not 3D");
+        }
+        if (!geometry->IsValid()) {
+            throw std::runtime_error("Geometry is not valid");
+        }
+
+        multi_line_string.reset(
+            dynamic_cast<OGRMultiLineString *>(geometry.release()));
+        if (!multi_line_string) {
+            throw std::runtime_error(
+                "Failed to cast geometry to MultiLineString");
+        }
+    }
+
+    // Copy constructor
+    MultiLineStringZ(const MultiLineStringZ &other) {
+        OGRMultiLineString *multi_line_string_copy =
+            dynamic_cast<OGRMultiLineString *>(
+                other.multi_line_string->clone());
+        if (!multi_line_string_copy) {
+            throw std::runtime_error("Failed to clone multilinestring");
+        }
+        multi_line_string.reset(multi_line_string_copy);
+    }
+
+    void add_line(const Segment_3 &segment) {
+        OGRLineString *line_string = new OGRLineString();
+        line_string->addPoint(segment.point(0).x(), segment.point(0).y(),
+                              segment.point(0).z());
+        line_string->addPoint(segment.point(1).x(), segment.point(1).y(),
+                              segment.point(1).z());
+
+        if (!multi_line_string) {
+            multi_line_string.reset(new OGRMultiLineString());
+        }
+        if (multi_line_string->addGeometry(line_string) != OGRERR_NONE) {
+            throw std::runtime_error("Failed to add line to MultiLineString");
+        }
+    }
+
+    OGRGeometryPtr get_geom() const override {
+        OGRMultiLineString *multi_line_string_copy =
+            dynamic_cast<OGRMultiLineString *>(multi_line_string->clone());
+        if (!multi_line_string_copy) {
+            throw std::runtime_error("Failed to clone multilinestring");
+        }
+        return OGRGeometryPtr(multi_line_string_copy);
+    }
+
+    OGREnvelopePtr bounding_box() const override {
+        OGREnvelope env;
+        multi_line_string->getEnvelope(&env);
+        return std::make_unique<OGREnvelope>(env);
+    }
+
+    std::unique_ptr<Geometry> clone() const override {
+        return std::make_unique<MultiLineStringZ>(*this);
+    }
+};
+
+struct MultiLineStringZWithAttributes : MultiLineStringZ,
+                                        GeometryWithAttributes {
+    std::string id;
+    OutlineSource::Id outline_source;
+
+    MultiLineStringZWithAttributes() = default;
+    MultiLineStringZWithAttributes(MultiLineStringZ multi_line_string_,
+                                   const std::string &id_,
+                                   const OutlineSource::Id outline_source_)
+        : MultiLineStringZ(std::move(multi_line_string_)), id(id_),
+          outline_source(outline_source_) {};
+    MultiLineStringZWithAttributes(OGRMultiLineStringPtr multi_line_string_,
+                                   const std::string &id_,
+                                   const OutlineSource::Id outline_source_)
+        : MultiLineStringZ(std::move(multi_line_string_)), id(id_),
+          outline_source(outline_source_) {};
+    MultiLineStringZWithAttributes(OGRGeometryPtr geometry,
+                                   const std::string &id_,
+                                   const OutlineSource::Id outline_source_)
+        : MultiLineStringZ(std::move(geometry)), id(id_),
+          outline_source(outline_source_) {}
+
+    // Implement GeometryWithAttributes interface
+    std::string get_id() const override { return id; }
+    OutlineSource::Id get_outline_source() const override {
+        return outline_source;
+    }
+
+    std::unique_ptr<Geometry> clone() const override {
+        return std::make_unique<MultiLineStringZWithAttributes>(*this);
     }
 };

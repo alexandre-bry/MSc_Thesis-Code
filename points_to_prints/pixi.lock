@@ -112,7 +112,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/libgoogle-cloud-2.39.0-h9d11ab5_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/libgoogle-cloud-storage-2.39.0-hdbdcf42_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/libgrpc-1.78.0-h1d1128b_1.conda
-      - conda: https://conda.anaconda.org/conda-forge/linux-64/libhwloc-2.12.2-default_hafda6a7_1000.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/libhwloc-2.13.0-default_he001693_1000.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/libhwy-1.3.0-h4c17acf_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/libiconv-1.18-h3b78370_2.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/libjpeg-turbo-3.1.2-hb03c661_0.conda
@@ -145,7 +145,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/libpdal-pgpointcloud-2.10.0-hb16824e_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/libpdal-tiledb-2.10.0-hc527eab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/libpdal-trajectory-2.10.0-h1ebb429_0.conda
-      - conda: https://conda.anaconda.org/conda-forge/linux-64/libpmix-5.0.8-h9b03745_3.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/libpmix-5.0.8-h31fc519_4.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/libpng-1.6.55-h421ea60_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/libpq-18.2-h9abb657_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/libprotobuf-6.33.5-h2b00c02_0.conda
@@ -188,7 +188,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/nlohmann_json-3.12.0-h54a6638_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/numpy-2.4.2-py314h2b28147_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/openldap-2.6.10-hbde042b_1.conda
-      - conda: https://conda.anaconda.org/conda-forge/linux-64/openmpi-5.0.10-h611b0e2_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/openmpi-5.0.10-h67ed482_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/openssl-3.6.1-h35e630c_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/orc-2.2.2-hbb90d81_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/parquet-utils-23.0.1-h635bf11_2_cpu.conda
@@ -359,7 +359,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/libgoogle-cloud-2.39.0-h9d11ab5_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/libgoogle-cloud-storage-2.39.0-hdbdcf42_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/libgrpc-1.78.0-h1d1128b_1.conda
-      - conda: https://conda.anaconda.org/conda-forge/linux-64/libhwloc-2.12.2-default_hafda6a7_1000.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/libhwloc-2.13.0-default_he001693_1000.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/libhwy-1.3.0-h4c17acf_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/libiconv-1.18-h3b78370_2.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/libjpeg-turbo-3.1.2-hb03c661_0.conda
@@ -391,7 +391,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/libpdal-pgpointcloud-2.10.0-hb16824e_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/libpdal-tiledb-2.10.0-hc527eab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/libpdal-trajectory-2.10.0-h1ebb429_0.conda
-      - conda: https://conda.anaconda.org/conda-forge/linux-64/libpmix-5.0.8-h9b03745_3.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/libpmix-5.0.8-h31fc519_4.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/libpng-1.6.55-h421ea60_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/libpq-18.2-h9abb657_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/libprotobuf-6.33.5-h2b00c02_0.conda
@@ -445,7 +445,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/numpy-2.4.2-py314h2b28147_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/openjpeg-2.5.4-h55fea9a_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/openldap-2.6.10-hbde042b_1.conda
-      - conda: https://conda.anaconda.org/conda-forge/linux-64/openmpi-5.0.10-h611b0e2_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/openmpi-5.0.10-h67ed482_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/openssl-3.6.1-h35e630c_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/orc-2.2.2-hbb90d81_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/packaging-26.0-pyhcf101f3_0.conda
@@ -2348,9 +2348,9 @@ packages:
   license_family: APACHE
   size: 6992089
   timestamp: 1770260975908
-- conda: https://conda.anaconda.org/conda-forge/linux-64/libhwloc-2.12.2-default_hafda6a7_1000.conda
-  sha256: 2cf160794dda62cf93539adf16d26cfd31092829f2a2757dbdd562984c1b110a
-  md5: 0ed3aa3e3e6bc85050d38881673a692f
+- conda: https://conda.anaconda.org/conda-forge/linux-64/libhwloc-2.13.0-default_he001693_1000.conda
+  sha256: 5041d295813dfb84652557839825880aae296222ab725972285c5abe3b6e4288
+  md5: c197985b58bc813d26b42881f0021c82
   depends:
   - __glibc >=2.17,<3.0.a0
   - libgcc >=14
@@ -2359,8 +2359,8 @@ packages:
   - libxml2-16 >=2.14.6
   license: BSD-3-Clause
   license_family: BSD
-  size: 2449916
-  timestamp: 1765103845133
+  size: 2436378
+  timestamp: 1770953868164
 - conda: https://conda.anaconda.org/conda-forge/linux-64/libhwy-1.3.0-h4c17acf_1.conda
   sha256: 2bdd1cdd677b119abc5e83069bec2e28fe6bfb21ebaea3cd07acee67f38ea274
   md5: c2a0c1d0120520e979685034e0b79859
@@ -2823,19 +2823,19 @@ packages:
   license_family: BSD
   size: 127008
   timestamp: 1771014407335
-- conda: https://conda.anaconda.org/conda-forge/linux-64/libpmix-5.0.8-h9b03745_3.conda
-  sha256: 339fdb508599d406a126cd93fd0fb995551cc5b981fc66e2fc615d4d606f6260
-  md5: 935ac8861a784e8393474b1675f92b3f
+- conda: https://conda.anaconda.org/conda-forge/linux-64/libpmix-5.0.8-h31fc519_4.conda
+  sha256: 2837759fb832ab8587622602531f8e4b5d5e5ec12ea9b3936be06f384b933800
+  md5: bd15ae3916a0cbe005c683bbc33811b7
   depends:
   - __glibc >=2.17,<3.0.a0
   - libevent >=2.1.12,<2.1.13.0a0
   - libgcc >=14
-  - libhwloc >=2.12.2,<2.12.3.0a0
+  - libhwloc >=2.13.0,<2.13.1.0a0
   - libzlib >=1.3.1,<2.0a0
   license: BSD-3-Clause
   license_family: BSD
-  size: 730177
-  timestamp: 1768612382564
+  size: 731098
+  timestamp: 1770962978877
 - conda: https://conda.anaconda.org/conda-forge/linux-64/libpng-1.6.55-h421ea60_0.conda
   sha256: 36ade759122cdf0f16e2a2562a19746d96cf9c863ffaa812f2f5071ebbe9c03c
   md5: 5f13ffc7d30ffec87864e678df9957b4
@@ -3516,33 +3516,33 @@ packages:
   license_family: BSD
   size: 785570
   timestamp: 1771970256722
-- conda: https://conda.anaconda.org/conda-forge/linux-64/openmpi-5.0.10-h611b0e2_0.conda
-  sha256: 7cc606cfa9d414da683700039fdad7eeddb080839caf3b91dca5609dd9562c3f
-  md5: 205fca5f3d841f23b859beea87272848
+- conda: https://conda.anaconda.org/conda-forge/linux-64/openmpi-5.0.10-h67ed482_1.conda
+  sha256: 9d13b09c95f5e9429f295dc89a896dae41a4ca4f77118139b1ff02001ae25127
+  md5: afa5d72e0e68fdf2b51b1c80a3d2086b
   depends:
   - mpi 1.0.* openmpi
-  - libstdcxx >=14
   - libgcc >=14
-  - __glibc >=2.17,<3.0.a0
   - libgfortran5 >=14.3.0
   - libgfortran
-  - libhwloc >=2.12.2,<2.12.3.0a0
-  - libpmix >=5.0.8,<6.0a0
-  - libzlib >=1.3.1,<2.0a0
+  - __glibc >=2.17,<3.0.a0
+  - libstdcxx >=14
   - libevent >=2.1.12,<2.1.13.0a0
-  - libnl >=3.11.0,<4.0a0
+  - libhwloc >=2.13.0,<2.13.1.0a0
   - ucc >=1.6.0,<2.0a0
+  - libzlib >=1.3.1,<2.0a0
   - ucx >=1.20.0,<1.21.0a0
   - libfabric
   - libfabric1 >=1.14.0
+  - libpmix >=5.0.8,<6.0a0
+  - libnl >=3.11.0,<4.0a0
   constrains:
   - __cuda >=12.0
   - cuda-version >=12.0
   - libprrte ==0.0.0
   license: BSD-3-Clause
   license_family: BSD
-  size: 3940264
-  timestamp: 1772014822145
+  size: 3940272
+  timestamp: 1772089559619
 - conda: https://conda.anaconda.org/conda-forge/linux-64/openssl-3.6.1-h35e630c_1.conda
   sha256: 44c877f8af015332a5d12f5ff0fb20ca32f896526a7d0cdb30c769df1144fb5c
   md5: f61eb8cd60ff9057122a3d338b99c00f

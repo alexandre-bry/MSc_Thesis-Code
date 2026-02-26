@@ -1,13 +1,13 @@
 #include "roofprints.hpp"
 
-#include <CGAL/Kernel/global_functions_3.h>
-#include <CGAL/Segment_2.h>
-#include <CGAL/Vector_2.h>
 #include <cstddef>
 #include <filesystem>
 #include <iostream>
-#include <ogr_geometry.h>
+#include <memory>
+#include <random>
 #include <vector>
+
+#include <ogr_geometry.h>
 
 #include "cgal.hpp"
 #include "geometry.hpp"
@@ -16,6 +16,7 @@
 #include "parquet.hpp"
 #include "pbar.hpp"
 #include "points.hpp"
+#include "ransac.hpp"
 
 void select_outlines_in_las(
     CustomLasReader &reader,
@@ -127,6 +128,112 @@ double compute_metric(const std::vector<double> &offsets, double t) {
 
 //     return (left + right) / 2;
 // }
+
+// struct EdgeCriterionConstant3D {
+//     const std::vector<Point_3> &points;
+
+//     EdgeCriterionConstant3D(const std::vector<Point_3> &points)
+//         : points(points) {}
+
+//     double get_score(const Segment_3 &segment) const {
+//         double total_score = 0.0;
+//         for (const auto &point : points) {
+//             double dist = std::sqrt(CGAL::squared_distance(segment, point));
+//             double score = (dist < METRIC_INTERVAL) ? 1.0 : 0.0;
+//             total_score += score;
+//         }
+//         return total_score;
+//     }
+
+//     double get_score(const Line_3 &line) const {
+//         double total_score = 0.0;
+//         for (const auto &point : points) {
+//             double dist = std::sqrt(CGAL::squared_distance(line, point));
+//             double score = (dist < METRIC_INTERVAL) ? 1.0 : 0.0;
+//             total_score += score;
+//         }
+//         return total_score;
+//     }
+// };
+
+// struct EdgeCriterionLinear3D {
+//     const std::vector<Point_3> &points;
+
+//     EdgeCriterionLinear3D(const std::vector<Point_3> &points)
+//         : points(points) {}
+
+//     double get_score(const Segment_3 &segment) const {
+//         double total_score = 0.0;
+//         for (const auto &point : points) {
+//             double dist = std::sqrt(CGAL::squared_distance(segment, point));
+//             double score =
+//                 (dist < METRIC_INTERVAL) ? (METRIC_INTERVAL - dist) : 0.0;
+//             total_score += score;
+//         }
+//         return total_score;
+//     }
+
+//     double get_score(const Line_3 &line) const {
+//         double total_score = 0.0;
+//         for (const auto &point : points) {
+//             double dist = std::sqrt(CGAL::squared_distance(line, point));
+//             double score =
+//                 (dist < METRIC_INTERVAL) ? (METRIC_INTERVAL - dist) : 0.0;
+//             total_score += score;
+//         }
+//         return total_score;
+//     }
+// };
+
+// const double MIN_SCORE_THRESHOLD = 5.0;
+
+// struct RANSAC3D {
+//   private:
+//     const std::vector<Point_3> &points;
+//     int max_iterations;
+//     double distance_threshold;
+//     std::random_device rd;
+//     std::mt19937 gen;
+//     std::uniform_int_distribution<std::size_t> dis;
+//     EdgeCriterionConstant3D edge_criterion_constant;
+//     EdgeCriterionLinear3D edge_criterion_linear;
+
+//   public:
+//     RANSAC3D(const std::vector<Point_3> &points, int max_iterations,
+//              double distance_threshold)
+//         : points(points), max_iterations(max_iterations),
+//           distance_threshold(distance_threshold), dis(0, points.size() - 1),
+//           edge_criterion_constant(points), edge_criterion_linear(points) {
+//         gen.seed(rd());
+//     }
+
+//     std::pair<std::unique_ptr<Point_3>, std::unique_ptr<Point_3>>
+//     get_random_pair() {
+//         std::size_t idx1 = dis(gen);
+//         std::size_t idx2 = dis(gen);
+//         while (idx2 == idx1) {
+//             idx2 = dis(gen);
+//         }
+//         return {std::make_unique<Point_3>(points[idx1]),
+//                 std::make_unique<Point_3>(points[idx2])};
+//     }
+
+//     std::vector<Line_3> run() {
+//         std::vector<Line_3> best_lines;
+
+//         for (int i = 0; i < max_iterations; ++i) {
+//             auto [p1, p2] = get_random_pair();
+//             Line_3 line(*p1, *p2);
+//             double score = edge_criterion_linear.get_score(line);
+//             if (score > MIN_SCORE_THRESHOLD) {
+//                 best_lines.clear();
+//                 best_lines.push_back(line);
+//             }
+//         }
+
+//         return best_lines;
+//     }
+// };
 
 double best_proximity_offset(const std::vector<Point_2> &points,
                              const Point_2 &base_start, const Point_2 &base_end,
@@ -290,6 +397,31 @@ compute_roofprint(const OutlineWithPoints &outline_with_points) {
                                   outline_with_points.outline.outline_source);
 }
 
+MultiLineStringZWithAttributes
+compute_roofprint_3d(const OutlineWithPoints &outline_with_points) {
+    const auto &points_with_attr = outline_with_points.points_in_buffer;
+
+    // Get the points in CGAL format
+    std::vector<Point_3> points_3d(points_with_attr.size());
+    for (size_t i = 0; i < points_with_attr.size(); ++i) {
+        points_3d[i] = Point_3(points_with_attr[i].x, points_with_attr[i].y,
+                               points_with_attr[i].z);
+    }
+
+    // Find edges with RANSAC
+    RANSAC3DFitter ransac(points_3d, 1000, 5, 0.5, 10);
+    std::vector<RansacLine> lines = ransac.run();
+
+    MultiLineStringZ roofprint_multilinestring;
+    for (const auto &ransac_line : lines) {
+        Segment_3 segment = ransac.extract_segment(ransac_line);
+        roofprint_multilinestring.add_line(segment);
+    }
+    return MultiLineStringZWithAttributes(
+        roofprint_multilinestring, outline_with_points.outline.id,
+        outline_with_points.outline.outline_source);
+}
+
 void compute_roofprints_in_las(
     CustomLasReader &las_reader,
     const std::vector<MultiPolygonZWithAttributes> &all_outlines,
@@ -352,6 +484,68 @@ void compute_roofprints_in_las(
     bar.finish();
 }
 
+void compute_roofprints_in_las_3d(
+    CustomLasReader &las_reader,
+    const std::vector<MultiPolygonZWithAttributes> &all_outlines,
+    std::vector<MultiLineStringZWithAttributes> &roofprints,
+    double las_buffer_distance, double outline_buffer_distance) {
+    roofprints.clear();
+
+    // Select the outlines that are relevant for the LAS file
+    std::vector<MultiPolygonZWithAttributes> selected_outlines;
+    select_outlines_in_las(las_reader, all_outlines, las_buffer_distance,
+                           selected_outlines);
+    std::cout << "Selected " << selected_outlines.size()
+              << " outlines that are relevant for the LAS file." << std::endl;
+
+    if (selected_outlines.empty()) {
+        std::cout
+            << "No relevant outlines found, skipping roofprint computation."
+            << std::endl;
+        return;
+    }
+
+    // For each selected outline, find the points that are relevant for it
+    std::cout << "Selecting points for each selected outline..." << std::endl;
+    std::vector<OutlineWithPoints> outlines_with_points;
+    select_points_per_outlines(las_reader, selected_outlines,
+                               outline_buffer_distance, outlines_with_points);
+
+    long total_points_with_outlines = 0;
+    for (const auto &outline_with_points : outlines_with_points) {
+        total_points_with_outlines +=
+            outline_with_points.points_in_buffer.size();
+    }
+    if (outlines_with_points.empty()) {
+        std::cerr << "The size of outlines_with_points should be the same as "
+                     "the size of selected_outlines, which is "
+                  << selected_outlines.size() << ", but it is "
+                  << outlines_with_points.size() << "." << std::endl;
+        throw std::runtime_error(
+            "No outlines with points found, cannot compute roofprints.");
+    }
+    std::cout << "Average points per outline: "
+              << static_cast<double>(total_points_with_outlines) /
+                     outlines_with_points.size()
+              << std::endl;
+
+    // Compute the roofprints for each outline with its associated points
+    std::cout << "Computing roofprints for each outline with its associated "
+                 "points..."
+              << std::endl;
+    ProgressBarTotal bar(
+        outlines_with_points.size(), "Computing roofprints",
+        indicators::option::ForegroundColor{indicators::Color::green});
+    bar.start();
+    roofprints.reserve(outlines_with_points.size());
+    for (const auto &outline_with_points : outlines_with_points) {
+        const auto roofprint = compute_roofprint_3d(outline_with_points);
+        roofprints.push_back(roofprint);
+        bar.increment(1);
+    }
+    bar.finish();
+}
+
 void compute_roofprints(const std::string &input_las_file,
                         const std::string &input_bd_topo_file,
                         const std::string &output_roofprints_file,
@@ -385,22 +579,27 @@ void compute_roofprints(const std::string &input_las_file,
               << " building outlines from BD TOPO." << std::endl;
 
     // Compute the roofprints
-    std::vector<PolygonZWithAttributes> roofprints;
-    compute_roofprints_in_las(las_reader, all_outlines, roofprints,
-                              las_buffer_distance, outline_buffer_distance);
+    // std::vector<PolygonZWithAttributes> roofprints;
+    // compute_roofprints_in_las(las_reader, all_outlines, roofprints,
+    //                           las_buffer_distance, outline_buffer_distance);
+    std::vector<MultiLineStringZWithAttributes> roofprints;
+    compute_roofprints_in_las_3d(las_reader, all_outlines, roofprints,
+                                 las_buffer_distance, outline_buffer_distance);
     std::cout << "Computed " << roofprints.size() << " roofprints."
               << std::endl;
 
-    std::cout << "Transform Polygons into MultiPolygons" << std::endl;
-    std::vector<MultiPolygonZWithAttributes> roofprints_as_multipolygons;
-    for (const auto &roofprint : roofprints) {
-        roofprints_as_multipolygons.emplace_back(roofprint);
-    }
+    // std::cout << "Transform Polygons into MultiPolygons" << std::endl;
+    // std::vector<MultiPolygonZWithAttributes> roofprints_as_multipolygons;
+    // for (const auto &roofprint : roofprints) {
+    //     roofprints_as_multilinestrings.emplace_back(roofprint);
+    // }
 
     // Write the roofprints to a Parquet file
     std::cout << "Writing roofprints to Parquet file..." << std::endl;
-    auto write_status = write_multi_polygons_to_parquet(
-        roofprints_as_multipolygons, output_roofprints_file, overwrite);
+    // auto write_status = write_multi_polygons_to_parquet(
+    //     roofprints_as_multilinestrings, output_roofprints_file, overwrite);
+    auto write_status =
+        write_geoms_to_parquet(roofprints, output_roofprints_file, overwrite);
     if (!write_status.ok()) {
         std::cerr << "Error writing roofprints to Parquet: "
                   << write_status.ToString() << std::endl;

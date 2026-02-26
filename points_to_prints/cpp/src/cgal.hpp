@@ -9,6 +9,7 @@ typedef CGAL::Exact_predicates_inexact_constructions_kernel K;
 typedef K::Point_2 Point_2;
 typedef K::Vector_2 Vector_2;
 typedef K::Line_2 Line_2;
+typedef K::Segment_2 Segment_2;
 
 class Point_2_property_map {
     const std::vector<Point_2> &points;
@@ -32,6 +33,7 @@ typedef K::Point_3 Point_3;
 typedef K::Vector_3 Vector_3;
 typedef K::Line_3 Line_3;
 typedef K::Plane_3 Plane_3;
+typedef K::Segment_3 Segment_3;
 
 // Property map for Point_3
 class Point_3_property_map {

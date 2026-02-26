@@ -286,9 +286,8 @@ std::string ProjjsonFromEPSG(const std::string &epsg) {
     return projjson;
 }
 
-char *buildGeoMetaData(std::string crs_epsg = "EPSG:2154",
-                       std::string geometry_type = "MultiPolygon",
-                       std::string primary_column = "geometry") {
+char *buildGeoMetaData(std::string crs_epsg, std::string geometry_type,
+                       std::string primary_column) {
 
     // Get PROJJSON from EPSG
     std::string projjson = ProjjsonFromEPSG(crs_epsg);
@@ -525,6 +524,8 @@ arrow::Status write_multi_polygons_to_parquet(
     std::cout << "Finished writing Parquet file." << std::endl;
     return arrow::Status::OK();
 }
+
+// Template function write_geoms_to_parquet implementation moved to parquet.hpp
 
 arrow::Status read_write_bd_topo(const std::string &input_parquet_file,
                                  const std::string &output_parquet_file,

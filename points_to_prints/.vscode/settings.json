@@ -6,7 +6,7 @@
     "editor.formatOnSave": true,
     "cmake.sourceDirectory": "${workspaceFolder}/cpp",
     "cmake.buildDirectory": "${workspaceFolder}/cpp/build",
-    "cmake.cmakePath": "${workspaceFolder}/cpp/.pixi/envs/default/bin/cmake",
+    "cmake.cmakePath": "${workspaceFolder}/.pixi/envs/cpp/bin/cmake",
     "cmake.buildOnSave": false,
     "cmake.configureOnEdit": false,
     "clangd.fallbackFlags": [
