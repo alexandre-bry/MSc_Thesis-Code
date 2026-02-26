@@ -9,10 +9,10 @@
 #include <ogr_geometry.h>
 #include <vector>
 
+#include "cgal.hpp"
 #include "geometry.hpp"
 #include "kd_tree.hpp"
 #include "las.hpp"
-#include "math.hpp"
 #include "parquet.hpp"
 #include "pbar.hpp"
 #include "points.hpp"
@@ -169,7 +169,7 @@ double get_angle_degrees_between(std::pair<Point_2, Point_2> edge1,
                                  std::pair<Point_2, Point_2> edge2) {
     Vector_2 dir1 = edge1.second - edge1.first;
     Vector_2 dir2 = edge2.second - edge2.first;
-    double angle = CustomCGAL::angle_in_degrees(dir1, dir2);
+    double angle = CustomCGAL::angle(dir1, dir2).in_degrees();
     // Ensure the angle is in the range [0, 180]
     if (angle > 180.0) {
         angle = 360.0 - angle;

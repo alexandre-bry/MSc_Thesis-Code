@@ -28,7 +28,7 @@ inline std::string name(Id id) {
     case Id::Unknown:
         return "Unknown";
     default:
-        throw std::runtime_error("Unknown custom dimension ID");
+        throw std::runtime_error("Unknown outline sources ID");
     }
 }
 

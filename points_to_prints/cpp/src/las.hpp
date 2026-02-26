@@ -72,6 +72,7 @@ struct CustomLasWriter {
             table.layout()->registerOrAssignDim(dim.name, dim.type);
         }
 
+        table.clearSpatialReferences();
         table.setSpatialReference(spatial_ref);
 
         view = pdal::PointViewPtr(new pdal::PointView(table));

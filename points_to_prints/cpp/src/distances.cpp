@@ -1,6 +1,8 @@
 #include "distances.hpp"
 
+#include <CGAL/Kernel/global_functions_3.h>
 #include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
@@ -11,14 +13,17 @@
 #include <pdal/Dimension.hpp>
 #include <pdal/pdal_types.hpp>
 
+#include "cgal.hpp"
 #include "las.hpp"
+#include "las_trajectory.hpp"
 #include "pbar.hpp"
 #include "points.hpp"
 
 const double MIN_VERT_GAP_ROOF = 1.0;
 const double MAX_VERT_GAP_FOOT = -1.0;
 
-void compute_distances_in_order(const std::string &input_file,
+void compute_distances_in_order(const std::string &input_points_file,
+                                const std::string &input_trajectory_file,
                                 const std::string &output_distances_file,
                                 const std::string &output_edges_file,
                                 bool overwrite) {
@@ -33,7 +38,7 @@ void compute_distances_in_order(const std::string &input_file,
 
     // Read the LAS file and get the point view
     std::cout << "Reading LAS file..." << std::endl;
-    CustomLasReader las_reader(input_file);
+    CustomLasReader las_reader(input_points_file);
     las_reader.execute();
     auto in_view = las_reader.point_view();
     auto [predefined_dims, proprietary_dims] = las_reader.dimensions();
@@ -44,6 +49,11 @@ void compute_distances_in_order(const std::string &input_file,
     // Prepare the points with attributes
     Points3DAttrGPSSorted points(in_view);
 
+    // Prepare the trajectory
+    std::cout << "Reading trajectory file..." << std::endl;
+    Trajectory trajectory = read_trajectory(input_trajectory_file);
+
+    // Prepare the output writers
     std::cout << "Preparing output objects..." << std::endl;
     std::vector<pdal::Dimension::Id> distances_dims = predefined_dims;
     std::vector<ProprietaryDimension> distances_custom_dims = proprietary_dims;
@@ -91,6 +101,13 @@ void compute_distances_in_order(const std::string &input_file,
             auto value = las_reader.getFieldAs<double>(dim, in_idx);
             las_distances_writer.setField(dim, out_idx, value);
         }
+
+        las_distances_writer.setField(
+            CustomDimensions::Id::ReturnNumberComputed, out_idx,
+            points[in_idx].get_return_number_computed());
+        las_distances_writer.setField(
+            CustomDimensions::Id::NumberOfReturnsComputed, out_idx,
+            points[in_idx].get_number_of_returns_computed());
     }
 
     std::cout << "Computing distances..." << std::endl;
@@ -144,12 +161,7 @@ void compute_distances_in_order(const std::string &input_file,
                 bool is_foot_edge = up_signed_vert_gap > MIN_VERT_GAP_ROOF;
 
                 std::size_t out_idx = points.to_sorted_index(idx);
-                las_distances_writer.setField(
-                    CustomDimensions::Id::ReturnNumberComputed, out_idx,
-                    points[idx].get_return_number_computed());
-                las_distances_writer.setField(
-                    CustomDimensions::Id::NumberOfReturnsComputed, out_idx,
-                    points[idx].get_number_of_returns_computed());
+
                 las_distances_writer.setField(
                     CustomDimensions::Id::DownSignedVertGap, out_idx,
                     down_signed_vert_gap);
@@ -176,7 +188,7 @@ void compute_distances_in_order(const std::string &input_file,
                             std::underlying_type_t<LASclassification::Value>>(
                             p0.classification));
                     las_edge_writer.setField(CustomDimensions::Id::IsGenerated,
-                                             edge_idx, false);
+                                             edge_idx, 0);
                 }
             }
 
@@ -187,36 +199,63 @@ void compute_distances_in_order(const std::string &input_file,
             const auto idx = group[0];
             const auto p = points[idx];
             const auto gps_time = points[idx].gps_time;
-            const auto prev_gps_time = points.get_prev_gps_time(gps_time);
-            const auto next_gps_time = points.get_next_gps_time(gps_time);
+            const auto prev_gps_time_ = points.get_prev_gps_time(gps_time);
+            const auto next_gps_time_ = points.get_next_gps_time(gps_time);
             const auto prev_group =
                 points.get_indices_for_prev_gps_time(gps_time);
             const auto next_group =
                 points.get_indices_for_next_gps_time(gps_time);
+
+            if (!prev_gps_time_ or !next_gps_time_) {
+                continue;
+            }
+            const auto prev_gps_time = *prev_gps_time_;
+            const auto next_gps_time = *next_gps_time_;
+
+            const auto prev_prev_gps_time_ =
+                points.get_prev_gps_time(prev_gps_time);
+            const auto next_next_gps_time_ =
+                points.get_next_gps_time(next_gps_time);
 
             // Only consider the last return of a multi-echo neighbour
             double down_signed_vert_gap = 0.0;
             double up_signed_vert_gap = 0.0;
             std::optional<Point3D> p_down;
             std::optional<Point3D> p_other;
+            std::optional<Point3D> p_other_2;
 
-            if (!prev_group.empty() && prev_gps_time.has_value()) {
+            if (!prev_group.empty() && next_next_gps_time_.has_value()) {
+                auto next_next_gps_time = *next_next_gps_time_;
                 auto prev_idx_lowest_return =
-                    points.get_index_of_lowest_return(prev_gps_time.value());
+                    points.get_index_of_lowest_return(prev_gps_time);
                 Point3D p1 = points[prev_idx_lowest_return];
                 double signed_vert_gap = p.signed_vertical_distance_to(p1);
                 if (signed_vert_gap < down_signed_vert_gap) {
                     down_signed_vert_gap = signed_vert_gap;
                     p_down = p1;
-                    // Find the closest point among the other group
+                    // Find the closest point among the next group
                     double distance_p_down =
                         std::numeric_limits<double>::infinity();
                     for (auto idx : next_group) {
                         Point3D p2 = points[idx];
-                        double distance = p2.distance_to(*p_down);
-                        if (distance < distance_p_down) {
-                            distance_p_down = distance;
+                        double distance_p2 = p2.distance_to(*p_down);
+                        if (distance_p2 < distance_p_down) {
+                            distance_p_down = distance_p2;
                             p_other = p2;
+
+                            // Find the point among the next next group that is
+                            // closest to p_other
+                            double distance_p_other =
+                                std::numeric_limits<double>::infinity();
+                            for (auto idx : points.get_indices_for_gps_time(
+                                     next_next_gps_time)) {
+                                Point3D p3 = points[idx];
+                                double distance_p3 = p3.distance_to(*p_other);
+                                if (distance_p3 < distance_p_other) {
+                                    distance_p_other = distance_p3;
+                                    p_other_2 = p3;
+                                }
+                            }
                         }
                     }
                 }
@@ -224,22 +263,38 @@ void compute_distances_in_order(const std::string &input_file,
                     up_signed_vert_gap = signed_vert_gap;
                 }
             }
-            if (!next_group.empty() && next_gps_time.has_value()) {
-                Point3D p1 = points[points.get_index_of_lowest_return(
-                    next_gps_time.value())];
+            if (!next_group.empty() && prev_prev_gps_time_.has_value()) {
+                auto prev_prev_gps_time = *prev_prev_gps_time_;
+                auto next_idx_lowest_return =
+                    points.get_index_of_lowest_return(next_gps_time);
+                Point3D p1 = points[next_idx_lowest_return];
                 double signed_vert_gap = p.signed_vertical_distance_to(p1);
                 if (signed_vert_gap < down_signed_vert_gap) {
                     down_signed_vert_gap = signed_vert_gap;
                     p_down = p1;
-                    // Find the closest point among the other group
+                    // Find the closest point among the previous group
                     double distance_p_down =
                         std::numeric_limits<double>::infinity();
                     for (auto idx : prev_group) {
                         Point3D p2 = points[idx];
-                        double distance = p2.distance_to(*p_down);
-                        if (distance < distance_p_down) {
-                            distance_p_down = distance;
+                        double distance_p2 = p2.distance_to(*p_down);
+                        if (distance_p2 < distance_p_down) {
+                            distance_p_down = distance_p2;
                             p_other = p2;
+
+                            // Find the point among the previous previous group
+                            // that is closest to p_other
+                            double distance_p_other =
+                                std::numeric_limits<double>::infinity();
+                            for (auto idx : points.get_indices_for_gps_time(
+                                     prev_prev_gps_time)) {
+                                Point3D p3 = points[idx];
+                                double distance_p3 = p3.distance_to(*p_other);
+                                if (distance_p3 < distance_p_other) {
+                                    distance_p_other = distance_p3;
+                                    p_other_2 = p3;
+                                }
+                            }
                         }
                     }
                 }
@@ -253,12 +308,6 @@ void compute_distances_in_order(const std::string &input_file,
 
             std::size_t out_idx = points.to_sorted_index(idx);
             las_distances_writer.setField(
-                CustomDimensions::Id::ReturnNumberComputed, out_idx,
-                points[idx].get_return_number_computed());
-            las_distances_writer.setField(
-                CustomDimensions::Id::NumberOfReturnsComputed, out_idx,
-                points[idx].get_number_of_returns_computed());
-            las_distances_writer.setField(
                 CustomDimensions::Id::DownSignedVertGap, out_idx,
                 down_signed_vert_gap);
             las_distances_writer.setField(CustomDimensions::Id::UpSignedVertGap,
@@ -269,15 +318,54 @@ void compute_distances_in_order(const std::string &input_file,
                                           out_idx, is_foot_edge);
 
             // Add the points that are roof edges
-            if (is_roof_edge && p_down && p_other) {
+            if (is_roof_edge && p_down && p_other && p_other_2) {
                 std::size_t edge_idx = las_edge_writer.pointCount();
                 Point3D edge_point;
-                if (p_other->is_neighbour_in_distance(p)) {
+                uint8_t is_generated;
+
+                Point_3 p_cgal(p.x, p.y, p.z);
+                Point_3 p_down_cgal(p_down->x, p_down->y, p_down->z);
+                Point_3 p_other_cgal(p_other->x, p_other->y, p_other->z);
+                Point_3 p_other_2_cgal(p_other_2->x, p_other_2->y,
+                                       p_other_2->z);
+
+                if (CustomCGAL::are_almost_collinear(
+                        p_cgal, p_other_cgal, p_other_2_cgal,
+                        CustomCGAL::Angle::from_degrees(5))) {
                     edge_point = p + (p - *p_other) / 2;
+                    is_generated = 1;
                 } else {
-                    Point3D p_average = (*p_down + p) / 2;
-                    edge_point = Point3D(p_average.x, p_average.y, p.z);
+                    Point3D scanner_position =
+                        trajectory.get_point_at_gps_time(gps_time);
+                    Point_3 scanner_position_cgal(scanner_position.x,
+                                                  scanner_position.y,
+                                                  scanner_position.z);
+                    Vector_3 scanner_to_p = p_cgal - scanner_position_cgal;
+                    Vector_3 scanner_to_down =
+                        p_down_cgal - scanner_position_cgal;
+                    Vector_3 scanner_to_edge =
+                        (scanner_to_p + scanner_to_down) / 2.0;
+                    scanner_to_edge =
+                        scanner_to_edge /
+                        std::sqrt(scanner_to_edge.squared_length()) *
+                        std::sqrt(scanner_to_p.squared_length());
+
+                    // Point3D p_average = (*p_down + p) / 2;
+                    // edge_point = Point3D(p_average.x, p_average.y, p.z);
+                    Point_3 edge_point_cgal =
+                        scanner_position_cgal + scanner_to_edge;
+                    edge_point =
+                        Point3D(edge_point_cgal.x(), edge_point_cgal.y(),
+                                edge_point_cgal.z());
+                    is_generated = 2;
                 }
+
+                // if (p_other->is_neighbour_in_distance(p)) {
+                //     edge_point = p + (p - *p_other) / 2;
+                // } else {
+                //     Point3D p_average = (*p_down + p) / 2;
+                //     edge_point = Point3D(p_average.x, p_average.y, p.z);
+                // }
                 las_edge_writer.setField(pdal::Dimension::Id::X, edge_idx,
                                          edge_point.x);
                 las_edge_writer.setField(pdal::Dimension::Id::Y, edge_idx,
@@ -290,15 +378,15 @@ void compute_distances_in_order(const std::string &input_file,
                         std::underlying_type_t<LASclassification::Value>>(
                         p.classification));
                 las_edge_writer.setField(CustomDimensions::Id::IsGenerated,
-                                         edge_idx, true);
+                                         edge_idx, is_generated);
             }
         }
         bar.increment(1);
     }
     bar.finish();
 
-    std::cout << "Number of multi-echo rays missing first or last return: "
-              << multi_echo_missing_return_count << std::endl;
+    // std::cout << "Number of multi-echo rays missing first or last return: "
+    //           << multi_echo_missing_return_count << std::endl;
 
     // Filter out points with classification not in the allowed classes
     const std::vector<LASclassification::Value> allowed_classes = {

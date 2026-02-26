@@ -96,6 +96,17 @@ namespace CustomDimensions {
 enum class Id {
     ReturnNumberComputed,
     NumberOfReturnsComputed,
+    Eigenvalue0,
+    Eigenvalue1,
+    Eigenvalue2,
+    Planarity,
+    Linearity,
+    Sphericity,
+    Omnivariance,
+    Anisotropy,
+    Eigenentropy,
+    SurfaceVariation,
+    Verticality,
     DownSignedVertGap,
     UpSignedVertGap,
     IsRoofEdge,
@@ -108,6 +119,28 @@ inline std::string name(Id id) {
         return "ReturnNumberComputed";
     case Id::NumberOfReturnsComputed:
         return "NumberOfReturnsComputed";
+    case Id::Eigenvalue0:
+        return "EigenvalueSmallest";
+    case Id::Eigenvalue1:
+        return "EigenvalueMiddle";
+    case Id::Eigenvalue2:
+        return "EigenvalueLargest";
+    case Id::Planarity:
+        return "Planarity";
+    case Id::Linearity:
+        return "Linearity";
+    case Id::Sphericity:
+        return "Sphericity";
+    case Id::Omnivariance:
+        return "Omnivariance";
+    case Id::Anisotropy:
+        return "Anisotropy";
+    case Id::Eigenentropy:
+        return "Eigenentropy";
+    case Id::SurfaceVariation:
+        return "SurfaceVariation";
+    case Id::Verticality:
+        return "Verticality";
     case Id::DownSignedVertGap:
         return "DownSignedVertGap";
     case Id::UpSignedVertGap:
@@ -129,6 +162,28 @@ inline pdal::Dimension::Type type(Id id) {
         return pdal::Dimension::Type::Unsigned8;
     case Id::NumberOfReturnsComputed:
         return pdal::Dimension::Type::Unsigned8;
+    case Id::Eigenvalue0:
+        return pdal::Dimension::Type::Double;
+    case Id::Eigenvalue1:
+        return pdal::Dimension::Type::Double;
+    case Id::Eigenvalue2:
+        return pdal::Dimension::Type::Double;
+    case Id::Planarity:
+        return pdal::Dimension::Type::Double;
+    case Id::Linearity:
+        return pdal::Dimension::Type::Double;
+    case Id::Sphericity:
+        return pdal::Dimension::Type::Double;
+    case Id::Omnivariance:
+        return pdal::Dimension::Type::Double;
+    case Id::Anisotropy:
+        return pdal::Dimension::Type::Double;
+    case Id::Eigenentropy:
+        return pdal::Dimension::Type::Double;
+    case Id::SurfaceVariation:
+        return pdal::Dimension::Type::Double;
+    case Id::Verticality:
+        return pdal::Dimension::Type::Double;
     case Id::DownSignedVertGap:
         return pdal::Dimension::Type::Double;
     case Id::UpSignedVertGap:
@@ -285,6 +340,8 @@ struct Points3DWithAttributes {
     // Additional data structures for efficient queries can be added here
 
     Points3DWithAttributes() = default;
+    Points3DWithAttributes(const std::vector<Point3DWithAttributes> &pts)
+        : points(pts) {}
     Points3DWithAttributes(pdal::PointViewPtr view) {
         pdal::PointId num_points = view->size();
         points.reserve(num_points);

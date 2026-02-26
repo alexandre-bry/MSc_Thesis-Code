@@ -14,13 +14,15 @@
  * to detect edges
  * @param overwrite Whether to overwrite the output file if it already exists
  */
-void compute_distances_in_order(const std::string &input_file,
+void compute_distances_in_order(const std::string &input_points_file,
+                                const std::string &input_trajectory_file,
                                 const std::string &output_distances_file,
                                 const std::string &output_edges_file,
                                 bool overwrite);
 
 struct DistancesInOrderOptions {
-    std::string input_file;
+    std::string input_points_file;
+    std::string input_trajectory_file;
     std::string output_distances_file;
     std::string output_edges_file;
     bool overwrite;

@@ -8,28 +8,7 @@
 #include <CGAL/Search_traits_2.h>
 #include <CGAL/Search_traits_3.h>
 
-#include "math.hpp"
-
-// definition of a non-mutable lvalue property map,
-// with the get function as a friend function to give it
-// access to the private member
-class Point_2_property_map {
-    const std::vector<Point_2> &points;
-
-  public:
-    typedef Point_2 value_type;
-    typedef const value_type &reference;
-    typedef std::size_t key_type;
-    typedef boost::lvalue_property_map_tag category;
-
-    Point_2_property_map(const std::vector<Point_2> &pts) : points(pts) {}
-
-    reference operator[](key_type k) const { return points[k]; }
-
-    friend reference get(const Point_2_property_map &ppmap, key_type i) {
-        return ppmap[i];
-    }
-};
+#include "cgal.hpp"
 
 typedef CGAL::Search_traits_2<K> Traits_2_base;
 typedef CGAL::Search_traits_adapter<std::size_t, Point_2_property_map,
@@ -75,27 +54,6 @@ struct KdTree_2 {
             result.push_back(points[idx]);
         }
         return result;
-    }
-};
-
-typedef K::Point_3 Point_3;
-
-// Property map for Point_3
-class Point_3_property_map {
-    const std::vector<Point_3> &points;
-
-  public:
-    typedef Point_3 value_type;
-    typedef const value_type &reference;
-    typedef std::size_t key_type;
-    typedef boost::lvalue_property_map_tag category;
-
-    Point_3_property_map(const std::vector<Point_3> &pts) : points(pts) {}
-
-    reference operator[](key_type k) const { return points[k]; }
-
-    friend reference get(const Point_3_property_map &ppmap, key_type i) {
-        return ppmap[i];
     }
 };
 

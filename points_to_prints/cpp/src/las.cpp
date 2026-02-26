@@ -79,6 +79,8 @@ void CustomLasWriter::write(
     writer_opts.add("extra_dims", "all");
     writer->setOptions(writer_opts);
 
+    writer->setSpatialReference(this->table.spatialReference());
+
     pdal::BufferReader reader;
     reader.addView(this->view);
 

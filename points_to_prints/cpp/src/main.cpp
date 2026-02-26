@@ -6,6 +6,7 @@
 #include "distances.hpp"
 #include "las_filter.hpp"
 #include "parquet.hpp"
+#include "pca.hpp"
 #include "roofprints.hpp"
 
 void setup_sort_by_gps_time(CLI::App &app) {
@@ -33,8 +34,12 @@ void setup_distances_in_order(CLI::App &app) {
 
     CLI::App *sub = app.add_subcommand(
         "distances_in_order", "Compute the distances in GPS time order");
-    std::string input_file;
-    sub->add_option("-i,--input", opt->input_file, "Input LAS file")
+    std::string input_points_file;
+    sub->add_option("-i,--input", opt->input_points_file, "Input LAS file")
+        ->required();
+    std::string input_trajectory_file;
+    sub->add_option("-t,--trajectory", opt->input_trajectory_file,
+                    "Input trajectory file")
         ->required();
     std::string output_distances_file;
     sub->add_option("-d,--distances", opt->output_distances_file,
@@ -49,8 +54,9 @@ void setup_distances_in_order(CLI::App &app) {
                   "Overwrite the output file if it exists");
 
     sub->callback([opt]() {
-        compute_distances_in_order(opt->input_file, opt->output_distances_file,
-                                   opt->output_edges_file, opt->overwrite);
+        compute_distances_in_order(
+            opt->input_points_file, opt->input_trajectory_file,
+            opt->output_distances_file, opt->output_edges_file, opt->overwrite);
     });
 }
 
@@ -179,6 +185,25 @@ void setup_compute_roofprints(CLI::App &app) {
     });
 }
 
+void setup_add_pca(CLI::App &app) {
+    auto opt = std::make_shared<AddPCAOptions>();
+
+    CLI::App *sub = app.add_subcommand("add_pca", "Add PCA eigenvalues to LAS");
+    std::string input_file;
+    sub->add_option("-i,--input", opt->input_file, "Input LAS file")
+        ->required();
+    std::string output_file;
+    sub->add_option("-o,--output", opt->output_file, "Output LAS file")
+        ->required();
+    bool overwrite = false;
+    sub->add_flag("-f,--overwrite", opt->overwrite,
+                  "Overwrite the output file if it exists");
+
+    sub->callback([opt]() {
+        add_pca(opt->input_file, opt->output_file, opt->overwrite);
+    });
+}
+
 int main(int argc, char **argv) {
     CLI::App app{"Roofprint and Footprint Extraction"};
 
@@ -189,6 +214,7 @@ int main(int argc, char **argv) {
     setup_read_write_bd_topo(app);
     setup_test_parquet(app);
     setup_compute_roofprints(app);
+    setup_add_pca(app);
     app.require_subcommand(1);
 
     CLI11_PARSE(app, argc, argv);
