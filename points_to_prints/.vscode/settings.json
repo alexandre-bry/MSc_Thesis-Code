@@ -11,5 +11,6 @@
     "cmake.configureOnEdit": false,
     "clangd.fallbackFlags": [
         "-I${workspaceFolder}/include"
-    ]
+    ],
+    "python-envs.defaultEnvManager": "ms-python.python:system"
 }

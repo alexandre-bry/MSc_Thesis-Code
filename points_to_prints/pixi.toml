@@ -1,0 +1,38 @@
+[workspace]
+authors = ["Alexandre Bry <alexandre.bry@ign.fr>"]
+channels = ["conda-forge"]
+name = "points_to_prints"
+platforms = ["linux-64"]
+version = "0.1.0"
+
+[feature.python.dependencies]
+python = ">=3.14.0,<4"
+aiohttp = ">=3.12.0,<4"
+gdal = ">=3.12.1,<4"
+geopandas = ">=1.1.2,<2"
+laspy = ">=2.7.0,<3"
+pdal = ">=2.9.3,<3"
+requests = ">=2.32.5,<3"
+tqdm = ">=4.67.2,<5"
+typer = ">=0.21.1,<1"
+
+[feature.python.tasks]
+py = { cmd = "cd \"$INIT_CWD\" && python" }
+py-run = { cmd = "cd \"$INIT_CWD\" && python python/main.py" }
+
+[feature.cpp.dependencies]
+just = ">=1.46.0,<2"
+gdal = ">=3.12.2,<4"
+pdal = ">=2.9.3,<3"
+cgal = ">=6.0.1,<7"
+libarrow-all = ">=23.0.0,<24"
+cmake = ">=4.2.3,<5"
+doxygen = ">=1.13.2,<2"
+
+[feature.cpp.tasks]
+cpp = { cmd = "cd \"$INIT_CWD\" && just" }
+cpp-run = { cmd = "cd \"$INIT_CWD\" && just run release" }
+
+[environments]
+python = ["python"]
+cpp = ["cpp"]

@@ -14,26 +14,37 @@ Commands are given for Ubuntu.
 2. Install the dependencies.
 
     ```bash
-    cd cpp
     pixi install
     ```
 
 ## Usage
 
-1. Find the available pre-made scripts for convenience:
+To list the available commands, run `pixi task list`.
+
+### C++ scripts
+
+1. Find the commands of the C++ scripts:
 
     ```bash
-    pixi run just --list
+    pixi run cpp-run --help
     ```
 
-2. Find the commands of the C++ script:
+2. Find the arguments of a given command:
 
     ```bash
-    pixi run just run release --help
+    pixi run cpp-run <command> --help
     ```
 
-3. Find the arguments of a given command:
+### Python scripts
+
+1. Find the commands of the Python scripts:
 
     ```bash
-    pixi run just run release <command> --help
+    pixi run py-run --help
+    ```
+
+2. Find the arguments of a given command:
+
+    ```bash
+    pixi run py-run <command> --help
     ```
