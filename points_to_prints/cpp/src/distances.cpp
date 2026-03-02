@@ -335,11 +335,8 @@ void compute_distances_in_order(const std::string &input_points_file,
                     edge_point = p + (p - *p_other) / 2;
                     is_generated = 1;
                 } else {
-                    Point3D scanner_position =
+                    Point_3 scanner_position_cgal =
                         trajectory.get_point_at_gps_time(gps_time);
-                    Point_3 scanner_position_cgal(scanner_position.x,
-                                                  scanner_position.y,
-                                                  scanner_position.z);
                     Vector_3 scanner_to_p = p_cgal - scanner_position_cgal;
                     Vector_3 scanner_to_down =
                         p_down_cgal - scanner_position_cgal;

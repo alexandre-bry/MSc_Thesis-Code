@@ -1,15 +1,21 @@
 #pragma once
 
 #include <cmath>
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <optional>
+#include <pdal/pdal_types.hpp>
+#include <string>
+#include <vector>
 
 #include <pdal/Dimension.hpp>
 #include <pdal/PointView.hpp>
-#include <string>
-#include <vector>
+
+#include "cgal.hpp"
+#include "las_trajectory.hpp"
 
 const double NEIGHBOUR_MAX_GPS_TIME = 1e-5;
 const double NEIGHBOUR_MAX_HORIZONTAL_DISTANCE = 10.0;
@@ -112,6 +118,8 @@ enum class Id {
     IsRoofEdge,
     IsFootEdge,
     IsGenerated,
+    AngleRayPrev,
+    AngleRayNext,
 };
 inline std::string name(Id id) {
     switch (id) {
@@ -151,6 +159,10 @@ inline std::string name(Id id) {
         return "IsFootEdge";
     case Id::IsGenerated:
         return "IsGenerated";
+    case Id::AngleRayPrev:
+        return "AngleRayPrev";
+    case Id::AngleRayNext:
+        return "AngleRayNext";
     default:
         throw std::runtime_error("Unknown custom dimension ID");
     }
@@ -194,6 +206,10 @@ inline pdal::Dimension::Type type(Id id) {
         return pdal::Dimension::Type::Unsigned8;
     case Id::IsGenerated:
         return pdal::Dimension::Type::Unsigned8;
+    case Id::AngleRayPrev:
+        return pdal::Dimension::Type::Double;
+    case Id::AngleRayNext:
+        return pdal::Dimension::Type::Double;
     default:
         throw std::runtime_error("Unknown custom dimension ID");
     }
@@ -584,4 +600,171 @@ struct Points3DAttrGPSSorted : Points3DWithAttributes {
         }
         return indices_sorted_to_in[sorted_index];
     }
+};
+
+typedef pdal::PointId PointId;
+typedef unsigned long RayId;
+
+struct PointStorage {
+  private:
+    std::vector<pdal::Dimension::Id> predefined_dims;
+    std::vector<CustomDimensions::Id> custom_dims;
+    pdal::PointViewPtr view;
+    pdal::PointTable table;
+
+  public:
+    PointStorage(std::vector<pdal::Dimension::Id> predefined_dims,
+                 std::vector<ProprietaryDimension> proprietary_dims,
+                 pdal::SpatialReference spatial_ref);
+    PointStorage(pdal::PointViewPtr view, pdal::SpatialReference spatial_ref);
+
+    /**
+     * @brief Returns the number of points currently in the storage.
+     *
+     * @return std::size_t
+     */
+    std::size_t pointCount();
+
+    /**
+     * @brief Get the value of an attribute for a point in the storage.
+     *
+     * @tparam T The type of the value to get. Must match the type of the
+     * dimension.
+     * @param dim The dimension to get the value for. Must be registered in the
+     * storage's PointTable.
+     * @param idx The index of the point to get the attribute for. Must be
+     * between 0 (inclusive) and the current point count (exclusive).
+     * @return T The value of the attribute for the given point.
+     */
+    template <typename T>
+    T getFieldAs(pdal::Dimension::Id dim, pdal::PointId idx) const {
+        return view->getFieldAs<T>(dim, idx);
+    }
+
+    /**
+     * @brief Get the value of an attribute for a point in the storage.
+     *
+     * @tparam T The type of the value to get. Must match the type of the
+     * dimension.
+     * @param dim The dimension to get the value for. Must be registered in the
+     * storage's PointTable.
+     * @param idx The index of the point to get the attribute for. Must be
+     * between 0 (inclusive) and the current point count (exclusive).
+     * @return T The value of the attribute for the given point.
+     */
+    template <typename T>
+    T getFieldAs(ProprietaryDimension dim, pdal::PointId idx) const {
+        return view->getFieldAs<T>(table.layout()->findProprietaryDim(dim.name),
+                                   idx);
+    }
+
+    /**
+     * @brief Set the value of an attribute for a point in the storage.
+     *
+     * @warning This fails if the given index is strictly higher than the
+     * current point count.
+     *
+     * @tparam T The type of the value to set. Must match the type of the
+     * dimension.
+     * @param dim The dimension to set. Must be registered in the storage's
+     * PointTable.
+     * @param idx The index of the point to set the attribute for. Must be
+     * between 0 and the current point count (inclusive).
+     * @param value The value to set for the attribute. Must be of the same type
+     * as the dimension.
+     */
+    template <typename T>
+    void setField(pdal::Dimension::Id dim, pdal::PointId idx, const T value) {
+        view->setField(dim, idx, value);
+    }
+    /**
+     * @brief Set the value of an attribute for a point in the storage.
+     *
+     * @warning This fails if the given index is strictly higher than the
+     * current point count.
+     *
+     * @tparam T The type of the value to set. Must match the type of the
+     * dimension.
+     * @param dim The dimension to set. Must be registered in the storage's
+     * PointTable.
+     * @param idx The index of the point to set the attribute for. Must be
+     * between 0 and the current point count (inclusive).
+     * @param value The value to set for the attribute. Must be of the same type
+     * as the dimension.
+     */
+    template <typename T>
+    void setField(ProprietaryDimension dim, pdal::PointId idx, const T value) {
+        view->setField(table.layout()->findProprietaryDim(dim.name), idx,
+                       value);
+    }
+};
+
+struct Points3DRay {
+  private:
+    Point_3 origin;
+    double gps_time;
+    uint8_t scan_direction_flag;
+    std::vector<pdal::PointId> point_ids; // The point IDs in order of return
+                                          // number from lowest to highest
+
+  public:
+    Points3DRay(const Point_3 &origin_, double gps_time_,
+                uint8_t scan_direction_flag_,
+                const std::vector<pdal::PointId> &point_ids_,
+                const std::vector<int> &return_numbers);
+
+    const Point_3 &get_origin() const { return origin; }
+    double get_gps_time() const { return gps_time; }
+    uint8_t get_scan_direction_flag() const { return scan_direction_flag; }
+    const std::vector<pdal::PointId> &get_point_ids() const {
+        return point_ids;
+    }
+
+    uint8_t get_number_of_returns() const { return point_ids.size(); }
+    /**
+     * @brief Get the ID of the point with the given index in order of return
+     * number.
+     * The index is between 0 and the number of returns (exclusive). The point
+     * with index 0 is the point with the lowest return number, and the point
+     * with index number_of_returns - 1 is the point with the highest return
+     * number. The given index can also be negative to count from the highest
+     * return number.
+     *
+     * @param index_return_number The index of the point in order of return
+     * number.
+     * @return pdal::PointId The ID of the point at the given index.
+     */
+    pdal::PointId get_in_return_order(int index_return_number) const;
+};
+
+const double SCAN_LINE_MAX_GPS_TIME_DIFFERENCE = 1e-4;
+
+typedef std::unique_ptr<PointStorage> PointStoragePtr;
+
+struct Points3DStructured {
+  private:
+    std::vector<Points3DRay> rays;
+    std::map<double, RayId> gps_time_to_ray_index;
+    std::vector<RayId> gps_time_order;
+    std::vector<RayId> map_next_ray_gps_time_order;
+    std::vector<RayId> map_prev_ray_gps_time_order;
+    std::vector<RayId> map_next_ray_vehicle_axis_order;
+    std::vector<RayId> map_prev_ray_vehicle_axis_order;
+
+  public:
+    PointStoragePtr points;
+
+    Points3DStructured(std::vector<pdal::Dimension::Id> predefined_dims,
+                       std::vector<ProprietaryDimension> proprietary_dims,
+                       pdal::SpatialReference spatial_ref,
+                       Trajectory trajectory);
+
+    const std::vector<Points3DRay> &get_rays() const;
+    const Points3DRay &get_ray(RayId i) const;
+    std::optional<RayId> get_next_ray_in_gps_time_order(RayId i) const;
+    std::optional<RayId> get_prev_ray_in_gps_time_order(RayId i) const;
+    std::optional<RayId> get_next_ray_in_scan_line(RayId i) const;
+    std::optional<RayId> get_prev_ray_in_scan_line(RayId i) const;
+    std::optional<RayId> get_next_ray_in_vehicle_line(RayId i) const;
+    std::optional<RayId> get_prev_ray_in_vehicle_line(RayId i) const;
 };

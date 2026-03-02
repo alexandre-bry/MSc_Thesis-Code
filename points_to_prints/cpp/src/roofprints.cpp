@@ -579,27 +579,29 @@ void compute_roofprints(const std::string &input_las_file,
               << " building outlines from BD TOPO." << std::endl;
 
     // Compute the roofprints
-    // std::vector<PolygonZWithAttributes> roofprints;
-    // compute_roofprints_in_las(las_reader, all_outlines, roofprints,
-    //                           las_buffer_distance, outline_buffer_distance);
-    std::vector<MultiLineStringZWithAttributes> roofprints;
-    compute_roofprints_in_las_3d(las_reader, all_outlines, roofprints,
-                                 las_buffer_distance, outline_buffer_distance);
+    std::vector<PolygonZWithAttributes> roofprints;
+    compute_roofprints_in_las(las_reader, all_outlines, roofprints,
+                              las_buffer_distance, outline_buffer_distance);
+    // std::vector<MultiLineStringZWithAttributes> roofprints;
+    // compute_roofprints_in_las_3d(las_reader, all_outlines, roofprints,
+    //                              las_buffer_distance,
+    //                              outline_buffer_distance);
     std::cout << "Computed " << roofprints.size() << " roofprints."
               << std::endl;
 
-    // std::cout << "Transform Polygons into MultiPolygons" << std::endl;
-    // std::vector<MultiPolygonZWithAttributes> roofprints_as_multipolygons;
-    // for (const auto &roofprint : roofprints) {
-    //     roofprints_as_multilinestrings.emplace_back(roofprint);
-    // }
+    std::cout << "Transform Polygons into MultiPolygons" << std::endl;
+    std::vector<MultiPolygonZWithAttributes> roofprints_as_multipolygons;
+    for (const auto &roofprint : roofprints) {
+        roofprints_as_multipolygons.emplace_back(roofprint);
+    }
 
     // Write the roofprints to a Parquet file
     std::cout << "Writing roofprints to Parquet file..." << std::endl;
-    // auto write_status = write_multi_polygons_to_parquet(
-    //     roofprints_as_multilinestrings, output_roofprints_file, overwrite);
-    auto write_status =
-        write_geoms_to_parquet(roofprints, output_roofprints_file, overwrite);
+    auto write_status = write_geoms_to_parquet(
+        roofprints_as_multipolygons, output_roofprints_file, overwrite);
+    // auto write_status =
+    //     write_geoms_to_parquet(roofprints, output_roofprints_file,
+    //     overwrite);
     if (!write_status.ok()) {
         std::cerr << "Error writing roofprints to Parquet: "
                   << write_status.ToString() << std::endl;
