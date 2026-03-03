@@ -4,7 +4,7 @@
 #include <vector>
 
 #include "geometry.hpp"
-#include "las.hpp"
+#include "las/reader.hpp"
 #include "points.hpp"
 
 struct OutlineWithPoints {

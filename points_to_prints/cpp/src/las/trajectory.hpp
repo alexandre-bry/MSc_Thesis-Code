@@ -2,7 +2,7 @@
 
 #include <pdal/Dimension.hpp>
 
-#include "cgal.hpp"
+#include "../utils/cgal.hpp"
 
 struct Trajectory {
   private:

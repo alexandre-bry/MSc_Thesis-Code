@@ -12,7 +12,8 @@
 #include <pdal/Dimension.hpp>
 #include <pdal/pdal_types.hpp>
 
-#include "las.hpp"
+#include "las/reader.hpp"
+#include "las/writer.hpp"
 #include "pbar.hpp"
 #include "points.hpp"
 

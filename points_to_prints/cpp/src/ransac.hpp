@@ -3,7 +3,7 @@
 #include <random>
 #include <vector>
 
-#include "cgal.hpp"
+#include "utils/cgal.hpp"
 
 struct RansacLine {
     Line_3 line;

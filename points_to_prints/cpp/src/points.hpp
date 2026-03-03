@@ -1,232 +1,24 @@
 #pragma once
 
 #include <cmath>
-#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <map>
 #include <memory>
 #include <optional>
 #include <pdal/pdal_types.hpp>
-#include <string>
 #include <vector>
 
 #include <pdal/Dimension.hpp>
 #include <pdal/PointView.hpp>
 
-#include "cgal.hpp"
-#include "las_trajectory.hpp"
+#include "geometry.hpp"
+#include "las/enums.hpp"
+#include "las/trajectory.hpp"
+#include "utils/cgal.hpp"
 
 const double NEIGHBOUR_MAX_GPS_TIME = 1e-5;
 const double NEIGHBOUR_MAX_HORIZONTAL_DISTANCE = 10.0;
-
-namespace LASclassification {
-enum class Value : uint8_t {
-    Unclassified = 0,
-    Unassigned = 1,
-    Ground = 2,
-    LowVegetation = 3,
-    MediumVegetation = 4,
-    HighVegetation = 5,
-    Building = 6,
-    LowPoint = 7,
-    ModelKeyPoint = 8,
-    Water = 9,
-    Rail = 10,
-    RoadSurface = 11,
-    Overlap = 12,
-    WireGuard = 13,
-    WireConductor = 14,
-    TransmissionTower = 15,
-    WireConnector = 16,
-    BridgeDeck = 17,
-    HighNoise = 18,
-    PermanentOverground = 64,    // Specific to LiDAR HD
-    VirtualPoints = 66,          // Specific to LiDAR HD
-    MiscellaneousBuildings = 67, // Specific to LiDAR HD
-};
-inline std::string name(Value value) {
-    switch (value) {
-    case Value::Unclassified:
-        return "Unclassified";
-    case Value::Unassigned:
-        return "Unassigned";
-    case Value::Ground:
-        return "Ground";
-    case Value::LowVegetation:
-        return "Low Vegetation";
-    case Value::MediumVegetation:
-        return "Medium Vegetation";
-    case Value::HighVegetation:
-        return "High Vegetation";
-    case Value::Building:
-        return "Building";
-    case Value::LowPoint:
-        return "Low Point";
-    case Value::ModelKeyPoint:
-        return "Model Key Point";
-    case Value::Water:
-        return "Water";
-    case Value::Rail:
-        return "Rail";
-    case Value::RoadSurface:
-        return "Road Surface";
-    case Value::Overlap:
-        return "Overlap";
-    case Value::WireGuard:
-        return "Wire Guard";
-    case Value::WireConductor:
-        return "Wire Conductor";
-    case Value::TransmissionTower:
-        return "Transmission Tower";
-    case Value::WireConnector:
-        return "Wire Connector";
-    case Value::BridgeDeck:
-        return "Bridge Deck";
-    case Value::HighNoise:
-        return "High Noise";
-    case Value::PermanentOverground:
-        return "Permanent Overground (LiDAR HD)";
-    case Value::VirtualPoints:
-        return "Virtual Points (LiDAR HD)";
-    case Value::MiscellaneousBuildings:
-        return "Miscellaneous Buildings (LiDAR HD)";
-    default:
-        throw std::runtime_error("Unknown LAS classification value: " +
-                                 std::to_string(static_cast<uint8_t>(value)));
-    }
-}
-} // namespace LASclassification
-
-namespace CustomDimensions {
-enum class Id {
-    ReturnNumberComputed,
-    NumberOfReturnsComputed,
-    Eigenvalue0,
-    Eigenvalue1,
-    Eigenvalue2,
-    Planarity,
-    Linearity,
-    Sphericity,
-    Omnivariance,
-    Anisotropy,
-    Eigenentropy,
-    SurfaceVariation,
-    Verticality,
-    DownSignedVertGap,
-    UpSignedVertGap,
-    IsRoofEdge,
-    IsFootEdge,
-    IsGenerated,
-    AngleRayPrev,
-    AngleRayNext,
-};
-inline std::string name(Id id) {
-    switch (id) {
-    case Id::ReturnNumberComputed:
-        return "ReturnNumberComputed";
-    case Id::NumberOfReturnsComputed:
-        return "NumberOfReturnsComputed";
-    case Id::Eigenvalue0:
-        return "EigenvalueSmallest";
-    case Id::Eigenvalue1:
-        return "EigenvalueMiddle";
-    case Id::Eigenvalue2:
-        return "EigenvalueLargest";
-    case Id::Planarity:
-        return "Planarity";
-    case Id::Linearity:
-        return "Linearity";
-    case Id::Sphericity:
-        return "Sphericity";
-    case Id::Omnivariance:
-        return "Omnivariance";
-    case Id::Anisotropy:
-        return "Anisotropy";
-    case Id::Eigenentropy:
-        return "Eigenentropy";
-    case Id::SurfaceVariation:
-        return "SurfaceVariation";
-    case Id::Verticality:
-        return "Verticality";
-    case Id::DownSignedVertGap:
-        return "DownSignedVertGap";
-    case Id::UpSignedVertGap:
-        return "UpSignedVertGap";
-    case Id::IsRoofEdge:
-        return "IsRoofEdge";
-    case Id::IsFootEdge:
-        return "IsFootEdge";
-    case Id::IsGenerated:
-        return "IsGenerated";
-    case Id::AngleRayPrev:
-        return "AngleRayPrev";
-    case Id::AngleRayNext:
-        return "AngleRayNext";
-    default:
-        throw std::runtime_error("Unknown custom dimension ID");
-    }
-}
-
-inline pdal::Dimension::Type type(Id id) {
-    switch (id) {
-    case Id::ReturnNumberComputed:
-        return pdal::Dimension::Type::Unsigned8;
-    case Id::NumberOfReturnsComputed:
-        return pdal::Dimension::Type::Unsigned8;
-    case Id::Eigenvalue0:
-        return pdal::Dimension::Type::Double;
-    case Id::Eigenvalue1:
-        return pdal::Dimension::Type::Double;
-    case Id::Eigenvalue2:
-        return pdal::Dimension::Type::Double;
-    case Id::Planarity:
-        return pdal::Dimension::Type::Double;
-    case Id::Linearity:
-        return pdal::Dimension::Type::Double;
-    case Id::Sphericity:
-        return pdal::Dimension::Type::Double;
-    case Id::Omnivariance:
-        return pdal::Dimension::Type::Double;
-    case Id::Anisotropy:
-        return pdal::Dimension::Type::Double;
-    case Id::Eigenentropy:
-        return pdal::Dimension::Type::Double;
-    case Id::SurfaceVariation:
-        return pdal::Dimension::Type::Double;
-    case Id::Verticality:
-        return pdal::Dimension::Type::Double;
-    case Id::DownSignedVertGap:
-        return pdal::Dimension::Type::Double;
-    case Id::UpSignedVertGap:
-        return pdal::Dimension::Type::Double;
-    case Id::IsRoofEdge:
-        return pdal::Dimension::Type::Unsigned8;
-    case Id::IsFootEdge:
-        return pdal::Dimension::Type::Unsigned8;
-    case Id::IsGenerated:
-        return pdal::Dimension::Type::Unsigned8;
-    case Id::AngleRayPrev:
-        return pdal::Dimension::Type::Double;
-    case Id::AngleRayNext:
-        return pdal::Dimension::Type::Double;
-    default:
-        throw std::runtime_error("Unknown custom dimension ID");
-    }
-}
-
-} // namespace CustomDimensions
-
-struct ProprietaryDimension {
-    std::string name;
-    pdal::Dimension::Type type;
-
-    ProprietaryDimension(const std::string &n, pdal::Dimension::Type t)
-        : name(n), type(t) {}
-
-    ProprietaryDimension(const CustomDimensions::Id id)
-        : name(CustomDimensions::name(id)), type(CustomDimensions::type(id)) {}
-};
 
 struct Point2D {
     double x;
@@ -602,28 +394,57 @@ struct Points3DAttrGPSSorted : Points3DWithAttributes {
     }
 };
 
+namespace PtsStructs {
+
 typedef pdal::PointId PointId;
 typedef unsigned long RayId;
 
-struct PointStorage {
-  private:
+struct Storage {
+  protected:
     std::vector<pdal::Dimension::Id> predefined_dims;
     std::vector<CustomDimensions::Id> custom_dims;
     pdal::PointViewPtr view;
-    pdal::PointTable table;
+    std::shared_ptr<pdal::PointTable> table;
+
+  private:
+    void init(std::vector<pdal::Dimension::Id> predefined_dims,
+              std::vector<ProprietaryDimension> proprietary_dims,
+              pdal::SpatialReference spatial_ref);
 
   public:
-    PointStorage(std::vector<pdal::Dimension::Id> predefined_dims,
-                 std::vector<ProprietaryDimension> proprietary_dims,
-                 pdal::SpatialReference spatial_ref);
-    PointStorage(pdal::PointViewPtr view, pdal::SpatialReference spatial_ref);
+    Storage() = default;
+    Storage(std::vector<pdal::Dimension::Id> predefined_dims,
+            std::vector<ProprietaryDimension> proprietary_dims,
+            pdal::SpatialReference spatial_ref);
+    Storage(pdal::PointViewPtr view, pdal::SpatialReference spatial_ref);
+    Storage(pdal::PointViewPtr view, std::shared_ptr<pdal::PointTable> table);
 
+    // Delete copy and move - Storage is non-transferrable
+    Storage(const Storage &) = delete;
+    Storage &operator=(const Storage &) = delete;
+    Storage(Storage &&) = delete;
+    Storage &operator=(Storage &&) = delete;
+
+  public:
     /**
      * @brief Returns the number of points currently in the storage.
      *
      * @return std::size_t
      */
-    std::size_t pointCount();
+    std::size_t point_count() const;
+
+    pdal::SpatialReference spatial_reference() const;
+
+    std::pair<std::vector<pdal::Dimension::Id>,
+              std::vector<ProprietaryDimension>>
+    dimensions() const;
+
+    OGREnvelopePtr bounding_box() const;
+
+    // Getters for internal PDAL objects
+    pdal::PointViewPtr get_view() const { return view; }
+    pdal::PointTable &get_table() { return *table; }
+    const pdal::PointTable &get_table() const { return *table; }
 
     /**
      * @brief Get the value of an attribute for a point in the storage.
@@ -637,7 +458,7 @@ struct PointStorage {
      * @return T The value of the attribute for the given point.
      */
     template <typename T>
-    T getFieldAs(pdal::Dimension::Id dim, pdal::PointId idx) const {
+    T get_field_as(pdal::Dimension::Id dim, PointId idx) const {
         return view->getFieldAs<T>(dim, idx);
     }
 
@@ -653,9 +474,9 @@ struct PointStorage {
      * @return T The value of the attribute for the given point.
      */
     template <typename T>
-    T getFieldAs(ProprietaryDimension dim, pdal::PointId idx) const {
-        return view->getFieldAs<T>(table.layout()->findProprietaryDim(dim.name),
-                                   idx);
+    T get_field_as(ProprietaryDimension dim, PointId idx) const {
+        return view->getFieldAs<T>(
+            table->layout()->findProprietaryDim(dim.name), idx);
     }
 
     /**
@@ -674,7 +495,7 @@ struct PointStorage {
      * as the dimension.
      */
     template <typename T>
-    void setField(pdal::Dimension::Id dim, pdal::PointId idx, const T value) {
+    void set_field(pdal::Dimension::Id dim, PointId idx, const T value) {
         view->setField(dim, idx, value);
     }
     /**
@@ -693,34 +514,79 @@ struct PointStorage {
      * as the dimension.
      */
     template <typename T>
-    void setField(ProprietaryDimension dim, pdal::PointId idx, const T value) {
-        view->setField(table.layout()->findProprietaryDim(dim.name), idx,
+    void set_field(ProprietaryDimension dim, PointId idx, const T value) {
+        view->setField(table->layout()->findProprietaryDim(dim.name), idx,
                        value);
+    }
+
+    template <typename T>
+    void copy_field(pdal::Dimension::Id dim, PointId new_idx,
+                    std::shared_ptr<Storage> other, PointId other_idx) {
+        T value = other->get_field_as<T>(dim, other_idx);
+        this->set_field(dim, new_idx, value);
+    }
+
+    template <typename T>
+    void copy_field(ProprietaryDimension dim, PointId new_idx,
+                    std::shared_ptr<Storage> other, PointId other_idx) {
+        T value = other->get_field_as<T>(dim, other_idx);
+        this->set_field(dim, new_idx, value);
+    }
+
+    void set_point(PointId idx, const Point_3 &point) {
+        this->set_field(pdal::Dimension::Id::X, idx, point.x());
+        this->set_field(pdal::Dimension::Id::Y, idx, point.y());
+        this->set_field(pdal::Dimension::Id::Z, idx, point.z());
+    }
+
+    Point_3 get_point(PointId idx) const {
+        double x = view->getFieldAs<double>(pdal::Dimension::Id::X, idx);
+        double y = view->getFieldAs<double>(pdal::Dimension::Id::Y, idx);
+        double z = view->getFieldAs<double>(pdal::Dimension::Id::Z, idx);
+        return Point_3(x, y, z);
     }
 };
 
-struct Points3DRay {
+typedef std::shared_ptr<Storage> StoragePtr;
+
+struct Ray3D {
   private:
     Point_3 origin;
     double gps_time;
     uint8_t scan_direction_flag;
-    std::vector<pdal::PointId> point_ids; // The point IDs in order of return
-                                          // number from lowest to highest
+    std::vector<PointId>
+        return_number_to_point_id; // The point IDs in order of return
+                                   // number from lowest to highest
+    std::map<PointId, uint8_t> point_id_to_return_number; // Mapping from point
+                                                          // ID to return
+                                                          // number
 
   public:
-    Points3DRay(const Point_3 &origin_, double gps_time_,
-                uint8_t scan_direction_flag_,
-                const std::vector<pdal::PointId> &point_ids_,
-                const std::vector<int> &return_numbers);
+    Ray3D(const Point_3 &origin_, double gps_time_,
+          uint8_t scan_direction_flag_, const std::vector<PointId> &point_ids_,
+          const std::vector<int> &return_numbers);
+
+    bool empty() const { return return_number_to_point_id.empty(); }
+    std::size_t size() const { return return_number_to_point_id.size(); }
 
     const Point_3 &get_origin() const { return origin; }
     double get_gps_time() const { return gps_time; }
     uint8_t get_scan_direction_flag() const { return scan_direction_flag; }
-    const std::vector<pdal::PointId> &get_point_ids() const {
-        return point_ids;
+    const std::vector<PointId> &get_point_ids() const {
+        return return_number_to_point_id;
     }
-
-    uint8_t get_number_of_returns() const { return point_ids.size(); }
+    uint8_t get_return_number(PointId point_id) const {
+        auto it = point_id_to_return_number.find(point_id);
+        if (it == point_id_to_return_number.end()) {
+            throw std::out_of_range(
+                "Point ID not found in return number mapping: " +
+                std::to_string(point_id));
+        }
+        return it->second;
+    }
+    uint8_t get_number_of_returns() const {
+        return return_number_to_point_id.size();
+    }
     /**
      * @brief Get the ID of the point with the given index in order of return
      * number.
@@ -732,35 +598,46 @@ struct Points3DRay {
      *
      * @param index_return_number The index of the point in order of return
      * number.
-     * @return pdal::PointId The ID of the point at the given index.
+     * @return PointId The ID of the point at the given index.
      */
-    pdal::PointId get_in_return_order(int index_return_number) const;
+    PointId get_point_id_in_return_order(int index_return_number) const;
 };
 
 const double SCAN_LINE_MAX_GPS_TIME_DIFFERENCE = 1e-4;
 
-typedef std::unique_ptr<PointStorage> PointStoragePtr;
-
-struct Points3DStructured {
+struct Topology3D {
   private:
-    std::vector<Points3DRay> rays;
-    std::map<double, RayId> gps_time_to_ray_index;
-    std::vector<RayId> gps_time_order;
+    std::vector<Ray3D> rays;
+    std::vector<RayId> point_id_to_ray_id;
+    std::map<double, RayId> gps_time_to_ray_id;
+    std::vector<RayId> rays_gps_time_order;
     std::vector<RayId> map_next_ray_gps_time_order;
     std::vector<RayId> map_prev_ray_gps_time_order;
     std::vector<RayId> map_next_ray_vehicle_axis_order;
     std::vector<RayId> map_prev_ray_vehicle_axis_order;
 
+    void init(Trajectory trajectory);
+
   public:
-    PointStoragePtr points;
+    StoragePtr points;
 
-    Points3DStructured(std::vector<pdal::Dimension::Id> predefined_dims,
-                       std::vector<ProprietaryDimension> proprietary_dims,
-                       pdal::SpatialReference spatial_ref,
-                       Trajectory trajectory);
+    Topology3D(std::vector<pdal::Dimension::Id> predefined_dims,
+               std::vector<ProprietaryDimension> proprietary_dims,
+               pdal::SpatialReference spatial_ref, Trajectory trajectory);
+    Topology3D(pdal::PointViewPtr view, pdal::SpatialReference spatial_ref,
+               Trajectory trajectory);
+    Topology3D(StoragePtr storage, Trajectory trajectory);
 
-    const std::vector<Points3DRay> &get_rays() const;
-    const Points3DRay &get_ray(RayId i) const;
+    std::size_t ray_count() const { return rays.size(); }
+
+    // const std::vector<Ray3D> &get_rays() const;
+    // const std::vector<RayId> &get_rays_in_gps_time_order() const;
+    RayId get_ray_id_from_point_id(PointId point_id) const;
+
+    const Ray3D &get_ray(RayId i) const;
+    RayId get_first_ray_in_gps_time_order() const {
+        return rays_gps_time_order[0];
+    }
     std::optional<RayId> get_next_ray_in_gps_time_order(RayId i) const;
     std::optional<RayId> get_prev_ray_in_gps_time_order(RayId i) const;
     std::optional<RayId> get_next_ray_in_scan_line(RayId i) const;
@@ -768,3 +645,4 @@ struct Points3DStructured {
     std::optional<RayId> get_next_ray_in_vehicle_line(RayId i) const;
     std::optional<RayId> get_prev_ray_in_vehicle_line(RayId i) const;
 };
+} // namespace PtsStructs

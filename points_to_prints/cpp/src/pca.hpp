@@ -6,8 +6,8 @@
 #include <CGAL/Classification/Point_set_neighborhood.h>
 #include <CGAL/Point_set_3.h>
 
-#include "cgal.hpp"
 #include "local_geometry.hpp"
+#include "utils/cgal.hpp"
 
 typedef CGAL::Classification::Point_set_neighborhood<K, Point_range,
                                                      Point_3_property_map>

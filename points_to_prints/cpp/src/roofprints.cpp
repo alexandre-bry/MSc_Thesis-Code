@@ -9,14 +9,14 @@
 
 #include <ogr_geometry.h>
 
-#include "cgal.hpp"
 #include "geometry.hpp"
 #include "kd_tree.hpp"
-#include "las.hpp"
+#include "las/reader.hpp"
 #include "parquet.hpp"
 #include "pbar.hpp"
 #include "points.hpp"
 #include "ransac.hpp"
+#include "utils/cgal.hpp"
 
 void select_outlines_in_las(
     CustomLasReader &reader,

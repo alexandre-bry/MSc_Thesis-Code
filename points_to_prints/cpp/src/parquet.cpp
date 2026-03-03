@@ -1,10 +1,5 @@
 #include "parquet.hpp"
 
-#include <arrow/array/builder_binary.h>
-#include <arrow/array/builder_nested.h>
-#include <arrow/scalar.h>
-#include <arrow/type.h>
-#include <arrow/type_fwd.h>
 #include <cstddef>
 #include <cstdint>
 #include <format>
@@ -14,10 +9,15 @@
 #include <string>
 #include <utility>
 
-#include "arrow/api.h"
-#include "arrow/io/file.h"
-#include "arrow/status.h"
-#include "parquet/arrow/reader.h"
+#include <arrow/api.h>
+#include <arrow/array/builder_binary.h>
+#include <arrow/array/builder_nested.h>
+#include <arrow/io/file.h>
+#include <arrow/scalar.h>
+#include <arrow/status.h>
+#include <arrow/type.h>
+#include <arrow/type_fwd.h>
+#include <parquet/arrow/reader.h>
 #include <parquet/arrow/writer.h>
 
 #include <ogr_geometry.h>

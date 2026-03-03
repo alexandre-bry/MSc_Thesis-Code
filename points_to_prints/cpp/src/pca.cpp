@@ -7,9 +7,10 @@
 #include <CGAL/Classification/Point_set_neighborhood.h>
 #include <pdal/Dimension.hpp>
 
-#include "cgal.hpp"
-#include "las.hpp"
+#include "las/reader.hpp"
+#include "las/writer.hpp"
 #include "points.hpp"
+#include "utils/cgal.hpp"
 
 void compute_pca(const std::vector<Point_3> &points,
                  std::vector<Vector_3> &normal_vectors,

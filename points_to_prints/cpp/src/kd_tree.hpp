@@ -8,7 +8,7 @@
 #include <CGAL/Search_traits_2.h>
 #include <CGAL/Search_traits_3.h>
 
-#include "cgal.hpp"
+#include "utils/cgal.hpp"
 
 typedef CGAL::Search_traits_2<K> Traits_2_base;
 typedef CGAL::Search_traits_adapter<std::size_t, Point_2_property_map,

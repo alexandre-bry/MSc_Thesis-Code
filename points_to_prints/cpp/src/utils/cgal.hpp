@@ -1,8 +1,9 @@
 #pragma once
 
+#include <cstddef>
+
 #include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
 #include <boost/property_map/vector_property_map.hpp>
-#include <cstddef>
 
 typedef CGAL::Exact_predicates_inexact_constructions_kernel K;
 

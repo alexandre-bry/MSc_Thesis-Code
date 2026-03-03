@@ -7,8 +7,7 @@
 #include <ogr_geometry.h>
 #include <vector>
 
-#include "cgal.hpp"
-#include "points.hpp"
+#include "utils/cgal.hpp"
 
 namespace OutlineSource {
 enum class Id {

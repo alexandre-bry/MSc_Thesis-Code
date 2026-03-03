@@ -1,4 +1,4 @@
-#include "las_trajectory.hpp"
+#include "trajectory.hpp"
 
 #include <string>
 
@@ -100,9 +100,6 @@ Trajectory read_trajectory(const std::string &input_file) {
         if (!(iss >> gps_time >> x >> y >> z)) {
             throw std::runtime_error("Error parsing line: " + line);
         }
-        std::cout << "Read trajectory point: GPS Time = " << std::fixed
-                  << gps_time << ", X = " << x << ", Y = " << y << ", Z = " << z
-                  << std::endl;
         points.emplace_back(Point_3{x, y, z});
         gps_times.push_back(gps_time);
     }

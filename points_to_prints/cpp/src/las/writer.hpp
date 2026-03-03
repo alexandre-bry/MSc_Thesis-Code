@@ -4,58 +4,11 @@
 #include <string>
 #include <vector>
 
-#include <pdal/DimUtil.hpp>
-#include <pdal/Dimension.hpp>
-#include <pdal/Options.hpp>
-#include <pdal/PDALUtils.hpp>
 #include <pdal/PointTable.hpp>
 #include <pdal/PointView.hpp>
 #include <pdal/SpatialReference.hpp>
-#include <pdal/StageFactory.hpp>
-#include <pdal/io/BufferReader.hpp>
-#include <pdal/io/LasHeader.hpp>
-#include <pdal/io/LasReader.hpp>
-#include <pdal/pdal_types.hpp>
 
-#include "geometry.hpp"
-#include "points.hpp"
-
-struct CustomLasReader {
-  public:
-    pdal::LasReader reader;
-    pdal::PointTable table;
-    pdal::PointViewSet view_set;
-    pdal::PointViewPtr view;
-    pdal::Dimension::IdList dims;
-
-  public:
-    CustomLasReader(const std::string &filename) : reader() {
-        pdal::Options las_opts;
-        las_opts.add("filename", filename);
-        reader.setOptions(las_opts);
-    }
-
-    pdal::PointViewSet execute();
-    pdal::LasHeader header() const;
-    unsigned int point_count() const;
-    std::pair<std::vector<pdal::Dimension::Id>,
-              std::vector<ProprietaryDimension>>
-    dimensions() const;
-    pdal::SpatialReference spatial_reference() const;
-    pdal::PointViewPtr point_view() const;
-    OGREnvelopePtr bounding_box() const;
-
-    template <typename T>
-    T getFieldAs(pdal::Dimension::Id dim, pdal::PointId idx) const {
-        return view->getFieldAs<T>(dim, idx);
-    }
-
-    template <typename T>
-    T getFieldAs(ProprietaryDimension dim, pdal::PointId idx) const {
-        return view->getFieldAs<T>(table.layout()->findProprietaryDim(dim.name),
-                                   idx);
-    }
-};
+#include "../points.hpp"
 
 struct CustomLasWriter {
     pdal::PointViewPtr view;
@@ -131,6 +84,27 @@ struct CustomLasWriter {
   private:
     std::vector<ProprietaryDimension> custom_dims;
 
+    std::string get_class_limits(
+        const std::vector<LASclassification::Value> &allowed_classes) const;
+};
+
+struct NewLasWriter {
+  public:
+    PtsStructs::StoragePtr points;
+
+    NewLasWriter(std::vector<pdal::Dimension::Id> predefined_dims,
+                 std::vector<ProprietaryDimension> proprietary_dims,
+                 pdal::SpatialReference spatial_ref)
+        : points(std::make_shared<PtsStructs::Storage>(
+              predefined_dims, proprietary_dims, spatial_ref)) {}
+
+    // Construct by sharing data from an existing Storage
+    NewLasWriter(PtsStructs::StoragePtr storage) : points(storage) {}
+
+    void write(const std::string &filename,
+               const std::vector<LASclassification::Value> &allowed_classes);
+
+  private:
     std::string get_class_limits(
         const std::vector<LASclassification::Value> &allowed_classes) const;
 };
