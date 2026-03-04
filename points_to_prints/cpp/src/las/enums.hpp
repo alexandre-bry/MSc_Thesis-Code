@@ -101,6 +101,7 @@ enum class Id {
     Eigenentropy,
     SurfaceVariation,
     Verticality,
+    Horizontality,
     DownSignedVertGap,
     UpSignedVertGap,
     VerticalGain,
@@ -124,7 +125,7 @@ inline std::string name(Id id) {
     case Id::Eigenvalue2:
         return "EigenvalueLargest";
     case Id::Planarity:
-        return "Planarity";
+        return "CustomPlanarity";
     case Id::Linearity:
         return "Linearity";
     case Id::Sphericity:
@@ -139,6 +140,8 @@ inline std::string name(Id id) {
         return "SurfaceVariation";
     case Id::Verticality:
         return "Verticality";
+    case Id::Horizontality:
+        return "Horizontality";
     case Id::DownSignedVertGap:
         return "DownSignedVertGap";
     case Id::UpSignedVertGap:
@@ -189,6 +192,8 @@ inline pdal::Dimension::Type type(Id id) {
     case Id::SurfaceVariation:
         return pdal::Dimension::Type::Double;
     case Id::Verticality:
+        return pdal::Dimension::Type::Double;
+    case Id::Horizontality:
         return pdal::Dimension::Type::Double;
     case Id::DownSignedVertGap:
         return pdal::Dimension::Type::Double;

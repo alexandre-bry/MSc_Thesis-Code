@@ -28,6 +28,7 @@ cgal = ">=6.0.1,<7"
 libarrow-all = ">=23.0.0,<24"
 cmake = ">=4.2.3,<5"
 doxygen = ">=1.13.2,<2"
+eigen = ">=3.4.0,<4"
 
 [feature.cpp.tasks]
 cpp = { cmd = "cd \"$INIT_CWD\" && just" }

@@ -59,6 +59,9 @@ class Point_3_property_map {
 typedef std::vector<std::size_t> Point_range;
 
 namespace CustomCGAL {
+
+// Custom angle class to store angles in both radians and degrees and ensure
+// they are always in the range [0, 360]
 struct Angle {
   private:
     double radians;

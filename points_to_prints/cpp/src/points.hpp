@@ -396,8 +396,63 @@ struct Points3DAttrGPSSorted : Points3DWithAttributes {
 
 namespace PtsStructs {
 
-typedef pdal::PointId PointId;
-typedef unsigned long RayId;
+template <typename Tag, typename UnderlyingType> class StrongType {
+  private:
+    UnderlyingType value;
+
+  public:
+    explicit StrongType(UnderlyingType v = 0) : value(v) {}
+    UnderlyingType get() const { return value; }
+    operator UnderlyingType() const { return value; }
+
+    // // Comparison operators
+    // bool operator<(const StrongType &other) const {
+    //     return value < other.value;
+    // }
+    // bool operator<=(const StrongType &other) const {
+    //     return value <= other.value;
+    // }
+    // bool operator>(const StrongType &other) const {
+    //     return value > other.value;
+    // }
+    // bool operator>=(const StrongType &other) const {
+    //     return value >= other.value;
+    // }
+    // bool operator==(const StrongType &other) const {
+    //     return value == other.value;
+    // }
+    // bool operator!=(const StrongType &other) const {
+    //     return value != other.value;
+    // }
+
+    // Arithmetic operators
+    StrongType &operator++() {
+        ++value;
+        return *this;
+    }
+    StrongType operator++(int) {
+        StrongType tmp(*this);
+        ++value;
+        return tmp;
+    }
+    StrongType &operator--() {
+        --value;
+        return *this;
+    }
+    StrongType operator--(int) {
+        StrongType tmp(*this);
+        --value;
+        return tmp;
+    }
+};
+
+struct PointIdTag {};
+struct RayIdTag {};
+struct ScanLineIdTag {};
+
+typedef StrongType<PointIdTag, pdal::PointId> PointId;
+typedef StrongType<RayIdTag, size_t> RayId;
+typedef StrongType<ScanLineIdTag, size_t> ScanLineId;
 
 struct Storage {
   protected:
@@ -554,6 +609,7 @@ struct Ray3D {
     Point_3 origin;
     double gps_time;
     uint8_t scan_direction_flag;
+    double scan_angle;
     std::vector<PointId>
         return_number_to_point_id; // The point IDs in order of return
                                    // number from lowest to highest
@@ -563,7 +619,8 @@ struct Ray3D {
 
   public:
     Ray3D(const Point_3 &origin_, double gps_time_,
-          uint8_t scan_direction_flag_, const std::vector<PointId> &point_ids_,
+          uint8_t scan_direction_flag_, double scan_angle_,
+          const std::vector<PointId> &point_ids_,
           const std::vector<int> &return_numbers);
 
     bool empty() const { return return_number_to_point_id.empty(); }
@@ -572,6 +629,7 @@ struct Ray3D {
     const Point_3 &get_origin() const { return origin; }
     double get_gps_time() const { return gps_time; }
     uint8_t get_scan_direction_flag() const { return scan_direction_flag; }
+    double get_scan_angle() const { return scan_angle; }
     const std::vector<PointId> &get_point_ids() const {
         return return_number_to_point_id;
     }
@@ -601,18 +659,50 @@ struct Ray3D {
      * @return PointId The ID of the point at the given index.
      */
     PointId get_point_id_in_return_order(int index_return_number) const;
+
+    CustomCGAL::Angle angle_to(const Ray3D &other, StoragePtr points) const;
 };
 
 const double SCAN_LINE_MAX_GPS_TIME_DIFFERENCE = 1e-4;
+
+struct ScanLine3D {
+  private:
+    std::vector<RayId> ray_ids;
+    std::map<RayId, std::size_t>
+        ray_id_to_index; // Mapping from ray ID to its index in the scan line
+    std::map<double, RayId> scan_angle_to_ray_id; // Mapping from scan angle to
+                                                  // ray ID for quick access
+
+    std::shared_ptr<std::vector<Ray3D>> rays;
+    StoragePtr points;
+
+  public:
+    ScanLine3D(StoragePtr points_, std::shared_ptr<std::vector<Ray3D>> rays_,
+               const std::vector<RayId> &ray_ids_);
+
+    const std::vector<RayId> &get_ray_ids() const { return ray_ids; }
+
+    std::optional<RayId> get_next_ray_id(std::optional<RayId> ray_id) const;
+    std::optional<RayId> get_prev_ray_id(std::optional<RayId> ray_id) const;
+    RayId get_closest_ray_by_scan_angle(double scan_angle) const;
+    RayId get_closest_ray_by_direction(RayId other_ray_id) const;
+    RayId get_closest_ray_by_two_directions(const RayId other_ray_id_1,
+                                            const RayId other_ray_id_2) const;
+};
 
 struct Topology3D {
   private:
     std::vector<Ray3D> rays;
     std::vector<RayId> point_id_to_ray_id;
+
+    std::vector<ScanLine3D> scan_lines;
+    std::vector<ScanLineId> ray_id_to_scan_line_id;
+
     std::map<double, RayId> gps_time_to_ray_id;
     std::vector<RayId> rays_gps_time_order;
-    std::vector<RayId> map_next_ray_gps_time_order;
-    std::vector<RayId> map_prev_ray_gps_time_order;
+    std::map<RayId, std::size_t> ray_id_to_gps_time_order_index;
+    // std::vector<RayId> map_next_ray_gps_time_order;
+    // std::vector<RayId> map_prev_ray_gps_time_order;
     std::vector<RayId> map_next_ray_vehicle_axis_order;
     std::vector<RayId> map_prev_ray_vehicle_axis_order;
 
@@ -632,17 +722,25 @@ struct Topology3D {
 
     // const std::vector<Ray3D> &get_rays() const;
     // const std::vector<RayId> &get_rays_in_gps_time_order() const;
-    RayId get_ray_id_from_point_id(PointId point_id) const;
-
+    RayId get_ray_id(PointId point_id) const;
     const Ray3D &get_ray(RayId i) const;
+
+    ScanLineId get_scan_line_id(RayId ray_id) const;
+    ScanLineId get_scan_line_id(PointId point_id) const;
+    const ScanLine3D &get_scan_line(ScanLineId i) const;
+
     RayId get_first_ray_in_gps_time_order() const {
         return rays_gps_time_order[0];
     }
     std::optional<RayId> get_next_ray_in_gps_time_order(RayId i) const;
     std::optional<RayId> get_prev_ray_in_gps_time_order(RayId i) const;
-    std::optional<RayId> get_next_ray_in_scan_line(RayId i) const;
-    std::optional<RayId> get_prev_ray_in_scan_line(RayId i) const;
+
     std::optional<RayId> get_next_ray_in_vehicle_line(RayId i) const;
     std::optional<RayId> get_prev_ray_in_vehicle_line(RayId i) const;
+
+    std::optional<ScanLineId> get_next_scan_line_id(ScanLineId i) const;
+    std::optional<ScanLineId> get_prev_scan_line_id(ScanLineId i) const;
+
+    CustomCGAL::Angle angle_between(RayId ray_1, RayId ray_2) const;
 };
 } // namespace PtsStructs
