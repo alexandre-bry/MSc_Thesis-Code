@@ -30,17 +30,26 @@ struct LocalGeometryFeatures {
     double verticality;
 };
 
-struct EigenvaluesPCA {
+struct EigenvaluesPCA_3 {
     double smallest;
     double middle;
     double largest;
 
-    EigenvaluesPCA(double smallest_, double middle_, double largest_)
+    EigenvaluesPCA_3(double smallest_, double middle_, double largest_)
         : smallest(smallest_), middle(middle_), largest(largest_) {}
 };
+struct EigenvaluesPCA_2 {
+    double smallest;
+    double largest;
 
-std::tuple<Vector_3, Plane_3, EigenvaluesPCA>
+    EigenvaluesPCA_2(double smallest_, double largest_)
+        : smallest(smallest_), largest(largest_) {}
+};
+
+std::tuple<Vector_3, Plane_3, EigenvaluesPCA_3>
 compute_pca_once(const std::vector<Point_3> &points);
+std::tuple<Vector_2, Line_2, EigenvaluesPCA_2>
+compute_pca_once(const std::vector<Point_2> &points);
 
 void compute_pca(const std::vector<Point_3> &points,
                  std::vector<Vector_3> &normal_vectors,

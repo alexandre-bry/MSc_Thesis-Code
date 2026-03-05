@@ -13,7 +13,7 @@
 #include "points.hpp"
 #include "utils/cgal.hpp"
 
-std::tuple<Vector_3, Plane_3, EigenvaluesPCA>
+std::tuple<Vector_3, Plane_3, EigenvaluesPCA_3>
 compute_pca_once(const std::vector<Point_3> &points) {
     if (points.empty()) {
         throw std::invalid_argument(
@@ -58,10 +58,58 @@ compute_pca_once(const std::vector<Point_3> &points) {
     Point_3 c(centroid.x(), centroid.y(), centroid.z());
     Plane_3 plane(c, normal);
 
-    // Return eigenvalues in descending order: lambda1 >= lambda2 >= lambda3
-    EigenvaluesPCA eigenvalues(vals(0), vals(1), vals(2));
+    EigenvaluesPCA_3 eigenvalues(vals(0), vals(1), vals(2));
 
     return {normal, plane, eigenvalues};
+}
+
+std::tuple<Vector_2, Line_2, EigenvaluesPCA_2>
+compute_pca_once(const std::vector<Point_2> &points) {
+    if (points.empty()) {
+        throw std::invalid_argument(
+            "compute_pca_once: points must not be empty");
+    }
+
+    // 1) Centroid
+    Eigen::Vector2d centroid(0.0, 0.0);
+    for (const auto &p : points) {
+        centroid +=
+            Eigen::Vector2d(CGAL::to_double(p.x()), CGAL::to_double(p.y()));
+    }
+    centroid /= static_cast<double>(points.size());
+
+    // 2) Covariance matrix
+    Eigen::Matrix2d cov = Eigen::Matrix2d::Zero();
+    for (const auto &p : points) {
+        Eigen::Vector2d d(CGAL::to_double(p.x()) - centroid.x(),
+                          CGAL::to_double(p.y()) - centroid.y());
+        cov.noalias() += d * d.transpose();
+    }
+    cov /= static_cast<double>(points.size());
+
+    // 3) Eigen decomposition of symmetric covariance
+    Eigen::SelfAdjointEigenSolver<Eigen::Matrix2d> solver(cov);
+    if (solver.info() != Eigen::Success) {
+        throw std::runtime_error(
+            "compute_pca_once: eigen decomposition failed");
+    }
+
+    // Eigen returns ascending eigenvalues: l0 <= l1
+    const auto vals = solver.eigenvalues();
+    const auto vecs = solver.eigenvectors();
+
+    // Smallest-eigenvalue eigenvector = normal of best-fit line
+    Eigen::Vector2d n = vecs.col(0).normalized();
+    Vector_2 normal(n.x(), n.y());
+
+    // Line through centroid with normal
+    Point_2 c(centroid.x(), centroid.y());
+    Vector_2 dir(-normal.y(), normal.x()); // perpendicular to normal
+    Line_2 line(c, dir);
+
+    EigenvaluesPCA_2 eigenvalues(vals(0), vals(1));
+
+    return {normal, line, eigenvalues};
 }
 
 void compute_pca(const std::vector<Point_3> &points,
@@ -155,10 +203,9 @@ void add_pca(const std::string &input_file, const std::string &output_file,
         for (pdal::Dimension::Id dim : predefined_dims) {
             double value = las_reader.getFieldAs<double>(dim, in_idx);
             las_writer.setField(dim, out_idx, value);
-            // Get the value of the dimension in the correct type and set it in
-            // the output view
-            // char *value;
-            // in_view->getField(value, dim, pdal::Dimension::defaultType(dim),
+            // Get the value of the dimension in the correct type and set it
+            // in the output view char *value; in_view->getField(value, dim,
+            // pdal::Dimension::defaultType(dim),
             //                   in_idx);
             // las_writer.setField(dim, out_idx, value);
         }

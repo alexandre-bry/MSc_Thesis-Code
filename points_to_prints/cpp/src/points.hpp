@@ -513,8 +513,8 @@ struct Storage {
      * @return T The value of the attribute for the given point.
      */
     template <typename T>
-    T get_field_as(pdal::Dimension::Id dim, PointId idx) const {
-        return view->getFieldAs<T>(dim, idx);
+    T get_field_as(pdal::Dimension::Id dim, PointId point_id) const {
+        return view->getFieldAs<T>(dim, point_id);
     }
 
     /**
@@ -529,9 +529,9 @@ struct Storage {
      * @return T The value of the attribute for the given point.
      */
     template <typename T>
-    T get_field_as(ProprietaryDimension dim, PointId idx) const {
+    T get_field_as(ProprietaryDimension dim, PointId point_id) const {
         return view->getFieldAs<T>(
-            table->layout()->findProprietaryDim(dim.name), idx);
+            table->layout()->findProprietaryDim(dim.name), point_id);
     }
 
     /**
@@ -550,8 +550,8 @@ struct Storage {
      * as the dimension.
      */
     template <typename T>
-    void set_field(pdal::Dimension::Id dim, PointId idx, const T value) {
-        view->setField(dim, idx, value);
+    void set_field(pdal::Dimension::Id dim, PointId point_id, const T value) {
+        view->setField(dim, point_id, value);
     }
     /**
      * @brief Set the value of an attribute for a point in the storage.
@@ -569,35 +569,41 @@ struct Storage {
      * as the dimension.
      */
     template <typename T>
-    void set_field(ProprietaryDimension dim, PointId idx, const T value) {
-        view->setField(table->layout()->findProprietaryDim(dim.name), idx,
+    void set_field(ProprietaryDimension dim, PointId point_id, const T value) {
+        view->setField(table->layout()->findProprietaryDim(dim.name), point_id,
                        value);
     }
 
     template <typename T>
-    void copy_field(pdal::Dimension::Id dim, PointId new_idx,
-                    std::shared_ptr<Storage> other, PointId other_idx) {
-        T value = other->get_field_as<T>(dim, other_idx);
-        this->set_field(dim, new_idx, value);
+    void copy_field(pdal::Dimension::Id dim, PointId new_point_id,
+                    std::shared_ptr<Storage> other, PointId other_point_id) {
+        T value = other->get_field_as<T>(dim, other_point_id);
+        this->set_field(dim, new_point_id, value);
     }
 
     template <typename T>
-    void copy_field(ProprietaryDimension dim, PointId new_idx,
-                    std::shared_ptr<Storage> other, PointId other_idx) {
-        T value = other->get_field_as<T>(dim, other_idx);
-        this->set_field(dim, new_idx, value);
+    void copy_field(ProprietaryDimension dim, PointId new_point_id,
+                    std::shared_ptr<Storage> other, PointId other_point_id) {
+        T value = other->get_field_as<T>(dim, other_point_id);
+        this->set_field(dim, new_point_id, value);
     }
 
-    void set_point(PointId idx, const Point_3 &point) {
-        this->set_field(pdal::Dimension::Id::X, idx, point.x());
-        this->set_field(pdal::Dimension::Id::Y, idx, point.y());
-        this->set_field(pdal::Dimension::Id::Z, idx, point.z());
+    void set_point(PointId point_id, const Point_3 &point) {
+        this->set_field(pdal::Dimension::Id::X, point_id, point.x());
+        this->set_field(pdal::Dimension::Id::Y, point_id, point.y());
+        this->set_field(pdal::Dimension::Id::Z, point_id, point.z());
     }
 
-    Point_3 get_point(PointId idx) const {
-        double x = view->getFieldAs<double>(pdal::Dimension::Id::X, idx);
-        double y = view->getFieldAs<double>(pdal::Dimension::Id::Y, idx);
-        double z = view->getFieldAs<double>(pdal::Dimension::Id::Z, idx);
+    Point_2 get_point_2d(PointId point_id) const {
+        double x = view->getFieldAs<double>(pdal::Dimension::Id::X, point_id);
+        double y = view->getFieldAs<double>(pdal::Dimension::Id::Y, point_id);
+        return Point_2(x, y);
+    }
+
+    Point_3 get_point(PointId point_id) const {
+        double x = view->getFieldAs<double>(pdal::Dimension::Id::X, point_id);
+        double y = view->getFieldAs<double>(pdal::Dimension::Id::Y, point_id);
+        double z = view->getFieldAs<double>(pdal::Dimension::Id::Z, point_id);
         return Point_3(x, y, z);
     }
 };
@@ -738,8 +744,10 @@ struct Topology3D {
     std::optional<RayId> get_next_ray_in_vehicle_line(RayId i) const;
     std::optional<RayId> get_prev_ray_in_vehicle_line(RayId i) const;
 
-    std::optional<ScanLineId> get_next_scan_line_id(ScanLineId i) const;
-    std::optional<ScanLineId> get_prev_scan_line_id(ScanLineId i) const;
+    std::optional<ScanLineId>
+    get_next_scan_line_id(std::optional<ScanLineId> scan_line_id) const;
+    std::optional<ScanLineId>
+    get_prev_scan_line_id(std::optional<ScanLineId> scan_line_id) const;
 
     CustomCGAL::Angle angle_between(RayId ray_1, RayId ray_2) const;
 };

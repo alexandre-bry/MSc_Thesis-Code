@@ -9,10 +9,10 @@
 
 struct OutlineWithPoints {
     PolygonZWithAttributes outline;
-    std::vector<Point3DWithAttributes> points_in_buffer;
+    std::vector<PtsStructs::PointId> points_in_buffer;
 
     OutlineWithPoints(PolygonZWithAttributes outline_,
-                      std::vector<Point3DWithAttributes> &points_in_buffer_)
+                      std::vector<PtsStructs::PointId> &points_in_buffer_)
         : outline(std::move(outline_)),
           points_in_buffer(std::move(points_in_buffer_)) {}
 };

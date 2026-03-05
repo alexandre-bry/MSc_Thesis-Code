@@ -14,3 +14,6 @@ output/
 # Rust experiments
 rust/target/
 rust/
+
+# Folder with visualization binaries
+visualization/

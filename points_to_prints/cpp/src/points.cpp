@@ -579,8 +579,12 @@ std::optional<RayId> Topology3D::get_prev_ray_in_vehicle_line(RayId i) const {
     return map_prev_ray_vehicle_axis_order[i];
 }
 
-std::optional<ScanLineId>
-Topology3D::get_next_scan_line_id(ScanLineId i) const {
+std::optional<ScanLineId> Topology3D::get_next_scan_line_id(
+    std::optional<ScanLineId> scan_line_id) const {
+    if (!scan_line_id) {
+        return std::nullopt;
+    }
+    ScanLineId i = *scan_line_id;
     if (i < 0 || i >= scan_lines.size()) {
         throw std::out_of_range("Scan line index out of range");
     }
@@ -590,8 +594,12 @@ Topology3D::get_next_scan_line_id(ScanLineId i) const {
     return ScanLineId(i + 1);
 }
 
-std::optional<ScanLineId>
-Topology3D::get_prev_scan_line_id(ScanLineId i) const {
+std::optional<ScanLineId> Topology3D::get_prev_scan_line_id(
+    std::optional<ScanLineId> scan_line_id) const {
+    if (!scan_line_id) {
+        return std::nullopt;
+    }
+    ScanLineId i = *scan_line_id;
     if (i < 0 || i >= scan_lines.size()) {
         throw std::out_of_range("Scan line index out of range");
     }
