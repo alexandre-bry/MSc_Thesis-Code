@@ -7,11 +7,9 @@ from typing import Dict, List, Optional, Tuple
 
 import aiohttp
 from tqdm import tqdm
+import logging
 
-try:
-    import laspy
-except Exception:
-    laspy = None
+import laspy
 
 BASE_URL = "https://api.stac.teledetection.fr"
 COLLECTION_ID = "lidarhd"
@@ -19,14 +17,18 @@ DEFAULT_CONCURRENCY = 10
 MAX_DOWNLOAD_RETRIES = 4
 RETRY_BASE_DELAY_SECONDS = 1.5
 
+
 def parse_tile_code(tile_id: str) -> Tuple[int, int]:
     """Extract easting/1000 and northing/1000 from LHD_FXX_XXXX_YYYY_PTS_LAMB93_IGN69_HD"""
-    parts = tile_id.split('_')
+    parts = tile_id.split("_")
     x_tile = int(parts[1])  # e.g. 0490
     y_tile = int(parts[2])  # e.g. 6928
     return x_tile, y_tile
 
-def bbox_to_tile_range(xmin: float, xmax: float, ymin: float, ymax: float, tile_size=1000.0) -> Tuple[int, int, int, int]:
+
+def bbox_to_tile_range(
+    xmin: float, xmax: float, ymin: float, ymax: float, tile_size=1000.0
+) -> Tuple[int, int, int, int]:
     """Convert EPSG:2154 bbox to tile index range (x_tile_min, x_tile_max, y_tile_min, y_tile_max)"""
     x_tile_min = int(xmin // tile_size)
     x_tile_max = int(xmax // tile_size)
@@ -34,7 +36,10 @@ def bbox_to_tile_range(xmin: float, xmax: float, ymin: float, ymax: float, tile_
     y_tile_max = int(ymax // tile_size)
     return x_tile_min, x_tile_max, y_tile_min, y_tile_max
 
-def generate_tile_names(x_tile_min: int, x_tile_max: int, y_tile_min: int, y_tile_max: int) -> List[str]:
+
+def generate_tile_names(
+    x_tile_min: int, x_tile_max: int, y_tile_min: int, y_tile_max: int
+) -> List[str]:
     """Generate all possible tile names in the range"""
     tiles = []
     for x in range(x_tile_min, x_tile_max + 1):
@@ -44,6 +49,7 @@ def generate_tile_names(x_tile_min: int, x_tile_max: int, y_tile_min: int, y_til
             tiles.append(tile_name)
     return tiles
 
+
 async def _fetch_tile_data_url(
     session: aiohttp.ClientSession,
     semaphore: asyncio.Semaphore,
@@ -51,6 +57,7 @@ async def _fetch_tile_data_url(
 ) -> Tuple[str, Optional[str]]:
     """Fetch STAC item and return (tile_name, data_href|None)."""
     item_url = f"{BASE_URL}/collections/{COLLECTION_ID}/items/{tile_name}"
+    logging.debug(f"Fetching item for tile: '{tile_name}' at URL: {item_url}")
     headers = {"Accept": "application/geo+json"}
     async with semaphore:
         try:
@@ -194,6 +201,9 @@ async def collect_existing_tiles(
             for tile_name in tile_names
         ]
 
+        for tile_name in tile_names:
+            logging.debug(f"Checking existence of tile: {tile_name}")
+
         with tqdm(total=len(tasks), desc="Checking tiles", unit="tile") as pbar:
             for task in asyncio.as_completed(tasks):
                 tile_name, tile_url = await task
@@ -268,7 +278,9 @@ async def download_tiles(
     return downloaded_count, failures, downloaded_files
 
 
-def validate_downloaded_files(downloaded_files: List[Path]) -> Tuple[int, List[Tuple[str, str]]]:
+def validate_downloaded_files(
+    downloaded_files: List[Path],
+) -> Tuple[int, List[Tuple[str, str]]]:
     """Validate produced LAZ files using PDAL if available, else laspy fallback."""
     valid_count = 0
     invalid_files: List[Tuple[str, str]] = []
@@ -277,7 +289,9 @@ def validate_downloaded_files(downloaded_files: List[Path]) -> Tuple[int, List[T
     if not downloaded_files:
         return valid_count, invalid_files
 
-    with tqdm(total=len(downloaded_files), desc="Validating files", unit="file") as pbar:
+    with tqdm(
+        total=len(downloaded_files), desc="Validating files", unit="file"
+    ) as pbar:
         for file_path in downloaded_files:
             is_valid = False
             error_message = "unknown validation error"
@@ -331,6 +345,48 @@ async def check_tile_exists_async(
             return False
 
 
+async def download_lidar_hd_data(
+    xmin: float,
+    xmax: float,
+    ymin: float,
+    ymax: float,
+    output_dir: Path,
+    overwrite: bool,
+    concurrency: int = DEFAULT_CONCURRENCY,
+) -> None:
+    """Main function to download LIDAR HD data for a given EPSG:2154 bounding box."""
+    x_min, x_max, y_min, y_max = bbox_to_tile_range(xmin, xmax, ymin, ymax)
+    tile_names = generate_tile_names(x_min, x_max, y_min, y_max)
+
+    logging.info(
+        f"Generated {len(tile_names)} tile names for the specified bounding box."
+    )
+
+    name_to_url = await collect_existing_tiles(tile_names, concurrency=concurrency)
+    logging.info(
+        f"Found {len(name_to_url)} existing tiles out of {len(tile_names)} candidates."
+    )
+
+    downloaded_count, failures, downloaded_files = await download_tiles(
+        name_to_url,
+        output_dir,
+        concurrency=concurrency,
+    )
+
+    logging.info(f"Downloaded {downloaded_count}/{len(name_to_url)} files.")
+    if failures:
+        logging.error(f"{len(failures)} downloads failed:")
+        for tile_name, error in failures:
+            logging.error(f"  - {tile_name}: {error}")
+
+    valid_count, invalid_files = validate_downloaded_files(downloaded_files)
+    logging.info(f"Valid files: {valid_count}/{len(downloaded_files)}")
+    if invalid_files:
+        logging.error(f"{len(invalid_files)} invalid files:")
+        for file_name, error in invalid_files:
+            logging.error(f"  - {file_name}: {error}")
+
+
 async def main() -> None:
     output_dir = Path("downloaded_tiles")
     output_dir.mkdir(exist_ok=True)
@@ -338,25 +394,25 @@ async def main() -> None:
     concurrency = DEFAULT_CONCURRENCY
     # ---- YOUR EPSG:2154 BOUNDING BOX ----
     # Example: around the tiles you showed (adjust these coordinates)
-    xmin, ymin = 649000, 6862000   # SW corner
-    xmax, ymax = 650000, 6863000   # NE corner
-    
+    xmin, ymin = 649000, 6862000  # SW corner
+    xmax, ymax = 650000, 6863000  # NE corner
+
     print("Generating tile names for EPSG:2154 bbox:")
     print(f"  xmin: {xmin}, xmax: {xmax}")
     print(f"  ymin: {ymin}, ymax: {ymax}")
-    
+
     # Convert to tile indices (1km tiles)
     x_min, x_max, y_min, y_max = bbox_to_tile_range(xmin, xmax, ymin, ymax)
     print(f"\nTile range: x={x_min:04d} to {x_max:04d}, y={y_min:04d} to {y_max:04d}")
-    
+
     # Generate all possible names
     tile_names = generate_tile_names(x_min, x_max, y_min, y_max)
     print(f"\nGenerated {len(tile_names)} tile names:")
-    
+
     # Show first few and last few
     for name in tile_names[:3] + tile_names[-3:]:
         print(f"  {name}")
-    
+
     # Optionally verify which ones actually exist (slow for large areas)
     print(f"\nChecking existence of first 5 tiles (optional, async)...")
     preview_tiles = tile_names[:5]
@@ -372,17 +428,21 @@ async def main() -> None:
 
     for name, exists in zip(preview_tiles, existence_results):
         print(f"  {name}: {'✅' if exists else '❌'}")
-        
+
     # Example: bulk fetch all existing tiles
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("Fetching all tiles in bbox...")
-    
+
     name_to_url = await collect_existing_tiles(tile_names, concurrency=concurrency)
-    print(f"Found {len(name_to_url)} existing tiles out of {len(tile_names)} candidates.")
+    print(
+        f"Found {len(name_to_url)} existing tiles out of {len(tile_names)} candidates."
+    )
 
     # Download all existing tiles
-    print("\n" + "="*60)
-    print(f"Downloading {len(name_to_url)} existing tiles in parallel (max {concurrency})...")
+    print("\n" + "=" * 60)
+    print(
+        f"Downloading {len(name_to_url)} existing tiles in parallel (max {concurrency})..."
+    )
     downloaded_count, failures, downloaded_files = await download_tiles(
         name_to_url,
         output_dir,
@@ -409,4 +469,3 @@ async def main() -> None:
 
 if __name__ == "__main__":
     asyncio.run(main())
-    

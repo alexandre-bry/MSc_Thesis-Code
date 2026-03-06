@@ -2,7 +2,8 @@
 .venv/
 .cache/
 .temp/
-**/build/
+build/
+__pycache__/
 
 # Data
 data/

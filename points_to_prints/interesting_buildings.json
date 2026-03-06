@@ -1,3 +1,14 @@
 {
-  "ids": ["BATIMENT0000000337021353", "BATIMENT0000000337020994"]
+  "BATIMENT0000000337021353": {
+    "reason": null
+  },
+  "BATIMENT0000000337020994": {
+    "reason": null
+  },
+  "BATIMENT0000000337021253": {
+    "reason": "Two parallel edges with small horizontal distance at different heights"
+  },
+  "BATIMENT0000000337021425": {
+    "reason": "Two buildings with connected roofs that could only be separated using the roof planes"
+  }
 }

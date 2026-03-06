@@ -33,7 +33,10 @@ eigen = ">=3.4.0,<4"
 [feature.cpp.tasks]
 cpp = { cmd = "cd \"$INIT_CWD\" && just" }
 cpp-run = { cmd = "cd \"$INIT_CWD\" && just run release" }
+cpp-run-only = { cmd = "cd \"$INIT_CWD\" && just run-only release" }
+cpp-build = { cmd = "cd \"$INIT_CWD\" && just build release" }
 
 [environments]
-python = ["python"]
-cpp = ["cpp"]
+# python = ["python"]
+# cpp = ["cpp"]
+default = ["cpp", "python"]

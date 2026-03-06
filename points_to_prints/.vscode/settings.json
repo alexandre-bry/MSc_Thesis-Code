@@ -1,12 +1,12 @@
 {
-    "python.defaultInterpreterPath": ".venv/bin/python",
+    "python.defaultInterpreterPath": "${workspaceFolder}/.pixi/envs/default/bin/python",
     "python.venvPath": ".",
     "python.terminal.activateEnvironment": true,
     "python.analysis.typeCheckingMode": "standard",
     "editor.formatOnSave": true,
     "cmake.sourceDirectory": "${workspaceFolder}/cpp",
     "cmake.buildDirectory": "${workspaceFolder}/cpp/build",
-    "cmake.cmakePath": "${workspaceFolder}/.pixi/envs/cpp/bin/cmake",
+    "cmake.cmakePath": "${workspaceFolder}/.pixi/envs/default/bin/cmake",
     "cmake.buildOnSave": false,
     "cmake.configureOnEdit": false,
     "clangd.fallbackFlags": [

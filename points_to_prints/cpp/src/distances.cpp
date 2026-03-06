@@ -26,7 +26,8 @@
 #include "points.hpp"
 #include "utils/cgal.hpp"
 
-const double MIN_VERT_GAIN_ROOF = 1.0;
+const double MIN_VERT_GAIN_ROOF = 2.0;
+const double DEFAULT_GPS_TIME_DELTA = 1e-6;
 const double MAX_DISTANCE_NEIGHBOURS_ON_ROOF = 1.0;
 
 enum class Direction {
@@ -419,6 +420,7 @@ void compute_distances_in_order(const std::string &input_points_file,
         Point_3 p_0_0 = topo.points->get_point(p_0_0_id);
 
         double vertical_gain = 0;
+        double gps_time_delta = std::numeric_limits<double>::infinity();
         Direction direction_with_max_gain;
 
         std::optional<PtsStructs::PointId> p_0_roof_1_id, p_0_roof_2_id,
@@ -440,6 +442,8 @@ void compute_distances_in_order(const std::string &input_points_file,
             if (vertical_gain_ > vertical_gain) {
                 p_ground_id = potential_p_ground_id;
                 vertical_gain = vertical_gain_;
+                gps_time_delta = std::abs(ray_0_0.get_gps_time() -
+                                          ray_0_ground.get_gps_time());
 
                 p_0_roof_1_id = find_closest_point(p_0_0_id, ray_0_n1_id, topo);
                 p_0_roof_2_id =
@@ -460,7 +464,8 @@ void compute_distances_in_order(const std::string &input_points_file,
             if (vertical_gain_ > vertical_gain) {
                 p_ground_id = potential_p_ground_id;
                 vertical_gain = vertical_gain_;
-
+                gps_time_delta = std::abs(ray_0_0.get_gps_time() -
+                                          ray_0_ground.get_gps_time());
                 p_0_roof_1_id = find_closest_point(p_0_0_id, ray_0_p1_id, topo);
                 p_0_roof_2_id =
                     find_closest_point(p_0_roof_1_id, ray_0_p2_id, topo);
@@ -468,7 +473,11 @@ void compute_distances_in_order(const std::string &input_points_file,
                 direction_with_max_gain = Direction::Next;
             }
         }
-        bool is_roof_edge = vertical_gain > MIN_VERT_GAIN_ROOF;
+
+        // Decide whether the point is a roof edge based on the vertical gain
+        // and the GPS time delta to the potential ground point
+        bool is_roof_edge = vertical_gain / gps_time_delta >
+                            MIN_VERT_GAIN_ROOF / DEFAULT_GPS_TIME_DELTA;
 
         las_distances_writer.points->set_field(
             CustomDimensions::Id::VerticalGain, p_0_0_id, vertical_gain);
@@ -608,12 +617,12 @@ void compute_distances_in_order(const std::string &input_points_file,
     // Print timing breakdown
     std::cout << "\n=== Timing Breakdown ===" << std::endl;
     std::cout << "Multi-echo rays (with edge): " << ray_count_multi
-              << " rays (total: " << time_multi_echo.count() / 1e6 << "s)"
+              << " rays (total: " << time_multi_echo.count() / 1e6 << " s)"
               << std::endl;
     std::cout << "Single-echo rays (with edge): " << ray_count_single
-              << " rays (total: " << time_single_echo.count() / 1e6 << "s)"
+              << " rays (total: " << time_single_echo.count() / 1e6 << " s)"
               << std::endl;
-    std::cout << "  - PCA computation: " << time_pca.count() << "μs"
+    std::cout << "  - PCA computation: " << time_pca.count() / 1e6 << " s"
               << std::endl;
     std::cout << "========================\n" << std::endl;
 

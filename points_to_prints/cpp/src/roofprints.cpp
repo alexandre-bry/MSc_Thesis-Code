@@ -5,6 +5,7 @@
 #include <iostream>
 #include <memory>
 #include <random>
+#include <type_traits>
 #include <vector>
 
 #include <ogr_geometry.h>
@@ -478,7 +479,16 @@ compute_roofprint(const OutlineWithPoints &outline_with_points,
         // Give more weight to non-generated points
         uint8_t is_generated = points->get_field_as<uint8_t>(
             CustomDimensions::Id::IsGenerated, point_id);
-        double generated_factor = 3 - is_generated;
+        double generated_factor;
+        if (is_generated == 0) {
+            generated_factor = 1.0;
+        } else if (is_generated == 1) {
+            generated_factor = 0.5;
+        } else if (is_generated == 2) {
+            generated_factor = 0.1;
+        } else {
+            throw std::runtime_error("Unexpected value for IsGenerated field");
+        }
 
         // Give more weight to points classified as building
         const auto cls_raw = points->get_field_as<

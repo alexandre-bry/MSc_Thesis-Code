@@ -1,6 +1,9 @@
 # Runs the binary built in the given mode, with the given arguments. It will configure and build the binary if necessary.
 @run mode *ARGS:
     just build {{ mode }}
+    just run-only {{ mode }} {{ ARGS }}
+
+@run-only mode *ARGS:
     just _print "Running in {{ uppercamelcase(mode) }} mode"
     find cpp/build/{{ uppercamelcase(mode) }}/executable/ -type f -exec ./{} {{ ARGS }} \;
 
