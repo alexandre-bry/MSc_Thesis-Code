@@ -1,29 +1,22 @@
 import asyncio
 from contextlib import suppress
 from pathlib import Path
-import shutil
 import subprocess
 from typing import Dict, List, Optional, Tuple
 
-import aiohttp
+import httpx
 from tqdm import tqdm
 import logging
-
-import laspy
 
 BASE_URL = "https://api.stac.teledetection.fr"
 COLLECTION_ID = "lidarhd"
 DEFAULT_CONCURRENCY = 10
 MAX_DOWNLOAD_RETRIES = 4
 RETRY_BASE_DELAY_SECONDS = 1.5
-
-
-def parse_tile_code(tile_id: str) -> Tuple[int, int]:
-    """Extract easting/1000 and northing/1000 from LHD_FXX_XXXX_YYYY_PTS_LAMB93_IGN69_HD"""
-    parts = tile_id.split("_")
-    x_tile = int(parts[1])  # e.g. 0490
-    y_tile = int(parts[2])  # e.g. 6928
-    return x_tile, y_tile
+STAC_HEADERS = {
+    "Accept": "application/geo+json",
+    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0",
+}
 
 
 def bbox_to_tile_range(
@@ -37,42 +30,94 @@ def bbox_to_tile_range(
     return x_tile_min, x_tile_max, y_tile_min, y_tile_max
 
 
-def generate_tile_names(
-    x_tile_min: int, x_tile_max: int, y_tile_min: int, y_tile_max: int
-) -> List[str]:
-    """Generate all possible tile names in the range"""
-    tiles = []
+def generate_tiles_center_points(
+    x_tile_min: int, x_tile_max: int, y_tile_min: int, y_tile_max: int, tile_size=1000.0
+):
+    """Generate center points of all tiles in the range"""
+    points = []
     for x in range(x_tile_min, x_tile_max + 1):
         for y in range(y_tile_min, y_tile_max + 1):
-            # Format as 4 digits with leading zeros
-            tile_name = f"LHD_FXX_{x:04d}_{y:04d}_PTS_LAMB93_IGN69_HD"
-            tiles.append(tile_name)
-    return tiles
+            x_center = (x + 0.5) * tile_size
+            y_center = (y + 0.5) * tile_size
+            points.append((x_center, y_center))
+    return points
 
 
-async def _fetch_tile_data_url(
-    session: aiohttp.ClientSession,
+def convert_to_epsg_4326(x: float, y: float) -> Tuple[float, float]:
+    """Convert EPSG:2154 coordinates to EPSG:4326 (lon, lat) using pyproj."""
+    from pyproj import Transformer
+
+    transformer = Transformer.from_crs("EPSG:2154", "EPSG:4326", always_xy=True)
+    lon, lat = transformer.transform(x, y)
+    return lon, lat
+
+
+async def _fetch_tiles_by_bbox(
+    client: httpx.AsyncClient,
     semaphore: asyncio.Semaphore,
-    tile_name: str,
-) -> Tuple[str, Optional[str]]:
-    """Fetch STAC item and return (tile_name, data_href|None)."""
-    item_url = f"{BASE_URL}/collections/{COLLECTION_ID}/items/{tile_name}"
-    logging.debug(f"Fetching item for tile: '{tile_name}' at URL: {item_url}")
-    headers = {"Accept": "application/geo+json"}
+    x_center: float,
+    y_center: float,
+) -> List[Tuple[str, Optional[str]]]:
+    """Fetch STAC items intersecting a bbox around the center point and return list of (tile_name, data_href|None)."""
+    bbox_size = 1e-6
+    half_size = bbox_size / 2
+    bbox = (
+        x_center - half_size,
+        y_center - half_size,
+        x_center + half_size,
+        y_center + half_size,
+    )
+    bbox_str = ",".join(map(str, bbox))
+    search_url = (
+        f"{BASE_URL}/collections/{COLLECTION_ID}/items?bbox={bbox_str}&limit=100"
+    )
+
+    logging.debug(
+        f"Searching for tiles intersecting bbox around ({x_center}, {y_center}): {bbox}"
+    )
+    logging.debug(f"Query: {search_url}")
+
     async with semaphore:
         try:
-            async with session.get(item_url, headers=headers) as resp:
-                if resp.status != 200:
-                    return tile_name, None
-                item = await resp.json()
-                data_href = item.get("assets", {}).get("data", {}).get("href")
-                return tile_name, data_href
-        except aiohttp.ClientError:
-            return tile_name, None
+            resp = await client.get(search_url)
+            if resp.status_code != 200:
+                return []
+
+            data = resp.json()
+            results = []
+            for feature in data.get("features", []):
+                tile_name = feature.get("id")
+                data_href = feature.get("assets", {}).get("data", {}).get("href")
+                results.append((tile_name, data_href))
+            return results
+        except (httpx.HTTPError, asyncio.TimeoutError) as e:
+            logging.warning(f"Error fetching tiles at ({x_center}, {y_center}): {e}")
+            return []
+
+
+# async def _fetch_tile_data_url(
+#     client: httpx.AsyncClient,
+#     semaphore: asyncio.Semaphore,
+#     tile_name: str,
+# ) -> Tuple[str, Optional[str]]:
+#     """Fetch STAC item and return (tile_name, data_href|None)."""
+#     item_url = f"{BASE_URL}/collections/{COLLECTION_ID}/items/{tile_name}"
+#     logging.debug(f"Fetching item for tile: '{tile_name}' at URL: {item_url}")
+#     headers = {"Accept": "application/geo+json"}
+#     async with semaphore:
+#         try:
+#             resp = await client.get(item_url, headers=headers)
+#             if resp.status_code != 200:
+#                     return tile_name, None
+#                 item = resp.json()
+#                 data_href = item.get("assets", {}).get("data", {}).get("href")
+#                 return tile_name, data_href
+#         except httpx.HTTPError:
+#             return tile_name, None
 
 
 async def _download_single_tile(
-    session: aiohttp.ClientSession,
+    client: httpx.AsyncClient,
     tile_name: str,
     tile_url: str,
     output_dir: Path,
@@ -90,9 +135,14 @@ async def _download_single_tile(
             if file_path.exists():
                 file_path.unlink()
 
-            async with session.get(tile_url) as resp:
+            async with client.stream("GET", tile_url) as resp:
                 resp.raise_for_status()
-                total_bytes = resp.content_length
+                content_length_header = resp.headers.get("content-length")
+                total_bytes = (
+                    int(content_length_header)
+                    if content_length_header and content_length_header.isdigit()
+                    else None
+                )
                 desc = (
                     tile_name
                     if MAX_DOWNLOAD_RETRIES == 1
@@ -112,14 +162,14 @@ async def _download_single_tile(
 
                 bytes_written = 0
                 with open(file_path, "wb") as handle:
-                    async for chunk in resp.content.iter_chunked(chunk_size):
+                    async for chunk in resp.aiter_bytes(chunk_size=chunk_size):
                         handle.write(chunk)
                         bytes_written += len(chunk)
                         async with progress_lock:
                             progress_bar.update(len(chunk))
 
                 if total_bytes is not None and bytes_written < total_bytes:
-                    raise aiohttp.ClientPayloadError(
+                    raise OSError(
                         f"Incomplete payload: received {bytes_written} of {total_bytes} bytes"
                     )
 
@@ -131,7 +181,7 @@ async def _download_single_tile(
                     progress_bar.close()
                     tqdm.write(f"✅ {tile_name} downloaded")
             return tile_name, True, None, file_path
-        except (aiohttp.ClientError, asyncio.TimeoutError, OSError) as error:
+        except (httpx.HTTPError, asyncio.TimeoutError, OSError) as error:
             last_error = error
 
             if progress_bar is not None:
@@ -155,7 +205,7 @@ async def _download_single_tile(
 async def _download_worker(
     worker_id: int,
     queue: asyncio.Queue[Optional[Tuple[str, str]]],
-    session: aiohttp.ClientSession,
+    client: httpx.AsyncClient,
     output_dir: Path,
     progress_lock: asyncio.Lock,
     overall_bar: tqdm,
@@ -171,7 +221,7 @@ async def _download_worker(
 
             tile_name, tile_url = item
             result = await _download_single_tile(
-                session=session,
+                client=client,
                 tile_name=tile_name,
                 tile_url=tile_url,
                 output_dir=output_dir,
@@ -185,29 +235,63 @@ async def _download_worker(
             queue.task_done()
 
 
+# async def collect_existing_tiles(
+#     tile_names: List[str],
+#     concurrency: int = DEFAULT_CONCURRENCY,
+# ) -> Dict[str, str]:
+#     """Fetch all existing tiles in parallel and return tile_name -> data URL."""
+#     semaphore = asyncio.Semaphore(concurrency)
+#     timeout = httpx.Timeout(timeout=120.0)
+#     limits = httpx.Limits(max_connections=concurrency)
+#     name_to_url: Dict[str, str] = {}
+
+#     async with httpx.AsyncClient(timeout=timeout, limits=limits) as client:
+#         tasks = [
+#             asyncio.create_task(_fetch_tile_data_url(client, semaphore, tile_name))
+#             for tile_name in tile_names
+#         ]
+
+#         for tile_name in tile_names:
+#             logging.debug(f"Checking existence of tile: {tile_name}")
+
+#         with tqdm(total=len(tasks), desc="Checking tiles", unit="tile") as pbar:
+#             for task in asyncio.as_completed(tasks):
+#                 tile_name, tile_url = await task
+#                 if tile_url:
+#                     name_to_url[tile_name] = tile_url
+#                 pbar.update(1)
+
+#     return name_to_url
+
+
 async def collect_existing_tiles(
-    tile_names: List[str],
+    tiles_centers: List[Tuple[float, float]],
     concurrency: int = DEFAULT_CONCURRENCY,
-) -> Dict[str, str]:
-    """Fetch all existing tiles in parallel and return tile_name -> data URL."""
+) -> Dict[str, Optional[str]]:
+    """Fetch all existing tiles in parallel by querying with bbox around center points. Returns tile_name -> data URL (or None if not found)."""
     semaphore = asyncio.Semaphore(concurrency)
-    timeout = aiohttp.ClientTimeout(total=120)
-    connector = aiohttp.TCPConnector(limit=concurrency)
-    name_to_url: Dict[str, str] = {}
+    timeout = httpx.Timeout(timeout=60.0, connect=30.0)
+    limits = httpx.Limits(
+        max_connections=concurrency, max_keepalive_connections=concurrency
+    )
+    name_to_url: Dict[str, Optional[str]] = {}
 
-    async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
-        tasks = [
-            asyncio.create_task(_fetch_tile_data_url(session, semaphore, tile_name))
-            for tile_name in tile_names
-        ]
-
-        for tile_name in tile_names:
-            logging.debug(f"Checking existence of tile: {tile_name}")
+    async with httpx.AsyncClient(
+        timeout=timeout, limits=limits, headers=STAC_HEADERS
+    ) as client:
+        tasks: List[asyncio.Task[List[Tuple[str, Optional[str]]]]] = []
+        for x_center, y_center in tiles_centers:
+            logging.debug(f"Checking existence of tile: {x_center}, {y_center}")
+            tasks.append(
+                asyncio.create_task(
+                    _fetch_tiles_by_bbox(client, semaphore, x_center, y_center)
+                )
+            )
 
         with tqdm(total=len(tasks), desc="Checking tiles", unit="tile") as pbar:
             for task in asyncio.as_completed(tasks):
-                tile_name, tile_url = await task
-                if tile_url:
+                tile_results = await task
+                for tile_name, tile_url in tile_results:
                     name_to_url[tile_name] = tile_url
                 pbar.update(1)
 
@@ -220,8 +304,10 @@ async def download_tiles(
     concurrency: int = DEFAULT_CONCURRENCY,
 ) -> Tuple[int, List[Tuple[str, str]], List[Path]]:
     """Download tiles in parallel. Returns (downloaded_count, failed list)."""
-    timeout = aiohttp.ClientTimeout(total=0)
-    connector = aiohttp.TCPConnector(limit=concurrency)
+    timeout = httpx.Timeout(timeout=None, connect=30.0, write=60.0)
+    limits = httpx.Limits(
+        max_connections=concurrency, max_keepalive_connections=concurrency
+    )
     failures: List[Tuple[str, str]] = []
     downloaded_count = 0
     downloaded_files: List[Path] = []
@@ -236,7 +322,9 @@ async def download_tiles(
     for _ in range(worker_count):
         queue.put_nowait(None)
 
-    async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
+    async with httpx.AsyncClient(
+        timeout=timeout, limits=limits, headers=STAC_HEADERS
+    ) as client:
         results: List[Tuple[str, bool, Optional[str], Optional[Path]]] = []
         with tqdm(
             total=len(ordered_tiles),
@@ -251,7 +339,7 @@ async def download_tiles(
                     _download_worker(
                         worker_id=worker_id,
                         queue=queue,
-                        session=session,
+                        client=client,
                         output_dir=output_dir,
                         progress_lock=progress_lock,
                         overall_bar=overall_bar,
@@ -281,10 +369,9 @@ async def download_tiles(
 def validate_downloaded_files(
     downloaded_files: List[Path],
 ) -> Tuple[int, List[Tuple[str, str]]]:
-    """Validate produced LAZ files using PDAL if available, else laspy fallback."""
+    """Validate produced LAZ files using PDAL."""
     valid_count = 0
     invalid_files: List[Tuple[str, str]] = []
-    has_pdal = shutil.which("pdal") is not None
 
     if not downloaded_files:
         return valid_count, invalid_files
@@ -296,28 +383,16 @@ def validate_downloaded_files(
             is_valid = False
             error_message = "unknown validation error"
 
-            if has_pdal:
-                proc = subprocess.run(
-                    ["pdal", "info", "--summary", str(file_path)],
-                    capture_output=True,
-                    text=True,
-                )
-                if proc.returncode == 0:
-                    is_valid = True
-                else:
-                    stderr_text = proc.stderr.strip()
-                    error_message = stderr_text if stderr_text else "pdal info failed"
-
-            if not is_valid and laspy is not None:
-                try:
-                    with laspy.open(file_path) as las_file:
-                        _ = las_file.header.point_count
-                    is_valid = True
-                except Exception as err:
-                    error_message = str(err)
-
-            if not is_valid and not has_pdal and laspy is None:
-                error_message = "neither pdal nor laspy available for validation"
+            proc = subprocess.run(
+                ["pdal", "info", "--summary", str(file_path)],
+                capture_output=True,
+                text=True,
+            )
+            if proc.returncode == 0:
+                is_valid = True
+            else:
+                stderr_text = proc.stderr.strip()
+                error_message = stderr_text if stderr_text else "pdal info failed"
 
             if is_valid:
                 valid_count += 1
@@ -330,18 +405,17 @@ def validate_downloaded_files(
 
 
 async def check_tile_exists_async(
-    session: aiohttp.ClientSession,
+    client: httpx.AsyncClient,
     semaphore: asyncio.Semaphore,
     tile_name: str,
 ) -> bool:
     """Check if a specific tile exists via direct item GET."""
     url = f"{BASE_URL}/collections/{COLLECTION_ID}/items/{tile_name}"
-    headers = {"Accept": "application/geo+json"}
     async with semaphore:
         try:
-            async with session.get(url, headers=headers) as resp:
-                return resp.status == 200
-        except aiohttp.ClientError:
+            resp = await client.get(url)
+            return resp.status_code == 200
+        except httpx.HTTPError:
             return False
 
 
@@ -356,15 +430,25 @@ async def download_lidar_hd_data(
 ) -> None:
     """Main function to download LIDAR HD data for a given EPSG:2154 bounding box."""
     x_min, x_max, y_min, y_max = bbox_to_tile_range(xmin, xmax, ymin, ymax)
-    tile_names = generate_tile_names(x_min, x_max, y_min, y_max)
+    tiles_centers = generate_tiles_center_points(x_min, x_max, y_min, y_max)
+    tiles_centers_epsg4326 = [convert_to_epsg_4326(x, y) for x, y in tiles_centers]
 
     logging.info(
-        f"Generated {len(tile_names)} tile names for the specified bounding box."
+        f"Generated {len(tiles_centers)} tile centers for the specified bounding box."
     )
 
-    name_to_url = await collect_existing_tiles(tile_names, concurrency=concurrency)
+    logging.debug("Tiles centers:")
+    for (x, y), (lon, lat) in zip(tiles_centers, tiles_centers_epsg4326):
+        logging.debug(f"  EPSG:2154({x}, {y}) -> EPSG:4326({lon}, {lat})")
+
+    name_to_url_with_nones = await collect_existing_tiles(
+        tiles_centers=tiles_centers_epsg4326, concurrency=concurrency
+    )
+    name_to_url = {
+        name: url for name, url in name_to_url_with_nones.items() if url is not None
+    }
     logging.info(
-        f"Found {len(name_to_url)} existing tiles out of {len(tile_names)} candidates."
+        f"Found {len(name_to_url)} existing tiles out of {len(name_to_url_with_nones)} candidates."
     )
 
     downloaded_count, failures, downloaded_files = await download_tiles(
@@ -387,85 +471,85 @@ async def download_lidar_hd_data(
             logging.error(f"  - {file_name}: {error}")
 
 
-async def main() -> None:
-    output_dir = Path("downloaded_tiles")
-    output_dir.mkdir(exist_ok=True)
+# async def main() -> None:
+#     output_dir = Path("downloaded_tiles")
+#     output_dir.mkdir(exist_ok=True)
 
-    concurrency = DEFAULT_CONCURRENCY
-    # ---- YOUR EPSG:2154 BOUNDING BOX ----
-    # Example: around the tiles you showed (adjust these coordinates)
-    xmin, ymin = 649000, 6862000  # SW corner
-    xmax, ymax = 650000, 6863000  # NE corner
+#     concurrency = DEFAULT_CONCURRENCY
+#     # ---- YOUR EPSG:2154 BOUNDING BOX ----
+#     # Example: around the tiles you showed (adjust these coordinates)
+#     xmin, ymin = 649000, 6862000  # SW corner
+#     xmax, ymax = 650000, 6863000  # NE corner
 
-    print("Generating tile names for EPSG:2154 bbox:")
-    print(f"  xmin: {xmin}, xmax: {xmax}")
-    print(f"  ymin: {ymin}, ymax: {ymax}")
+#     print("Generating tile names for EPSG:2154 bbox:")
+#     print(f"  xmin: {xmin}, xmax: {xmax}")
+#     print(f"  ymin: {ymin}, ymax: {ymax}")
 
-    # Convert to tile indices (1km tiles)
-    x_min, x_max, y_min, y_max = bbox_to_tile_range(xmin, xmax, ymin, ymax)
-    print(f"\nTile range: x={x_min:04d} to {x_max:04d}, y={y_min:04d} to {y_max:04d}")
+#     # Convert to tile indices (1km tiles)
+#     x_min, x_max, y_min, y_max = bbox_to_tile_range(xmin, xmax, ymin, ymax)
+#     print(f"\nTile range: x={x_min:04d} to {x_max:04d}, y={y_min:04d} to {y_max:04d}")
 
-    # Generate all possible names
-    tile_names = generate_tile_names(x_min, x_max, y_min, y_max)
-    print(f"\nGenerated {len(tile_names)} tile names:")
+#     # Generate all possible names
+#     tile_names = generate_tile_names(x_min, x_max, y_min, y_max)
+#     print(f"\nGenerated {len(tile_names)} tile names:")
 
-    # Show first few and last few
-    for name in tile_names[:3] + tile_names[-3:]:
-        print(f"  {name}")
+#     # Show first few and last few
+#     for name in tile_names[:3] + tile_names[-3:]:
+#         print(f"  {name}")
 
-    # Optionally verify which ones actually exist (slow for large areas)
-    print(f"\nChecking existence of first 5 tiles (optional, async)...")
-    preview_tiles = tile_names[:5]
-    timeout = aiohttp.ClientTimeout(total=60)
-    connector = aiohttp.TCPConnector(limit=5)
-    semaphore = asyncio.Semaphore(5)
-    async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
-        tasks = [
-            asyncio.create_task(check_tile_exists_async(session, semaphore, name))
-            for name in preview_tiles
-        ]
-        existence_results = await asyncio.gather(*tasks)
+#     # Optionally verify which ones actually exist (slow for large areas)
+#     print(f"\nChecking existence of first 5 tiles (optional, async)...")
+#     preview_tiles = tile_names[:5]
+#     timeout = httpx.Timeout(timeout=60.0)
+#     limits = httpx.Limits(max_connections=5)
+#     semaphore = asyncio.Semaphore(5)
+#     async with httpx.AsyncClient(timeout=timeout, limits=limits) as client:
+#         tasks = [
+#             asyncio.create_task(check_tile_exists_async(client, semaphore, name))
+#             for name in preview_tiles
+#         ]
+#         existence_results = await asyncio.gather(*tasks)
 
-    for name, exists in zip(preview_tiles, existence_results):
-        print(f"  {name}: {'✅' if exists else '❌'}")
+#     for name, exists in zip(preview_tiles, existence_results):
+#         print(f"  {name}: {'✅' if exists else '❌'}")
 
-    # Example: bulk fetch all existing tiles
-    print("\n" + "=" * 60)
-    print("Fetching all tiles in bbox...")
+#     # Example: bulk fetch all existing tiles
+#     print("\n" + "=" * 60)
+#     print("Fetching all tiles in bbox...")
 
-    name_to_url = await collect_existing_tiles(tile_names, concurrency=concurrency)
-    print(
-        f"Found {len(name_to_url)} existing tiles out of {len(tile_names)} candidates."
-    )
+#     name_to_url = await collect_existing_tiles(tile_names, concurrency=concurrency)
+#     print(
+#         f"Found {len(name_to_url)} existing tiles out of {len(tile_names)} candidates."
+#     )
 
-    # Download all existing tiles
-    print("\n" + "=" * 60)
-    print(
-        f"Downloading {len(name_to_url)} existing tiles in parallel (max {concurrency})..."
-    )
-    downloaded_count, failures, downloaded_files = await download_tiles(
-        name_to_url,
-        output_dir,
-        concurrency=concurrency,
-    )
+#     # Download all existing tiles
+#     print("\n" + "=" * 60)
+#     print(
+#         f"Downloading {len(name_to_url)} existing tiles in parallel (max {concurrency})..."
+#     )
+#     downloaded_count, failures, downloaded_files = await download_tiles(
+#         name_to_url,
+#         output_dir,
+#         concurrency=concurrency,
+#     )
 
-    print(f"\n✅ Downloaded {downloaded_count}/{len(name_to_url)} files.")
-    if failures:
-        print(f"❌ {len(failures)} downloads failed:")
-        for tile_name, error in failures:
-            print(f"  - {tile_name}: {error}")
+#     print(f"\n✅ Downloaded {downloaded_count}/{len(name_to_url)} files.")
+#     if failures:
+#         print(f"❌ {len(failures)} downloads failed:")
+#         for tile_name, error in failures:
+#             print(f"  - {tile_name}: {error}")
 
-    print("\n" + "=" * 60)
-    print("Validating downloaded files...")
-    valid_count, invalid_files = validate_downloaded_files(downloaded_files)
-    print(f"✅ Valid files: {valid_count}/{len(downloaded_files)}")
-    if invalid_files:
-        print(f"❌ Invalid files: {len(invalid_files)}")
-        for file_name, error in invalid_files:
-            print(f"  - {file_name}: {error}")
+#     print("\n" + "=" * 60)
+#     print("Validating downloaded files...")
+#     valid_count, invalid_files = validate_downloaded_files(downloaded_files)
+#     print(f"✅ Valid files: {valid_count}/{len(downloaded_files)}")
+#     if invalid_files:
+#         print(f"❌ Invalid files: {len(invalid_files)}")
+#         for file_name, error in invalid_files:
+#             print(f"  - {file_name}: {error}")
 
-    print("\nDone!")
+#     print("\nDone!")
 
 
-if __name__ == "__main__":
-    asyncio.run(main())
+# if __name__ == "__main__":
+#     asyncio.run(main())
