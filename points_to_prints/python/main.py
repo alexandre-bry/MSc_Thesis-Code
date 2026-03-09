@@ -177,7 +177,7 @@ def run_command_with_tqdm_logging(command: list[str]) -> int:
 
 @app.command("merge_las")
 def merge_las(
-    input_file: Annotated[
+    input_files: Annotated[
         List[Path],
         typer.Option(
             "-i",
@@ -197,6 +197,13 @@ def merge_las(
             help="Path to the output .laz file.",
         ),
     ],
+    overwrite: Annotated[
+        bool,
+        typer.Option(
+            "--overwrite",
+            help="Whether to overwrite the files.",
+        ),
+    ] = False,
     verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
 ):
     setup_logging(verbose=Verbose.from_int(verbose_int))
@@ -204,7 +211,9 @@ def merge_las(
     with logging_redirect_tqdm():
         output_file.parent.mkdir(parents=True, exist_ok=True)
 
-        merge_files(input_files=input_file, output_file=output_file)
+        merge_files(
+            input_files=input_files, output_file=output_file, overwrite=overwrite
+        )
         logging.info(f"Successfully merged files into {output_file}")
 
 
@@ -334,6 +343,18 @@ def run_pipeline(
             readable=True,
         ),
     ],
+    bd_topo_file: Annotated[
+        Path,
+        typer.Option(
+            "-b",
+            "--bd_topo_file",
+            help="Path to the BD_TOPO parquet file.",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ],
     overwrite: Annotated[
         bool,
         typer.Option(
@@ -358,22 +379,38 @@ def run_pipeline(
             logging.error(f"No .laz files found in directory: {tile_dir}")
             return
 
-        command = ["pixi", "run", "cpp-build"]
-        logging.info(f"Building pipeline with command: {' '.join(command)}")
+        # Build the C++ tools using pixi
+        command = ["pixi", "run", "--quiet", "cpp-build"]
+        logging.info(f"Building the C++ tools: {' '.join(command)}")
         return_code = run_command_with_tqdm_logging(command)
         if return_code != 0:
-            logging.error("Pipeline build failed.")
+            logging.error("C++ build failed.")
         else:
-            logging.info("Pipeline build completed successfully.")
+            logging.info("C++ tools built successfully.")
 
+        # Process each .laz file with the C++ pipeline
         total_files = len(laz_files)
+        distances_files = []
+        edges_files = []
         for index, laz_file in enumerate(laz_files, start=1):
             logging.info(
                 f"\n\nO----- [{index}/{total_files}] Processing tile: {laz_file.name} -----O\n"
             )
+            distance_file = tile_dir / f"{laz_file.stem}-distances.laz"
+            edge_file = tile_dir / f"{laz_file.stem}-edges.laz"
+            distances_files.append(distance_file)
+            edges_files.append(edge_file)
+
+            if distance_file.exists() and edge_file.exists() and not overwrite:
+                logging.info(
+                    f"Output files for {laz_file.name} already exist. Skipping processing."
+                )
+                continue
+
             command = [
                 "pixi",
                 "run",
+                "--quiet",
                 "cpp-run-only",
                 "distances_in_order",
                 "-i",
@@ -381,20 +418,91 @@ def run_pipeline(
                 "-t",
                 str(tile_dir / f"{laz_file.stem}-trajectory.txt"),
                 "-d",
-                str(tile_dir / f"{laz_file.stem}-distances.laz"),
+                str(distance_file),
                 "-e",
-                str(tile_dir / f"{laz_file.stem}-edges.laz"),
+                str(edge_file),
             ]
 
             if overwrite:
                 command.append("--overwrite")
 
-            logging.info(f"Running pipeline with command: {' '.join(command)}")
+            logging.debug(
+                f"Processing {laz_file.name} with command: {' '.join(command)}"
+            )
             return_code = run_command_with_tqdm_logging(command)
+            logging.debug(f"Return code for {laz_file.name}: {return_code}")
             if return_code != 0:
-                logging.error("Pipeline failed.")
+                logging.error(f"Failed to process {laz_file.name}.")
             else:
-                logging.info("Pipeline completed successfully.")
+                logging.info(f"Successfully processed {laz_file.name}.")
+
+    # After processing all files, merge the distances and edges files into single files
+    logging.info("\n\nO----- Merging files -----O\n")
+
+    merged_distances_file = tile_dir / "merged_distances.laz"
+    merged_edges_file = tile_dir / "merged_edges.laz"
+
+    try:
+        merge_las(
+            input_files=distances_files,
+            output_file=merged_distances_file,
+            verbose_int=verbose_int,
+            overwrite=overwrite,
+        )
+    except FileExistsError as e:
+        logging.info(f"Distances file merge skipped: {e}")
+    except Exception as e:
+        logging.error(
+            f"An unexpected error occurred while merging distances files: {e}"
+        )
+
+    try:
+        merge_las(
+            input_files=edges_files,
+            output_file=merged_edges_file,
+            verbose_int=verbose_int,
+            overwrite=overwrite,
+        )
+    except FileExistsError as e:
+        logging.info(f"Edges file merge skipped: {e}")
+    except Exception as e:
+        logging.error(f"An unexpected error occurred while merging edges files: {e}")
+
+    # Then, compute the roofprints using the merged edges
+    logging.info("\n\nO----- Computing roofprints -----O\n")
+    roofprints_file = tile_dir / "roofprints.parquet"
+    if roofprints_file.exists() and not overwrite:
+        logging.info(
+            f"Roofprints file already exists: {roofprints_file}. Skipping roofprint computation."
+        )
+    else:
+        command = [
+            "pixi",
+            "run",
+            "--quiet",
+            "cpp-run-only",
+            "compute_roofprints",
+            "-i",
+            str(merged_edges_file),
+            "-b",
+            str(bd_topo_file),
+            "-o",
+            roofprints_file,
+        ]
+
+        if overwrite:
+            command.append("--overwrite")
+
+        logging.debug(
+            f"Running roofprint computation with command: {' '.join(command)}"
+        )
+        return_code = run_command_with_tqdm_logging(command)
+        if return_code != 0:
+            logging.error("Failed to compute roofprints.")
+        else:
+            logging.info("Successfully computed roofprints.")
+
+    logging.info("\n\nPipeline completed.")
 
 
 @app.command("test")

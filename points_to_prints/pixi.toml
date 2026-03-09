@@ -18,7 +18,7 @@ typer = ">=0.21.1,<1"
 
 [feature.python.tasks]
 py = { cmd = "cd \"$INIT_CWD\" && python" }
-py-run = { cmd = "cd \"$INIT_CWD\" && python python/main.py" }
+py-run = { cmd = "cd \"$INIT_CWD\" && python \"$PIXI_PROJECT_ROOT\"/python/main.py" }
 
 [feature.cpp.dependencies]
 just = ">=1.46.0,<2"

@@ -5,7 +5,7 @@
 
 @run-only mode *ARGS:
     just _print "Running in {{ uppercamelcase(mode) }} mode"
-    find cpp/build/{{ uppercamelcase(mode) }}/executable/ -type f -exec ./{} {{ ARGS }} \;
+    sh -eu -c 'bin=$(find "cpp/build/{{ uppercamelcase(mode) }}/executable" -maxdepth 1 -type f | head -n 1); [ -n "$bin" ] || { echo "No executable found in cpp/build/{{ uppercamelcase(mode) }}/executable" >&2; exit 1; }; exec "$bin" "$@"' _ {{ ARGS }}
 
 # Builds the binary in the given mode. It will configure the build system if necessary.
 @build mode:

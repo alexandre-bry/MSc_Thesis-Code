@@ -47,13 +47,14 @@ def create_merge_pipeline(input_files: List[Path], output_file: Path) -> Dict:
     return {"pipeline": pipeline}
 
 
-def merge_files(input_files: List[Path], output_file: Path) -> None:
+def merge_files(input_files: List[Path], output_file: Path, overwrite: bool) -> None:
     """
     Merge multiple point cloud files into a single output file.
 
     Args:
         input_files: List of input point cloud file paths
         output_file: Output file path
+        overwrite: Whether to overwrite the output file if it already exists
 
     Raises:
         FileNotFoundError: If any input file doesn't exist
@@ -70,6 +71,10 @@ def merge_files(input_files: List[Path], output_file: Path) -> None:
 
     output_path = Path(output_file)
     output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Check if the output file already exists
+    if output_path.exists() and not overwrite:
+        raise FileExistsError(f"Output file already exists: {output_path}")
 
     # Create pipeline
     pipeline = create_merge_pipeline(input_files, output_file)
