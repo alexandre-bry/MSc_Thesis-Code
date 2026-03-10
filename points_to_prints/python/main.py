@@ -2,19 +2,18 @@ import asyncio
 import logging
 import os
 import pty
+import re
+import subprocess
 import sys
 import threading
 from enum import Enum
 from pathlib import Path
-import re
-import subprocess
 from typing import Annotated, List
 
 import typer
-from tqdm.contrib.logging import logging_redirect_tqdm
-
-from las_manipulations import merge_files, split_file
 from download import download_lidar_hd_data
+from las_manipulations import merge_files, split_file
+from tqdm.contrib.logging import logging_redirect_tqdm
 
 
 class Verbose(Enum):
@@ -86,6 +85,11 @@ def setup_logging(verbose: Verbose):
     root_logger.handlers.clear()
     root_logger.addHandler(handler)
     root_logger.setLevel(verbose.value)
+
+    if verbose.value == logging.DEBUG:
+        logging.getLogger("httpx").setLevel(logging.INFO)
+    else:
+        logging.getLogger("httpx").setLevel(logging.WARNING)
 
     return verbose != Verbose.Error
 
@@ -284,12 +288,12 @@ def download_lidar_hd(
             help="Bounding box to download data for, in the format 'xmin,ymin,xmax,ymax'.",
         ),
     ],
-    output_dir: Annotated[
+    output_path_template: Annotated[
         Path,
         typer.Option(
             "-o",
-            "--output_dir",
-            help="Directory to save the downloaded files.",
+            "--output_path",
+            help="Path to save the downloaded files. The path can contain the values {xmin}, {ymin}, {xmax}, {ymax}, {file_name} which will be replaced with the corresponding values. The values also have their kilometre equivalents {xmin_km}, {ymin_km}, {xmax_km}, {ymax_km}.",
         ),
     ],
     overwrite: Annotated[
@@ -304,14 +308,12 @@ def download_lidar_hd(
     setup_logging(verbose=Verbose.from_int(verbose_int))
 
     with logging_redirect_tqdm():
-        output_dir.mkdir(parents=True, exist_ok=True)
-
         bbox_values = bbox.split(",")
         if len(bbox_values) != 4:
             raise ValueError(
                 "Bounding box must be in the format 'xmin,ymin,xmax,ymax'."
             )
-        xmin, ymin, xmax, ymax = map(float, bbox_values)
+        xmin, ymin, xmax, ymax = map(int, bbox_values)
 
         asyncio.run(
             download_lidar_hd_data(
@@ -319,9 +321,60 @@ def download_lidar_hd(
                 ymin=ymin,
                 xmax=xmax,
                 ymax=ymax,
-                output_dir=output_dir,
+                output_path_template=output_path_template,
                 overwrite=overwrite,
             )
+        )
+
+
+@app.command("run_pipeline_before")
+def run_pipeline_before(
+    tile_dir: Annotated[
+        Path,
+        typer.Option(
+            "-t",
+            "--tile_dir",
+            help="Directory containing the downloaded tile .laz files.",
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+        ),
+    ],
+    bd_topo_file: Annotated[
+        Path,
+        typer.Option(
+            "-b",
+            "--bd_topo_file",
+            help="Path to the BD_TOPO parquet file.",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ],
+    overwrite: Annotated[
+        bool,
+        typer.Option(
+            "--overwrite",
+            help="Whether to overwrite the output files.",
+        ),
+    ] = False,
+    verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
+):
+    setup_logging(verbose=Verbose.from_int(verbose_int))
+
+    with logging_redirect_tqdm():
+        source_laz_file = tile_dir / "lidarhd.copc.laz"
+
+        # Split the source .laz file into multiple files based on the "PointSourceId" attribute
+        split_las(
+            input_file=source_laz_file,
+            output_file_template=tile_dir / "axis_#.laz",
+            dimension="PointSourceId",
+            use_value_in_filename=True,
+            overwrite=overwrite,
+            verbose_int=verbose_int,
         )
 
 
@@ -372,7 +425,7 @@ def run_pipeline(
             ]
         )
         if len(laz_files) == 0:
-            logging.error(f"No .laz files found in directory: {tile_dir}")
+            logging.error(f"No axis_*.laz files found in directory: {tile_dir}")
             return
 
         # Build the C++ tools using pixi

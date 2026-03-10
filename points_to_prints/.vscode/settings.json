@@ -1,17 +1,25 @@
 {
-    "python.defaultInterpreterPath": "${workspaceFolder}/.pixi/envs/default/bin/python",
-    "python.venvPath": ".",
-    "python.terminal.activateEnvironment": true,
-    "python.analysis.typeCheckingMode": "standard",
-    "editor.formatOnSave": true,
-    "cmake.sourceDirectory": "${workspaceFolder}/cpp",
-    "cmake.buildDirectory": "${workspaceFolder}/cpp/build",
-    "cmake.cmakePath": "${workspaceFolder}/.pixi/envs/default/bin/cmake",
-    "cmake.buildOnSave": false,
-    "cmake.configureOnEdit": false,
-    "clangd.fallbackFlags": [
-        "-I${workspaceFolder}/include"
-    ],
-    "python-envs.defaultEnvManager": "ms-python.python:system",
-    "cSpell.language": "en-GB"
+  "editor.formatOnSave": true,
+  "cSpell.language": "en-GB",
+
+  "[python]": {
+    "editor.defaultFormatter": "ms-python.black-formatter",
+    "editor.codeActionsOnSave": {
+      "source.organizeImports": "explicit"
+    }
+  },
+  "isort.args": ["--profile", "black"],
+
+  "python.defaultInterpreterPath": "${workspaceFolder}/.pixi/envs/default/bin/python",
+  "python.venvPath": ".",
+  "python.terminal.activateEnvironment": true,
+  "python.analysis.typeCheckingMode": "standard",
+  "python-envs.defaultEnvManager": "ms-python.python:system",
+
+  "cmake.sourceDirectory": "${workspaceFolder}/cpp",
+  "cmake.buildDirectory": "${workspaceFolder}/cpp/build",
+  "cmake.cmakePath": "${workspaceFolder}/.pixi/envs/default/bin/cmake",
+  "cmake.buildOnSave": false,
+  "cmake.configureOnEdit": false,
+  "clangd.fallbackFlags": ["-I${workspaceFolder}/include"]
 }
