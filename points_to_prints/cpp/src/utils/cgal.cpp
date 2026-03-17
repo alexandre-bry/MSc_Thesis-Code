@@ -34,11 +34,9 @@ CustomCGAL::Angle CustomCGAL::angle(const Vector_3 &u, const Vector_3 &v) {
 }
 
 template <typename PointType, typename VectorType>
-bool _are_almost_collinear(const PointType &p1, const PointType &p2,
-                           const PointType &p3, CustomCGAL::Angle tolerance) {
-    VectorType v1 = p2 - p1;
-    VectorType v2 = p3 - p1;
-    double angle_rad = _angle_in_radians(v1, v2);
+bool _are_almost_parallel(const VectorType &u, const VectorType &v,
+                          CustomCGAL::Angle tolerance) {
+    double angle_rad = _angle_in_radians(u, v);
 
     // Ensure the angle is in the range [0, 90]
     if (angle_rad > CGAL_PI) {
@@ -50,12 +48,26 @@ bool _are_almost_collinear(const PointType &p1, const PointType &p2,
     return angle_rad <= tolerance.in_radians();
 }
 
+bool CustomCGAL::are_almost_parallel(const Vector_2 &u, const Vector_2 &v,
+                                     Angle tolerance) {
+    return _are_almost_parallel<Point_2, Vector_2>(u, v, tolerance);
+}
+
+bool CustomCGAL::are_almost_parallel(const Vector_3 &u, const Vector_3 &v,
+                                     Angle tolerance) {
+    return _are_almost_parallel<Point_3, Vector_3>(u, v, tolerance);
+}
+
 bool CustomCGAL::are_almost_collinear(const Point_2 &p1, const Point_2 &p2,
                                       const Point_2 &p3, Angle tolerance) {
-    return _are_almost_collinear<Point_2, Vector_2>(p1, p2, p3, tolerance);
+    Vector_2 v1 = p2 - p1;
+    Vector_2 v2 = p3 - p1;
+    return are_almost_parallel(v1, v2, tolerance);
 }
 
 bool CustomCGAL::are_almost_collinear(const Point_3 &p1, const Point_3 &p2,
                                       const Point_3 &p3, Angle tolerance) {
-    return _are_almost_collinear<Point_3, Vector_3>(p1, p2, p3, tolerance);
+    Vector_3 v1 = p2 - p1;
+    Vector_3 v2 = p3 - p1;
+    return are_almost_parallel(v1, v2, tolerance);
 }

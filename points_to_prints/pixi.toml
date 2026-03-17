@@ -5,6 +5,9 @@ name = "points_to_prints"
 platforms = ["linux-64"]
 version = "0.1.0"
 
+[dependencies]
+entwine = ">=3.2.1,<4"
+
 [feature.python.dependencies]
 python = ">=3.14.0,<4"
 gdal = ">=3.12.1,<4"

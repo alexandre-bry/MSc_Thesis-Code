@@ -16,6 +16,7 @@
 #include "las/enums.hpp"
 #include "las/trajectory.hpp"
 #include "utils/cgal.hpp"
+#include "utils/strong_types.hpp"
 
 const double NEIGHBOUR_MAX_GPS_TIME = 1e-5;
 const double NEIGHBOUR_MAX_HORIZONTAL_DISTANCE = 10.0;
@@ -395,56 +396,6 @@ struct Points3DAttrGPSSorted : Points3DWithAttributes {
 };
 
 namespace PtsStructs {
-
-template <typename Tag, typename UnderlyingType> class StrongType {
-  private:
-    UnderlyingType value;
-
-  public:
-    explicit StrongType(UnderlyingType v = 0) : value(v) {}
-    UnderlyingType get() const { return value; }
-    operator UnderlyingType() const { return value; }
-
-    // // Comparison operators
-    // bool operator<(const StrongType &other) const {
-    //     return value < other.value;
-    // }
-    // bool operator<=(const StrongType &other) const {
-    //     return value <= other.value;
-    // }
-    // bool operator>(const StrongType &other) const {
-    //     return value > other.value;
-    // }
-    // bool operator>=(const StrongType &other) const {
-    //     return value >= other.value;
-    // }
-    // bool operator==(const StrongType &other) const {
-    //     return value == other.value;
-    // }
-    // bool operator!=(const StrongType &other) const {
-    //     return value != other.value;
-    // }
-
-    // Arithmetic operators
-    StrongType &operator++() {
-        ++value;
-        return *this;
-    }
-    StrongType operator++(int) {
-        StrongType tmp(*this);
-        ++value;
-        return tmp;
-    }
-    StrongType &operator--() {
-        --value;
-        return *this;
-    }
-    StrongType operator--(int) {
-        StrongType tmp(*this);
-        --value;
-        return tmp;
-    }
-};
 
 struct PointIdTag {};
 struct RayIdTag {};

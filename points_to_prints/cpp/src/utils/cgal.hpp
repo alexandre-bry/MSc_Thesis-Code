@@ -105,14 +105,17 @@ struct Angle {
 Angle angle(const Vector_2 &u, const Vector_2 &v);
 Angle angle(const Vector_3 &u, const Vector_3 &v);
 
+bool are_almost_parallel(const Vector_2 &u, const Vector_2 &v, Angle tolerance);
+bool are_almost_parallel(const Vector_3 &u, const Vector_3 &v, Angle tolerance);
+
 /**
  * @brief Check if three points are collinear up to a certain tolerance.
  *
  * @param p1
  * @param p2
  * @param p3
- * @param tolerance: The maximum angle between the vectors (p2 - p1) and (p3 -
- * p1) for the points to be considered collinear.
+ * @param tolerance: The maximum angle between the vectors (p2 - p1) and (p3
+ * - p1) for the points to be considered collinear.
  * @return true if the points are collinear, false otherwise
  */
 bool are_almost_collinear(const Point_2 &p1, const Point_2 &p2,

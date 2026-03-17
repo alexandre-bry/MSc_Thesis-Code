@@ -321,7 +321,7 @@ RayId ScanLine3D::get_closest_ray_by_two_directions(
 }
 
 void Topology3D::init(Trajectory trajectory) {
-    // This function is called by both constructors to avoid code duplication
+    // This function is called by all constructors to avoid code duplication
     // The implementation is in the .cpp file to avoid including the Trajectory
     // class in the header file
 

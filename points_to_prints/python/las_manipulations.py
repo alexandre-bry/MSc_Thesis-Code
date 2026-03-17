@@ -4,11 +4,11 @@ Uses PDAL to perform the merge operation.
 """
 
 import json
-from pathlib import Path
-from typing import List, Dict
-from pdal import Pipeline, Reader, Filter, Writer
 import logging
+from pathlib import Path
+from typing import Dict, List
 
+from pdal import Filter, Pipeline, Reader, Writer
 from tqdm import tqdm
 
 
@@ -206,3 +206,34 @@ def split_file(
         )
         pipeline_writer = Pipeline([writer], arrays=[arr])
         pipeline_writer.execute()
+
+
+def identity_convert(input_file: Path, output_file: Path, overwrite: bool) -> None:
+    """
+    Convert a file to another format.
+
+    Args:
+        input_file: Input file path
+        output_file: Output file path
+        overwrite: Whether to overwrite the output file if it already exists
+
+    Raises:
+        FileNotFoundError: If the input file doesn't exist
+        FileExistsError: If the output file already exists and overwrite is False
+    """
+    if not input_file.exists():
+        raise FileNotFoundError(f"Input file not found: {input_file}")
+
+    output_path = Path(output_file)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Check if the output file already exists
+    if output_path.exists() and not overwrite:
+        raise FileExistsError(f"Output file already exists: {output_path}")
+
+    # Create pipeline
+    reader = Reader(str(input_file))
+    writer = Writer(str(output_file), extra_dims="all")
+
+    pipeline = Pipeline([reader, writer])
+    pipeline.execute()

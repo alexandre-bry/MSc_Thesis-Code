@@ -10,6 +10,7 @@
 
 #include <ogr_geometry.h>
 
+#include "constants.hpp"
 #include "geometry.hpp"
 #include "kd_tree.hpp"
 #include "las/reader.hpp"
@@ -88,11 +89,6 @@ void select_points_per_outlines(
     }
     bar.finish();
 }
-
-const double METRIC_INTERVAL = 0.3;
-const double EDGE_OPTIMIZATION_INTERVAL = 0.5;
-const double PROJECTION_CHECK_MARGIN = 1.0;
-
 double compute_metric(const std::vector<double> &offsets,
                       const std::vector<double> &weights,
                       double chosen_offset) {

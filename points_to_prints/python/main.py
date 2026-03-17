@@ -12,7 +12,7 @@ from typing import Annotated, List
 
 import typer
 from download import download_lidar_hd_data
-from las_manipulations import merge_files, split_file
+from las_manipulations import identity_convert, merge_files, split_file
 from tqdm.contrib.logging import logging_redirect_tqdm
 
 
@@ -175,49 +175,10 @@ def run_command_with_tqdm_logging(command: list[str]) -> int:
     return return_code
 
 
-@app.command("merge_las")
-def merge_las(
-    input_files: Annotated[
-        List[Path],
-        typer.Option(
-            "-i",
-            "--input",
-            help="Paths to the .laz files. Can be used multiple times.",
-            exists=True,
-            file_okay=True,
-            dir_okay=False,
-            readable=True,
-        ),
-    ],
-    output_file: Annotated[
-        Path,
-        typer.Option(
-            "-o",
-            "--output_file",
-            help="Path to the output .laz file.",
-        ),
-    ],
-    overwrite: Annotated[
-        bool,
-        typer.Option(
-            "--overwrite",
-            help="Whether to overwrite the files.",
-        ),
-    ] = False,
-    verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
-):
-    setup_logging(verbose=Verbose.from_int(verbose_int))
-
-    with logging_redirect_tqdm():
-        output_file.parent.mkdir(parents=True, exist_ok=True)
-
-        merge_files(
-            input_files=input_files, output_file=output_file, overwrite=overwrite
-        )
-        logging.info(f"Successfully merged files into {output_file}")
-
-
-@app.command("split_las")
+@app.command(
+    "split_las",
+    help="Split a .laz file into one file for each value of a specified dimension.",
+)
 def split_las(
     input_file: Annotated[
         Path,
@@ -278,7 +239,51 @@ def split_las(
         )
 
 
-@app.command("download_lidar_hd")
+@app.command("merge_las", help="Merge multiple .laz files into a single .laz file.")
+def merge_las(
+    input_files: Annotated[
+        List[Path],
+        typer.Option(
+            "-i",
+            "--input",
+            help="Paths to the .laz files. Can be used multiple times.",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ],
+    output_file: Annotated[
+        Path,
+        typer.Option(
+            "-o",
+            "--output_file",
+            help="Path to the output .laz file.",
+        ),
+    ],
+    overwrite: Annotated[
+        bool,
+        typer.Option(
+            "--overwrite",
+            help="Whether to overwrite the files.",
+        ),
+    ] = False,
+    verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
+):
+    setup_logging(verbose=Verbose.from_int(verbose_int))
+
+    with logging_redirect_tqdm():
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+
+        merge_files(
+            input_files=input_files, output_file=output_file, overwrite=overwrite
+        )
+        logging.info(f"Successfully merged files into {output_file}")
+
+
+@app.command(
+    "download_lidar_hd", help="Download LiDAR HD data for a specified bounding box."
+)
 def download_lidar_hd(
     bbox: Annotated[
         str,
@@ -327,7 +332,10 @@ def download_lidar_hd(
         )
 
 
-@app.command("run_pipeline_before")
+@app.command(
+    "run_pipeline_before",
+    help="Run the initial steps of the pipeline before the computation of the trajectory.",
+)
 def run_pipeline_before(
     tile_dir: Annotated[
         Path,
@@ -378,7 +386,10 @@ def run_pipeline_before(
         )
 
 
-@app.command("run_pipeline")
+@app.command(
+    "run_pipeline",
+    help="Run the final steps of the pipeline, after the computation of the trajectory.",
+)
 def run_pipeline(
     tile_dir: Annotated[
         Path,
@@ -554,7 +565,52 @@ def run_pipeline(
     logging.info("\n\nPipeline completed.")
 
 
-@app.command("test")
+@app.command(
+    "identity",
+    help="A simple command to test the pipeline by copying an input point cloud to an output file without any modifications.",
+)
+def identity(
+    input_file: Annotated[
+        Path,
+        typer.Option(
+            "-i",
+            "--input",
+            help="Path to the input point cloud file.",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ],
+    output_file: Annotated[
+        Path,
+        typer.Option(
+            "-o",
+            "--output_file",
+            help="Path to the output point cloud file.",
+        ),
+    ],
+    overwrite: Annotated[
+        bool,
+        typer.Option(
+            "--overwrite",
+            help="Whether to overwrite the output file if it already exists.",
+        ),
+    ] = False,
+    verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
+):
+    setup_logging(verbose=Verbose.from_int(verbose_int))
+
+    with logging_redirect_tqdm():
+        identity_convert(
+            input_file=input_file, output_file=output_file, overwrite=overwrite
+        )
+
+
+@app.command(
+    "test_logging",
+    help="A simple command to test the logging setup with different verbosity levels.",
+)
 def test(verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0):
     setup_logging(verbose=Verbose.from_int(verbose_int))
 
