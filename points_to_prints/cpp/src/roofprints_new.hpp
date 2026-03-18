@@ -6,6 +6,8 @@
 #include <vector>
 
 #include "geometry.hpp"
+#include "kd_tree.hpp"
+#include "las/reader.hpp"
 #include "points.hpp"
 #include "utils/cgal.hpp"
 #include "utils/strong_types.hpp"
@@ -48,9 +50,10 @@ struct EdgeSequence {
     PointId get_end() const;
 
     void compute_updated_points(Point_2 new_start, Point_2 new_end,
-                                AllPointsPtr initial_points_ptr,
-                                AllPointsPtr new_points_ptr,
-                                std::vector<Point_2> &new_points);
+                                AllPointsPtr all_points,
+                                std::vector<Point_2> &new_points) const;
+    void update_points(const std::vector<Point_2> &new_points,
+                       AllPointsPtr all_points) const;
 };
 
 struct EdgeSequenceIdTag {};
@@ -77,41 +80,43 @@ struct EdgeSequenceWithNeighbours {
      *
      * @param moving_direction The direction in which the edge sequence is
      * moved. It should be a unit vector.
-     * @param all_points_ptr A pointer to the structure containing all points of
+     * @param all_points A pointer to the structure containing all points of
      * the edge sequences.
      * @return std::tuple<double, double> (min_offset, max_offset)
      */
     std::tuple<double, double>
     compute_movement_limits(Vector_2 moving_direction,
-                            AllPointsPtr all_points_ptr) const;
+                            AllPointsPtr all_points) const;
 
-    void compute_metric_for_offsets(
-        const Vector_2 &moving_direction, const std::vector<double> &offsets,
-        AllPointsPtr points_outlines,
-        const std::vector<PtsStructs::PointId> &point_cloud_point_ids,
-        const std::vector<double> &point_cloud_point_weights,
-        PtsStructs::StoragePtr points_point_cloud,
-        std::vector<double> &metrics) const;
+    void compute_metric_for_offsets(const Vector_2 &moving_direction,
+                                    const std::vector<double> &offsets,
+                                    AllPointsPtr points_outlines,
+                                    const KdTree_2 &las_kd_tree,
+                                    PtsStructs::StoragePtr las_points,
+                                    // const std::vector<double> &weights,
+                                    std::vector<double> &metrics) const;
 };
 
 struct EdgeMover {
-    AllPointsPtr all_points_ptr;
+    AllPointsPtr all_points;
     std::vector<EdgeSequenceWithNeighbours> edges_with_neighbours;
     Vector_2 moving_direction;
 
     EdgeMover(
         const std::vector<EdgeSequenceWithNeighbours> &edges_with_neighbours,
-        const Vector_2 &moving_direction, AllPointsPtr all_points_ptr);
+        const Vector_2 &moving_direction, AllPointsPtr all_points);
 
-    void optimize(double max_absolute_offset, double offset_step,
-                  const std::vector<PtsStructs::PointId> &point_cloud_point_ids,
-                  const std::vector<double> &point_cloud_point_weights,
-                  PtsStructs::StoragePtr points_point_cloud) const;
+    double compute_optimal_offset(double max_absolute_offset,
+                                  double offset_step,
+                                  const KdTree_2 &las_kd_tree,
+                                  PtsStructs::StoragePtr las_points) const;
 
   private:
     std::tuple<double, double> _compute_movement_limits() const;
-    void _compute_metric_for_offset(double offset) const;
 };
+
+struct EdgeSequenceGroupIdTag {};
+typedef StrongType<EdgeSequenceGroupIdTag, std::size_t> EdgeSequenceGroupId;
 
 // Structure to store the edges of the outlines and their relationships with the
 // outlines and with each other. Each SuperOutline should be the minimum set of
@@ -119,23 +124,43 @@ struct EdgeMover {
 // geometry and the coherence of the touching edges.
 struct SuperOutline {
     std::vector<EdgeSequence> edges;
-    std::vector<std::string> edge_index_to_outline_id;
-    std::map<std::string, std::vector<EdgeSequenceId>>
-        outline_id_to_edge_indices;
-    std::vector<unsigned long> edge_index_to_edge_group_id;
-    std::map<unsigned long, std::vector<EdgeSequenceId>>
+    // std::vector<std::string> edge_index_to_outline_id;
+    // std::map<std::string, std::vector<EdgeSequenceId>>
+    //     outline_id_to_edge_indices;
+    std::vector<EdgeSequenceGroupId> edge_index_to_edge_group_id;
+    std::map<EdgeSequenceGroupId, std::vector<EdgeSequenceId>>
         edge_group_id_to_edge_indices;
     std::vector<std::vector<EdgeSequenceId>>
         edge_index_to_neighbour_edge_indices;
-    std::vector<EdgeSequenceId> edge_indices_ordered_by_initial_length;
+    std::vector<EdgeSequenceGroupId> edge_groups_ordered_by_initial_length;
+    std::vector<Vector_2> edge_group_to_moving_direction;
+    AllPointsPtr all_points;
 
-    SuperOutline(const std::vector<EdgeSequence> &edges,
-                 const std::vector<std::string> &edge_index_to_outline_id,
-                 const std::vector<unsigned long> &edge_index_to_edge_group_id,
-                 const std::vector<std::vector<EdgeSequenceId>>
-                     &edge_index_to_neighbour_edge_indices);
+    SuperOutline(
+        const std::vector<EdgeSequence> &edges,
+        // const std::vector<std::string> &edge_index_to_outline_id,
+        const std::vector<EdgeSequenceGroupId> &edge_index_to_edge_group_id,
+        const std::vector<std::vector<EdgeSequenceId>>
+            &edge_index_to_neighbour_edge_indices,
+        AllPointsPtr all_points);
 
-    void optimize_edges(AllPointsPtr all_points_ptr);
+    void optimize_edges(const KdTree_2 &las_kd_tree,
+                        PtsStructs::StoragePtr las_points) const;
 };
+
+struct ComputeRoofprintsOptions {
+    std::string input_las_file;
+    std::string input_bd_topo_file;
+    std::string output_roofprints_file;
+    double las_buffer_distance;
+    double outline_buffer_distance;
+    bool overwrite;
+};
+
+void compute_roofprints(const std::string &input_las_file,
+                        const std::string &input_bd_topo_file,
+                        const std::string &output_roofprints_file,
+                        double las_buffer_distance,
+                        double outline_buffer_distance, bool overwrite);
 
 } // namespace Roofprints

@@ -7,7 +7,7 @@
 #include "las_filter.hpp"
 #include "parquet.hpp"
 #include "pca.hpp"
-#include "roofprints.hpp"
+#include "roofprints_new.hpp"
 
 void setup_sort_by_gps_time(CLI::App &app) {
     auto opt = std::make_shared<SortByGpsTimeOptions>();
@@ -146,7 +146,7 @@ void setup_read_write_bd_topo(CLI::App &app) {
 }
 
 void setup_compute_roofprints(CLI::App &app) {
-    auto opt = std::make_shared<ComputeRoofprintsOptions>();
+    auto opt = std::make_shared<Roofprints::ComputeRoofprintsOptions>();
 
     CLI::App *sub =
         app.add_subcommand("compute_roofprints", "Compute roofprints");
@@ -178,10 +178,10 @@ void setup_compute_roofprints(CLI::App &app) {
                   "Overwrite the output file if it exists");
 
     sub->callback([opt]() {
-        compute_roofprints(opt->input_las_file, opt->input_bd_topo_file,
-                           opt->output_roofprints_file,
-                           opt->las_buffer_distance,
-                           opt->outline_buffer_distance, opt->overwrite);
+        Roofprints::compute_roofprints(
+            opt->input_las_file, opt->input_bd_topo_file,
+            opt->output_roofprints_file, opt->las_buffer_distance,
+            opt->outline_buffer_distance, opt->overwrite);
     });
 }
 

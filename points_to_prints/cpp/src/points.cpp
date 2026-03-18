@@ -1,9 +1,11 @@
 #include "points.hpp"
-#include "utils/cgal.hpp"
 
 #include <cstdint>
 #include <iostream>
 #include <optional>
+
+#include "kd_tree.hpp"
+#include "utils/cgal.hpp"
 
 using namespace PtsStructs;
 
@@ -83,6 +85,17 @@ OGREnvelopePtr Storage::bounding_box() const {
     env->MinY = bounds.miny;
     env->MaxY = bounds.maxy;
     return env;
+}
+
+KdTree_2 Storage::build_kd_tree_2d() const {
+    std::vector<Point_2> cgal_points;
+    cgal_points.reserve(view->size());
+    for (pdal::PointId i = 0; i < view->size(); ++i) {
+        double x = view->getFieldAs<double>(pdal::Dimension::Id::X, i);
+        double y = view->getFieldAs<double>(pdal::Dimension::Id::Y, i);
+        cgal_points.emplace_back(x, y);
+    }
+    return KdTree_2(cgal_points);
 }
 
 Ray3D::Ray3D(const Point_3 &origin_, double gps_time_,

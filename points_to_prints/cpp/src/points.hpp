@@ -13,6 +13,7 @@
 #include <pdal/PointView.hpp>
 
 #include "geometry.hpp"
+#include "kd_tree.hpp"
 #include "las/enums.hpp"
 #include "las/trajectory.hpp"
 #include "utils/cgal.hpp"
@@ -431,7 +432,6 @@ struct Storage {
     Storage(Storage &&) = delete;
     Storage &operator=(Storage &&) = delete;
 
-  public:
     /**
      * @brief Returns the number of points currently in the storage.
      *
@@ -557,6 +557,8 @@ struct Storage {
         double z = view->getFieldAs<double>(pdal::Dimension::Id::Z, point_id);
         return Point_3(x, y, z);
     }
+
+    KdTree_2 build_kd_tree_2d() const;
 };
 
 typedef std::shared_ptr<Storage> StoragePtr;

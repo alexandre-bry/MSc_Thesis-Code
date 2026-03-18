@@ -118,6 +118,19 @@ struct PolygonZ : public virtual Geometry {
             throw std::runtime_error("Failed to cast geometry to Polygon");
         }
     };
+    PolygonZ(const std::vector<Point_3> &points, bool first_is_repeated) {
+        OGRPolygon *polygon = new OGRPolygon();
+        OGRLinearRing *ring = new OGRLinearRing();
+        for (const auto &p : points) {
+            ring->addPoint(p.x(), p.y(), p.z());
+        }
+        // Close the ring by adding the first point at the end
+        if (!first_is_repeated) {
+            ring->addPoint(points[0].x(), points[0].y(), points[0].z());
+        }
+        polygon->addRing(ring);
+        this->polygon.reset(polygon);
+    }
 
     // Copy constructor
     PolygonZ(const PolygonZ &other) {

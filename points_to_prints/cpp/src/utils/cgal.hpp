@@ -11,6 +11,7 @@ typedef K::Point_2 Point_2;
 typedef K::Vector_2 Vector_2;
 typedef K::Line_2 Line_2;
 typedef K::Segment_2 Segment_2;
+typedef CGAL::Bbox_2 Bbox_2;
 
 class Point_2_property_map {
     const std::vector<Point_2> &points;

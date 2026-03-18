@@ -1,5 +1,6 @@
 #pragma once
 
+#include <CGAL/Bbox_2.h>
 #include <vector>
 
 #include <CGAL/Fuzzy_iso_box.h>
@@ -8,6 +9,7 @@
 #include <CGAL/Search_traits_2.h>
 #include <CGAL/Search_traits_3.h>
 
+#include "geometry.hpp"
 #include "utils/cgal.hpp"
 
 typedef CGAL::Search_traits_2<K> Traits_2_base;
@@ -36,16 +38,42 @@ struct KdTree_2 {
         tree.build();
     }
 
-    std::vector<std::size_t> search_indices_in_box(const Point_2 &min_corner,
-                                                   const Point_2 &max_corner) {
+    std::vector<std::size_t>
+    search_indices_in_box(const Point_2 &min_corner,
+                          const Point_2 &max_corner) const {
         std::vector<std::size_t> result;
         Fuzzy_iso_box_2 box(min_corner, max_corner, 0.0, Traits_2(point_map));
         tree.search(std::back_inserter(result), box);
         return result;
     }
 
+    std::vector<std::size_t>
+    search_indices_in_box(const OGREnvelopePtr bbox,
+                          double buffer_distance) const {
+        std::vector<std::size_t> result;
+        Point_2 min_corner(bbox->MinX - buffer_distance,
+                           bbox->MinY - buffer_distance);
+        Point_2 max_corner(bbox->MaxX + buffer_distance,
+                           bbox->MaxY + buffer_distance);
+        Fuzzy_iso_box_2 box(min_corner, max_corner, 0.0, Traits_2(point_map));
+        tree.search(std::back_inserter(result), box);
+        return result;
+    }
+
+    std::vector<std::size_t>
+    search_indices_in_box(Bbox_2 bbox, double buffer_distance) const {
+        std::vector<std::size_t> result;
+        Point_2 min_corner(bbox.xmin() - buffer_distance,
+                           bbox.ymin() - buffer_distance);
+        Point_2 max_corner(bbox.xmax() + buffer_distance,
+                           bbox.ymax() + buffer_distance);
+        Fuzzy_iso_box_2 box(min_corner, max_corner, 0.0, Traits_2(point_map));
+        tree.search(std::back_inserter(result), box);
+        return result;
+    }
+
     std::vector<Point_2> search_points_in_box(const Point_2 &min_corner,
-                                              const Point_2 &max_corner) {
+                                              const Point_2 &max_corner) const {
         std::vector<std::size_t> indices =
             search_indices_in_box(min_corner, max_corner);
         std::vector<Point_2> result;
