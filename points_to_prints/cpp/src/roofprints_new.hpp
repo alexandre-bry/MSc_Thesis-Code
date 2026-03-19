@@ -44,6 +44,7 @@ struct Outline {
 struct EdgeSequence {
     std::vector<PointId> point_ids;
 
+    EdgeSequence() = default;
     EdgeSequence(const std::vector<PointId> &point_ids);
 
     PointId get_start() const;
@@ -65,12 +66,12 @@ typedef StrongType<EdgeSequenceIdTag, std::size_t> EdgeSequenceId;
 // creating an instance of this structure.
 struct EdgeSequenceWithNeighbours {
     EdgeSequence main;
-    EdgeSequence previous;
+    EdgeSequence prev;
     EdgeSequence next;
 
     EdgeSequenceWithNeighbours(const EdgeSequence &main,
-                               const EdgeSequence &previous,
-                               const EdgeSequence &next);
+                               const EdgeSequence &neighbour_1,
+                               const EdgeSequence &neighbour_2);
 
     /**
      * @brief Compute the maximum and minimum offset for the moving direction.

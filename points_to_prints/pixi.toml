@@ -36,6 +36,7 @@ cpp = { cmd = "cd \"$INIT_CWD\" && just" }
 cpp-run = { cmd = "cd \"$INIT_CWD\" && just run release" }
 cpp-run-only = { cmd = "cd \"$INIT_CWD\" && just run-only release" }
 cpp-build = { cmd = "cd \"$INIT_CWD\" && just build release" }
+cpp-run-debug = { cmd = "cd \"$INIT_CWD\" && just run debug" }
 
 [environments]
 # python = ["python"]

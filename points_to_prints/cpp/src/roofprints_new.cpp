@@ -1,6 +1,8 @@
 #include "roofprints_new.hpp"
 
+#include <CGAL/aff_transformation_tags.h>
 #include <cstddef>
+#include <iomanip>
 #include <vector>
 
 #include "constants.hpp"
@@ -10,6 +12,12 @@
 #include "parquet.hpp"
 #include "points.hpp"
 #include "utils/cgal.hpp"
+
+// TODO: Use lines to store the geometry of the edges instead of points.
+// This means that each line will need to know its neighbours to know its start
+// and end.
+// This will make it easier to keep parallelism and remember the direction of
+// the lines even if they get reduced to a point.
 
 namespace {
 
@@ -33,31 +41,32 @@ bool should_merge_edge_sequences(const Point_2 &prev_start,
                                  const Point_2 &curr_end) {
     // Reject if the two consecutive edges are not close enough to collinear
     // according to the angular threshold.
-    Segment_2 prev_edge(prev_start, prev_end);
-    Segment_2 curr_edge(prev_end, curr_end);
-    CustomCGAL::Angle angle = get_smallest_angle_between(prev_edge, curr_edge);
-    if (angle.in_degrees() >= ANGLE_THRESHOLD_DEGREES) {
+    double angle =
+        CustomCGAL::angle(prev_start, prev_end, curr_end).in_180().in_degrees();
+    if (angle < GROUPING_ANGLE_THRESHOLD_DEGREES) {
         return false;
     }
 
-    // Form the candidate merged segment and guard against a degenerate
-    // zero-length merge.
-    Segment_2 merged_segment(prev_start, curr_end);
-    const double merged_segment_length =
-        std::sqrt(merged_segment.squared_length());
-    if (merged_segment_length == 0.0) {
-        return false;
-    }
+    return true;
 
-    // Project the shared vertex onto the merged support line and accept the
-    // merge only if the projection error is small enough.
-    Line_2 merged_line(prev_start, curr_end);
-    Point_2 projection = merged_line.projection(prev_end);
-    const double distance_to_projection =
-        std::sqrt(CGAL::squared_distance(projection, prev_end));
+    // // Form the candidate merged segment and guard against a degenerate
+    // // zero-length merge.
+    // Segment_2 merged_segment(prev_start, curr_end);
+    // const double merged_segment_length =
+    //     std::sqrt(merged_segment.squared_length());
+    // if (merged_segment_length == 0.0) {
+    //     return false;
+    // }
 
-    return distance_to_projection <
-           MAX_PROJECTION_DISTANCE_FACTOR * merged_segment_length;
+    // // Project the shared vertex onto the merged support line and accept the
+    // // merge only if the projection error is small enough.
+    // Line_2 merged_line(prev_start, curr_end);
+    // Point_2 projection = merged_line.projection(prev_end);
+    // const double distance_to_projection =
+    //     std::sqrt(CGAL::squared_distance(projection, prev_end));
+
+    // return distance_to_projection <
+    //        MAX_PROJECTION_DISTANCE_FACTOR * merged_segment_length;
 }
 
 void compute_weights(PtsStructs::StoragePtr las_points,
@@ -120,8 +129,8 @@ Point_2 Roofprints::AllPoints::get(PointId point_id) const {
         throw std::out_of_range("Point ID out of range: " +
                                 std::to_string(point_id));
     }
-    std::cout << "Getting point with ID: " << point_id << std::endl;
-    std::cout << "Point coordinates: " << points[point_id] << std::endl;
+    // std::cout << "Getting point with ID: " << point_id << std::endl;
+    // std::cout << "Point coordinates: " << points[point_id] << std::endl;
     return points[point_id];
 }
 
@@ -153,19 +162,41 @@ Roofprints::PointId Roofprints::EdgeSequence::get_end() const {
 void Roofprints::EdgeSequence::compute_updated_points(
     Point_2 new_start, Point_2 new_end, AllPointsPtr all_points,
     std::vector<Point_2> &new_points) const {
-    PointId start_id = get_start();
-    PointId end_id = get_end();
-    Point_2 initial_start = all_points->get(start_id);
-    Point_2 initial_end = all_points->get(end_id);
+
+    Point_2 initial_start = all_points->get(get_start());
+    Point_2 initial_end = all_points->get(get_end());
     Vector_2 initial_vec = initial_end - initial_start;
+
     Vector_2 new_vec = new_end - new_start;
 
+    // std::cout << "Computing updated points for edge sequence with start ID: "
+    //           << start_id << " and end ID: " << end_id << std::endl;
+
     // Check if the old and the new vectors are almost parallel
-    if (!CustomCGAL::are_almost_parallel(initial_vec, new_vec,
-                                         CustomCGAL::Angle::from_degrees(1))) {
-        throw std::runtime_error(
-            "Cannot update inner points of edge sequence because the movement "
-            "is not in the same direction as the original edge");
+    if (!CustomCGAL::are_almost_parallel(
+            initial_vec, new_vec,
+            CustomCGAL::Angle::from_degrees(
+                PARALLEL_ANGLE_THRESHOLD_DEGREES))) {
+        std::cerr << "Initial start: " << std::setprecision(17) << initial_start
+                  << std::endl;
+        std::cerr << "New start:     " << std::setprecision(17) << new_start
+                  << std::endl;
+        std::cerr << "Initial end:   " << std::setprecision(17) << initial_end
+                  << std::endl;
+        std::cerr << "New end:       " << std::setprecision(17) << new_end
+                  << std::endl;
+        std::cerr << "Initial edge vector: "
+                  << initial_vec / std::sqrt(initial_vec.squared_length())
+                  << std::endl;
+        std::cerr << "New edge vector:     "
+                  << new_vec / std::sqrt(new_vec.squared_length()) << std::endl;
+        // Do not throw an error if the initial edge is smaller than 10 cm
+        if (initial_vec.squared_length() > 1e-2) {
+            throw std::runtime_error(
+                "Cannot update inner points of edge sequence because the new "
+                "edge "
+                "is not in the same direction as the original edge");
+        }
     }
 
     // Compute the shift and the scale factor of the movement
@@ -177,7 +208,7 @@ void Roofprints::EdgeSequence::compute_updated_points(
             "length of the edge is zero");
     }
     double scale_factor = new_length / initial_length;
-    Vector_2 shift = new_start - initial_start;
+    // Vector_2 shift = new_start - initial_start;
 
     // // Update the start and end points
     // new_points_ptr->set(start_id, new_start);
@@ -195,13 +226,48 @@ void Roofprints::EdgeSequence::compute_updated_points(
 
     // Get the new points in the output vector
     new_points.resize(point_ids.size());
-    for (std::size_t i = 1; i < point_ids.size() - 1; ++i) {
+    for (std::size_t i = 0; i < point_ids.size(); ++i) {
         PointId point_id = point_ids[i];
         Point_2 initial_point = all_points->get(point_id);
         Vector_2 initial_point_vec = initial_point - initial_start;
-        Point_2 new_point =
-            new_start + initial_point_vec * scale_factor + shift;
+        Point_2 new_point = new_start + scale_factor * initial_point_vec;
         new_points[i] = new_point;
+        // std::cout << "Updating point with ID: " << point_id << " from "
+        //           << std::setprecision(17) << initial_point << " to "
+        //           << new_point << std::endl;
+    }
+
+    // Check that the new edges are parallel to the original edges
+    for (std::size_t i = 0; i < point_ids.size() - 1; ++i) {
+        Point_2 initial_start = all_points->get(point_ids[i]);
+        Point_2 initial_end = all_points->get(point_ids[i + 1]);
+        Vector_2 initial_vec = initial_end - initial_start;
+
+        Point_2 new_start = new_points[i];
+        Point_2 new_end = new_points[i + 1];
+        Vector_2 new_vec = new_end - new_start;
+
+        if (!CustomCGAL::are_almost_parallel(
+                initial_vec, new_vec,
+                CustomCGAL::Angle::from_degrees(
+                    PARALLEL_ANGLE_THRESHOLD_DEGREES))) {
+            std::cerr << "Initial start: " << std::setprecision(17)
+                      << initial_start << std::endl;
+            std::cerr << "New start:     " << std::setprecision(17) << new_start
+                      << std::endl;
+            std::cerr << "Initial end:   " << std::setprecision(17)
+                      << initial_end << std::endl;
+            std::cerr << "New end:       " << std::setprecision(17) << new_end
+                      << std::endl;
+            std::cerr << "Initial edge vector: "
+                      << initial_vec / std::sqrt(initial_vec.squared_length())
+                      << std::endl;
+            std::cerr << "New edge vector:     "
+                      << new_vec / std::sqrt(new_vec.squared_length())
+                      << std::endl;
+            throw std::runtime_error("The new edge is not in the same "
+                                     "direction as the original edge");
+        }
     }
 }
 
@@ -222,16 +288,36 @@ void Roofprints::EdgeSequence::update_points(
 }
 
 Roofprints::EdgeSequenceWithNeighbours::EdgeSequenceWithNeighbours(
-    const EdgeSequence &main, const EdgeSequence &previous,
-    const EdgeSequence &next)
-    : main(main), previous(previous), next(next) {
-    if (main.get_start() != previous.get_end()) {
-        throw std::runtime_error("Previous edge sequence is not connected to "
-                                 "the main edge sequence");
-    }
-    if (main.get_end() != next.get_start()) {
+    const EdgeSequence &main, const EdgeSequence &neighbour_1,
+    const EdgeSequence &neighbour_2)
+    : main(main) {
+    auto start_main = main.get_start();
+    auto end_main = main.get_end();
+    auto start_1 = neighbour_1.get_start();
+    auto end_1 = neighbour_1.get_end();
+    auto start_2 = neighbour_2.get_start();
+    auto end_2 = neighbour_2.get_end();
+
+    // Find how they are connected
+    if (end_1 == start_main && end_main == start_2) {
+        prev = neighbour_1;
+        next = neighbour_2;
+    } else if (end_2 == start_main && end_main == start_1) {
+        prev = neighbour_2;
+        next = neighbour_1;
+    } else {
         throw std::runtime_error(
-            "Next edge sequence is not connected to the main edge sequence");
+            "The provided edge sequences are not connected in the correct way");
+    }
+
+    // Check for cyclic connections
+    if (main.get_end() == prev.get_start()) {
+        throw std::runtime_error(
+            "Previous and main edge sequences are cyclically connected");
+    }
+    if (main.get_start() == next.get_end()) {
+        throw std::runtime_error(
+            "Next and main edge sequences are cyclically connected");
     }
 }
 
@@ -245,30 +331,43 @@ Roofprints::EdgeSequenceWithNeighbours::compute_movement_limits(
 
     // Check if the moving_direction is normalized
     if (std::abs(std::sqrt(moving_direction.squared_length()) - 1.0) > 1e-6) {
+        std::cerr << "Moving direction: " << moving_direction << std::endl;
+        std::cerr << "Moving direction length: "
+                  << std::sqrt(moving_direction.squared_length()) << std::endl;
         throw std::runtime_error("Moving direction is not normalized");
     }
 
-    Point_2 prev_start = all_points->get(previous.get_start());
+    Point_2 prev_start = all_points->get(prev.get_start());
     Point_2 main_start = all_points->get(main.get_start());
     Point_2 main_end = all_points->get(main.get_end());
     Point_2 next_end = all_points->get(next.get_end());
 
     // Check if the consecutive edges are almost collinear
-    if (CustomCGAL::are_almost_collinear(prev_start, main_start, main_end,
-                                         CustomCGAL::Angle::from_degrees(1))) {
-        std::cerr << "Previous edge: " << prev_start << " -> " << main_start
-                  << std::endl;
-        std::cerr << "Main edge: " << main_start << " -> " << main_end
-                  << std::endl;
+    const auto angle_prev = CustomCGAL::angle(prev_start, main_start, main_end)
+                                .in_180()
+                                .in_degrees();
+    const auto angle_next =
+        CustomCGAL::angle(main_start, main_end, next_end).in_180().in_degrees();
+    const double low_threshold_degrees = 0.1;
+    const double high_threshold_degrees = 180.0 - low_threshold_degrees;
+    if (angle_prev < low_threshold_degrees ||
+        angle_prev > high_threshold_degrees) {
+        std::cerr << "Previous edge: " << std::setprecision(17) << prev_start
+                  << " -> " << main_start << std::endl;
+        std::cerr << "Main edge: " << std::setprecision(17) << main_start
+                  << " -> " << main_end << std::endl;
         throw std::runtime_error("Previous edge sequence is almost collinear "
                                  "with the main edge sequence");
     }
-    if (CustomCGAL::are_almost_collinear(main_start, main_end, next_end,
-                                         CustomCGAL::Angle::from_degrees(1))) {
-        std::cerr << "Main edge: " << main_start << " -> " << main_end
-                  << std::endl;
-        std::cerr << "Next edge: " << main_end << " -> " << next_end
-                  << std::endl;
+    if (angle_next < low_threshold_degrees ||
+        angle_next > high_threshold_degrees) {
+        std::cerr << "Main start index: " << main.get_start() << std::endl;
+        std::cerr << "Main end index:   " << main.get_end() << std::endl;
+        std::cerr << "Next end index:   " << next.get_end() << std::endl;
+        std::cerr << "Main edge: " << std::setprecision(17) << main_start
+                  << " -> " << main_end << std::endl;
+        std::cerr << "Next edge: " << std::setprecision(17) << main_end
+                  << " -> " << next_end << std::endl;
         throw std::runtime_error("Next edge sequence is almost collinear with "
                                  "the main edge sequence");
     }
@@ -326,18 +425,56 @@ Roofprints::EdgeSequenceWithNeighbours::compute_movement_limits(
     return {min_limit, max_limit};
 }
 
+struct Edge {
+    Point_2 start;
+    Point_2 end;
+    Vector_2 direction;
+    double length;
+
+    Edge(Point_2 start, Point_2 end)
+        : start(start), end(end), direction(end - start),
+          length(std::sqrt(direction.squared_length())) {
+        direction /= length;
+    }
+
+    Segment_2 to_segment() const { return Segment_2(start, end); }
+};
+
+double compute_metric(Point_2 las_point, Edge edge) {
+    // Check if the point projected on the edge is within the edge
+    // segment
+    Vector_2 start_to_point = las_point - edge.start;
+    double projection_length = start_to_point * edge.direction;
+    if (projection_length < 0 || projection_length > edge.length) {
+        return 0.0;
+    }
+
+    // Compute the distance from the point to the edge and the score
+    // based on the distance
+    double dist =
+        std::sqrt(CGAL::squared_distance(edge.to_segment(), las_point));
+    double score;
+    if (dist > METRIC_DISTANCE_0) {
+        score = 0.0;
+    } else if (dist < METRIC_DISTANCE_1) {
+        score = 1.0;
+    } else {
+        score = 1.0 - (dist - METRIC_DISTANCE_1) /
+                          (METRIC_DISTANCE_0 - METRIC_DISTANCE_1);
+    }
+    return score;
+}
+
 void Roofprints::EdgeSequenceWithNeighbours::compute_metric_for_offsets(
     const Vector_2 &moving_direction, const std::vector<double> &offsets,
     AllPointsPtr points_outlines, const KdTree_2 &las_kd_tree,
     PtsStructs::StoragePtr las_points, std::vector<double> &metrics) const {
-    // TODO: Also look at the neighbouring edges
-
     // TODO: Compute the metric efficiently for all offsets by projecting only
     // once and then checking whether the projected points are within the edge
     // segment for each offset
 
     // Extract the relevant points and directions
-    Point_2 prev_start = points_outlines->get(previous.get_start());
+    Point_2 prev_start = points_outlines->get(prev.get_start());
     Point_2 main_start = points_outlines->get(main.get_start());
     Point_2 main_end = points_outlines->get(main.get_end());
     Point_2 next_end = points_outlines->get(next.get_end());
@@ -360,10 +497,16 @@ void Roofprints::EdgeSequenceWithNeighbours::compute_metric_for_offsets(
     // Extract the points from the point cloud
     double min_offset = *std::min_element(offsets.begin(), offsets.end());
     double max_offset = *std::max_element(offsets.begin(), offsets.end());
+    double max_absolute_offset =
+        std::max(std::abs(min_offset), std::abs(max_offset));
+    double buffer_distance =
+        max_absolute_offset * std::max(prev_scale, next_scale) +
+        METRIC_DISTANCE_0;
     Segment_2 base_segment(main_start, main_end);
 
     const std::vector<std::size_t> current_las_indices =
-        las_kd_tree.search_indices_in_box(base_segment.bbox(), max_offset);
+        las_kd_tree.search_indices_in_box(base_segment.bbox(),
+                                          max_absolute_offset);
 
     std::vector<PtsStructs::PointId> current_las_point_ids;
     current_las_point_ids.reserve(current_las_indices.size());
@@ -375,40 +518,51 @@ void Roofprints::EdgeSequenceWithNeighbours::compute_metric_for_offsets(
     std::vector<double> weights;
     compute_weights(las_points, current_las_point_ids, weights);
 
-    metrics.resize(offsets.size());
+    // Compute the metric for each offset
+    metrics.resize(offsets.size(), 0.0);
     for (size_t i = 0; i < offsets.size(); ++i) {
         double offset = offsets[i];
         Point_2 new_main_start =
             main_start + offset * prev_scale * prev_direction;
         Point_2 new_main_end = main_end + offset * next_scale * next_direction;
 
-        Segment_2 new_main_edge(new_main_start, new_main_end);
+        Edge new_main_edge(new_main_start, new_main_end);
+        if (new_main_edge.length < 1e-6) {
+            std::cout << "The main edge is too small, skipping metric "
+                         "computation for this offset"
+                      << std::endl;
+            continue;
+        }
+        Edge new_prev_edge(prev_start, new_main_start);
+        Edge new_next_edge(new_main_end, next_end);
 
-        Vector_2 edge_vec = new_main_end - new_main_start;
-        double edge_vec_length = std::sqrt(edge_vec.squared_length());
-
-        double total_score = 0.0;
+        // Sum the scores for all points in the LAS point cloud
+        double total_score_main = 0.0;
+        double total_score_prev = 0.0;
+        double total_score_next = 0.0;
         for (size_t j = 0; j < current_las_point_ids.size(); ++j) {
             const PtsStructs::PointId las_point_id = current_las_point_ids[j];
             const Point_2 &point = las_points->get_point_2d(las_point_id);
 
-            // Check if the point projected on the edge is within the edge
-            // segment
-            Vector_2 start_to_point = point - new_main_start;
-            double projection_length = start_to_point * edge_vec;
-            if (projection_length < 0 || projection_length > edge_vec_length) {
-                continue;
-            }
+            double score_main = compute_metric(point, new_main_edge);
+            double score_prev = compute_metric(point, new_prev_edge);
+            double score_next = compute_metric(point, new_next_edge);
 
-            // Compute the distance from the point to the edge and the score
-            // based on the distance
-            double dist =
-                std::sqrt(CGAL::squared_distance(new_main_edge, point));
-            double score =
-                (dist < METRIC_INTERVAL) ? (METRIC_INTERVAL - dist) : 0.0;
-            total_score += score * weights[las_point_id];
+            total_score_main += score_main * weights[las_point_id];
+            total_score_prev += score_prev * weights[las_point_id];
+            total_score_next += score_next * weights[las_point_id];
         }
-        metrics[i] = total_score / edge_vec_length;
+
+        double length_penalization_main =
+            std::min(new_main_edge.length, MAX_LENGTH_PENALIZATION);
+        double length_penalization_prev =
+            std::min(new_prev_edge.length, MAX_LENGTH_PENALIZATION);
+        double length_penalization_next =
+            std::min(new_next_edge.length, MAX_LENGTH_PENALIZATION);
+
+        metrics[i] = (total_score_main / length_penalization_main) +
+                     (total_score_prev / length_penalization_prev) +
+                     (total_score_next / length_penalization_next);
     }
 }
 
@@ -511,6 +665,7 @@ Roofprints::SuperOutline::SuperOutline(
         std::vector<EdgeSequenceId> &edge_indices =
             edge_group_id_to_edge_indices[i];
         double total_length = 0.0;
+        Vector_2 moving_direction(0.0, 0.0);
         for (const EdgeSequenceId &edge_index : edge_indices) {
             Point_2 start = all_points->get(edges[edge_index].get_start());
             Point_2 end = all_points->get(edges[edge_index].get_end());
@@ -521,13 +676,32 @@ Roofprints::SuperOutline::SuperOutline(
 
             // Moving direction
             Vector_2 edge_vec = end - start;
-            Vector_2 perp_vec(-edge_vec.y(), edge_vec.x());
+            Vector_2 perp_vec;
+            if (edge_vec.x() < 0) {
+                perp_vec = Vector_2(edge_vec.y(), -edge_vec.x());
+            } else {
+                perp_vec = Vector_2(-edge_vec.y(), edge_vec.x());
+            }
             perp_vec = perp_vec / std::sqrt(perp_vec.squared_length());
-            edge_group_to_moving_direction[i] += length * perp_vec;
+            moving_direction += length * perp_vec;
         }
+        moving_direction /= std::sqrt(moving_direction.squared_length());
+
+        // Check if the moving direction is normalized
+        if (std::abs(std::sqrt(moving_direction.squared_length()) - 1.0) >
+            1e-6) {
+            std::cerr << "First point of first edge: "
+                      << all_points->get(edges[edge_indices[0]].get_start())
+                      << std::endl;
+            std::cerr << "Moving direction: " << moving_direction << std::endl;
+            std::cerr << "Moving direction length: "
+                      << std::sqrt(moving_direction.squared_length())
+                      << std::endl;
+            throw std::runtime_error("Moving direction is not normalized");
+        }
+
         edge_lengths[i] = total_length;
-        edge_group_to_moving_direction[i] /=
-            std::sqrt(edge_group_to_moving_direction[i].squared_length());
+        edge_group_to_moving_direction[i] = moving_direction;
     }
 
     // Order the edge groups by initial length
@@ -566,16 +740,23 @@ void Roofprints::SuperOutline::optimize_edges(
             edges_with_neighbours_ids.push_back({neighbour_edge_indices[0],
                                                  main_edge_index,
                                                  neighbour_edge_indices[1]});
+            // std::cout << "Main edge index: " << main_edge_index
+            //           << ", neighbour edge indices: "
+            //           << neighbour_edge_indices[0] << ", "
+            //           << neighbour_edge_indices[1] << std::endl;
             edges_with_neighbours.push_back(EdgeSequenceWithNeighbours(
                 edges[main_edge_index], edges[neighbour_edge_indices[0]],
                 edges[neighbour_edge_indices[1]]));
         }
 
         // Compute the optimal offset for the edge group
-        Vector_2 moving_direction =
+        const Vector_2 &moving_direction =
             edge_group_to_moving_direction[edge_group_index];
-        EdgeMover edge_mover(edges_with_neighbours, moving_direction,
-                             all_points);
+        // std::cout << "Optimizing edge group " << edge_group_index
+        //           << " with moving direction: " << moving_direction
+        //           << std::endl;
+        const EdgeMover edge_mover(edges_with_neighbours, moving_direction,
+                                   all_points);
 
         double optimal_offset = edge_mover.compute_optimal_offset(
             MAX_ABSOLUTE_OFFSET, OFFSET_STEP, las_kd_tree, las_points);
@@ -604,50 +785,56 @@ void Roofprints::SuperOutline::optimize_edges(
             const EdgeSequence &next_edge = edges[next_edge_id];
 
             // Get the points
-            Point_2 prev_start = all_points->get(previous_edge.get_start());
-            Point_2 main_start = all_points->get(main_edge.get_start());
-            Point_2 main_end = all_points->get(main_edge.get_end());
-            Point_2 next_end = all_points->get(next_edge.get_end());
+            const Point_2 &prev_start =
+                all_points->get(previous_edge.get_start());
+            const Point_2 &main_start = all_points->get(main_edge.get_start());
+            const Point_2 &main_end = all_points->get(main_edge.get_end());
+            const Point_2 &next_end = all_points->get(next_edge.get_end());
 
-            // Compute the new positions of the start and end points of the main
-            // edge
-            Vector_2 prev_direction = main_start - prev_start;
-            prev_direction =
-                prev_direction / std::sqrt(prev_direction.squared_length());
+            // Create the lines for the previous, main and next edges
+            const Line_2 prev_line(prev_start, main_start);
+            const Line_2 main_line(main_start, main_end);
+            const Line_2 next_line(main_end, next_end);
 
-            Vector_2 next_direction = next_end - main_end;
-            next_direction =
-                next_direction / std::sqrt(next_direction.squared_length());
+            // Move the main line by the optimal offset in the moving direction
+            const Line_2 new_main_line(main_line.point(0) +
+                                           optimal_offset * moving_direction,
+                                       main_line.direction());
 
-            double prev_scale =
-                1 / std::cos(CustomCGAL::angle(prev_direction, moving_direction)
-                                 .in_radians());
-            double next_scale =
-                1 / std::cos(CustomCGAL::angle(next_direction, moving_direction)
-                                 .in_radians());
-            Point_2 new_main_start =
-                main_start + optimal_offset * prev_scale * prev_direction;
-            Point_2 new_main_end =
-                main_end + optimal_offset * next_scale * next_direction;
+            // Compute the new start and end points of the main edge
+            auto prev_intersection =
+                CGAL::intersection(prev_line, new_main_line);
+            auto next_intersection =
+                CGAL::intersection(next_line, new_main_line);
+            if (!prev_intersection || !next_intersection) {
+                throw std::runtime_error("Failed to compute the intersection "
+                                         "of the new main line with "
+                                         "the previous or next line");
+            }
+            if (!std::holds_alternative<Point_2>(*prev_intersection) ||
+                !std::holds_alternative<Point_2>(*next_intersection)) {
+                throw std::runtime_error("Unexpected intersection type when "
+                                         "computing the new main line "
+                                         "intersections");
+            }
+            const Point_2 new_main_start =
+                std::get<Point_2>(*prev_intersection);
+            const Point_2 new_main_end = std::get<Point_2>(*next_intersection);
 
             // Compute the new positions of the inner points of all three edges
+            std::vector<Point_2> new_previous_points;
+            previous_edge.compute_updated_points(
+                prev_start, new_main_start, all_points, new_previous_points);
             std::vector<Point_2> new_main_points;
             main_edge.compute_updated_points(new_main_start, new_main_end,
                                              all_points, new_main_points);
-            std::vector<Point_2> new_previous_points;
-            previous_edge.compute_updated_points(
-                all_points->get(previous_edge.get_start()),
-                all_points->get(previous_edge.get_end()), all_points,
-                new_previous_points);
             std::vector<Point_2> new_next_points;
-            next_edge.compute_updated_points(
-                all_points->get(next_edge.get_start()),
-                all_points->get(next_edge.get_end()), all_points,
-                new_next_points);
+            next_edge.compute_updated_points(new_main_end, next_end, all_points,
+                                             new_next_points);
 
             // Update the points in the all_points structure
-            main_edge.update_points(new_main_points, all_points);
             previous_edge.update_points(new_previous_points, all_points);
+            main_edge.update_points(new_main_points, all_points);
             next_edge.update_points(new_next_points, all_points);
 
             // Remember the updated edge indices
@@ -883,8 +1070,10 @@ void _compute_roofprints(
     // Build the super outlines
     std::cout << "Building super outlines..." << std::endl;
     std::vector<Roofprints::SuperOutline> super_outlines;
-    for (const auto &outline_edge_sequences_ids :
-         outlines_multi_polygon_edge_sequences_ids) {
+    for (std::size_t outline_idx = 0; outline_idx < num_outlines;
+         ++outline_idx) {
+        const auto &outline_edge_sequences_ids =
+            outlines_multi_polygon_edge_sequences_ids[outline_idx];
         std::vector<Roofprints::EdgeSequence> edge_sequences;
         std::vector<Roofprints::EdgeSequenceGroupId>
             edge_index_to_edge_group_id;
@@ -895,6 +1084,14 @@ void _compute_roofprints(
         for (const auto &polygon_edge_sequences_ids :
              outline_edge_sequences_ids) {
             std::size_t num_edge_sequences = polygon_edge_sequences_ids.size();
+            if (num_edge_sequences < 3) {
+                std::cerr << "Polygon id: "
+                          << selected_outlines[outline_idx].get_id()
+                          << std::endl;
+                throw std::runtime_error(
+                    "Each polygon should have at least 3 edge "
+                    "sequences");
+            }
             Roofprints::EdgeSequenceId first_edge_sequence_id(
                 edge_sequences.size());
             for (std::size_t i = 0; i < num_edge_sequences; ++i) {
@@ -919,7 +1116,7 @@ void _compute_roofprints(
                                     all_points_ptr);
     }
 
-    // Optimize each super outline once
+    // Optimize each super outline
     std::cout << "Optimizing super outlines..." << std::endl;
     ProgressBarTotal optimize_bar(
         super_outlines.size(), "Optimizing super outlines",
@@ -958,7 +1155,7 @@ void _compute_roofprints(
             // Build the polygon
             std::vector<Point_3> polygon_points;
             for (const auto &point_id : point_ids) {
-                Point_2 point_2d = all_points.get(point_id);
+                Point_2 point_2d = all_points_ptr->get(point_id);
                 polygon_points.emplace_back(point_2d.x(), point_2d.y(), 0.0);
             }
             roofprint_polygons.emplace_back(polygon_points, false);

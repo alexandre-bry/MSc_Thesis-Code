@@ -69,45 +69,25 @@ struct Angle {
     double degrees;
 
   public:
-    static Angle from_radians(double radians) {
-        // Ensure the angle is in the range [0, 360]
-        while (radians < 0) {
-            radians += 2 * CGAL_PI;
-        }
-        while (radians >= 2 * CGAL_PI) {
-            radians -= 2 * CGAL_PI;
-        }
-
-        Angle angle;
-        angle.radians = radians;
-        angle.degrees = radians * 180.0 / CGAL_PI;
-        return angle;
-    }
-
-    static const Angle from_degrees(double degrees) {
-        // Ensure the angle is in the range [0, 360]
-        while (degrees < 0) {
-            degrees += 360.0;
-        }
-        while (degrees >= 360.0) {
-            degrees -= 360.0;
-        }
-
-        Angle angle;
-        angle.degrees = degrees;
-        angle.radians = degrees * CGAL_PI / 180.0;
-        return angle;
-    }
+    static const Angle from_radians(double radians);
+    static const Angle from_degrees(double degrees);
 
     double in_radians() const { return radians; }
     double in_degrees() const { return degrees; }
+
+    Angle in_180() const;
 };
 
 Angle angle(const Vector_2 &u, const Vector_2 &v);
 Angle angle(const Vector_3 &u, const Vector_3 &v);
+Angle angle(const Point_2 &p, const Point_2 &q, const Point_2 &r);
+Angle angle(const Point_3 &p, const Point_3 &q, const Point_3 &r);
 
 bool are_almost_parallel(const Vector_2 &u, const Vector_2 &v, Angle tolerance);
 bool are_almost_parallel(const Vector_3 &u, const Vector_3 &v, Angle tolerance);
+
+// TODO: Look into the are_almost_collinear functions and see if the current
+// implementation makes sense
 
 /**
  * @brief Check if three points are collinear up to a certain tolerance.
