@@ -122,3 +122,17 @@ bool CustomCGAL::are_almost_collinear(const Point_3 &p1, const Point_3 &p2,
     Vector_3 v2 = p3 - p1;
     return are_almost_parallel(v1, v2, tolerance);
 }
+
+Point_2 CustomCGAL::intersection(const Line_2 &line1, const Line_2 &line2) {
+    auto result = CGAL::intersection(line1, line2);
+    if (result) {
+        if (const Point_2 *intersection_point =
+                std::get_if<Point_2>(&*result)) {
+            return *intersection_point;
+        } else {
+            throw std::runtime_error("Lines are parallel, no intersection");
+        }
+    } else {
+        throw std::runtime_error("Lines do not intersect");
+    }
+}

@@ -113,4 +113,6 @@ bool are_almost_collinear(const Point_2 &p1, const Point_2 &p2,
  */
 bool are_almost_collinear(const Point_3 &p1, const Point_3 &p2,
                           const Point_3 &p3, Angle tolerance);
+
+Point_2 intersection(const Line_2 &line1, const Line_2 &line2);
 } // namespace CustomCGAL
