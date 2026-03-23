@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import Annotated, List
 
 import typer
+from bd_topo_crop import crop_parquet_from_las
+from bd_topo_intersections import compute_export_intersections
 from download import download_lidar_hd_data
 from las_manipulations import identity_convert, merge_files, split_file
 from tqdm.contrib.logging import logging_redirect_tqdm
@@ -566,6 +568,99 @@ def run_pipeline(
 
 
 @app.command(
+    "bd_topo_intersections",
+    help="Compute the intersections between edges in the BD TOPO and export the edges and intersections to parquet files.",
+)
+def bd_topo_intersections(
+    bd_topo_file: Annotated[
+        Path,
+        typer.Option(
+            "-b",
+            "--bd_topo_file",
+            help="Path to the BD_TOPO parquet file.",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ],
+    output_edges_file: Annotated[
+        Path,
+        typer.Option(
+            "-e",
+            "--output_edges_file",
+            help="Path to the output edges parquet file.",
+        ),
+    ],
+    output_intersections_file: Annotated[
+        Path,
+        typer.Option(
+            "-i",
+            "--output_intersections_file",
+            help="Path to the output intersections parquet file.",
+        ),
+    ],
+    verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
+):
+    setup_logging(verbose=Verbose.from_int(verbose_int))
+    with logging_redirect_tqdm():
+        compute_export_intersections(
+            bd_topo_file=bd_topo_file,
+            output_edges_file=output_edges_file,
+            output_intersections_file=output_intersections_file,
+        )
+
+
+@app.command(
+    "bd_topo_crop",
+    help="Crop the BD TOPO data to the bounds of a given LAS file and export the cropped data to a parquet file.",
+)
+def bd_topo_crop(
+    las_file: Annotated[
+        Path,
+        typer.Option(
+            "-l",
+            "--las_file",
+            help="Path to the input LAS file.",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ],
+    bd_topo_file: Annotated[
+        Path,
+        typer.Option(
+            "-b",
+            "--bd_topo_file",
+            help="Path to the BD_TOPO parquet file.",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ],
+    output_file: Annotated[
+        Path,
+        typer.Option(
+            "-o",
+            "--output_file",
+            help="Path to the output cropped BD TOPO parquet file.",
+        ),
+    ],
+    verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
+):
+    setup_logging(verbose=Verbose.from_int(verbose_int))
+    with logging_redirect_tqdm():
+        crop_parquet_from_las(
+            input_las_file=las_file,
+            input_parquet_file=bd_topo_file,
+            output_parquet_file=output_file,
+            overwrite=False,
+        )
+
+
+@app.command(
     "identity",
     help="A simple command to test the pipeline by copying an input point cloud to an output file without any modifications.",
 )
@@ -622,4 +717,5 @@ def test(verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)
 
 
 if __name__ == "__main__":
+    app()
     app()

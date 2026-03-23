@@ -87,6 +87,12 @@ OGREnvelopePtr Storage::bounding_box() const {
     return env;
 }
 
+Bbox_2 Storage::bounding_box_cgal() const {
+    pdal::BOX2D bounds;
+    view->calculateBounds(bounds);
+    return Bbox_2(bounds.minx, bounds.miny, bounds.maxx, bounds.maxy);
+}
+
 KdTree_2 Storage::build_kd_tree_2d() const {
     std::vector<Point_2> cgal_points;
     cgal_points.reserve(view->size());

@@ -446,6 +446,7 @@ struct Storage {
     dimensions() const;
 
     OGREnvelopePtr bounding_box() const;
+    Bbox_2 bounding_box_cgal() const;
 
     // Getters for internal PDAL objects
     pdal::PointViewPtr get_view() const { return view; }

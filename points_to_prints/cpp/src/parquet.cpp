@@ -7,6 +7,7 @@
 #include <memory>
 #include <ostream>
 #include <string>
+#include <sys/types.h>
 #include <utility>
 
 #include <arrow/api.h>
@@ -555,6 +556,174 @@ arrow::Status read_write_bd_topo(const std::string &input_parquet_file,
     }
     std::cout << "Successfully wrote building outlines to "
               << output_parquet_file << "." << std::endl;
+
+    return arrow::Status::OK();
+}
+
+void get_value(const std::shared_ptr<arrow::Array> &chunk, std::size_t row,
+               std::shared_ptr<arrow::Scalar> &value) {
+    auto scalar = chunk->GetScalar(row);
+    if (!scalar.ok()) {
+        throw std::runtime_error("Failed to get scalar for row " +
+                                 std::to_string(row));
+    }
+    value = scalar.ValueOrDie();
+}
+
+void get_value_uint(const std::shared_ptr<arrow::Array> &chunk, std::size_t row,
+                    uint &value) {
+    std::shared_ptr<arrow::Scalar> scalar;
+    get_value(chunk, row, scalar);
+    if (!scalar->is_valid) {
+        throw std::runtime_error("Value is null for row " +
+                                 std::to_string(row));
+    }
+    if (scalar->type->id() != arrow::Type::UINT64) {
+        throw std::runtime_error("Expected UINT64 type for row " +
+                                 std::to_string(row));
+    }
+    auto uint_scalar = std::static_pointer_cast<arrow::UInt64Scalar>(scalar);
+    value = uint_scalar->value;
+}
+
+void get_value_string(const std::shared_ptr<arrow::Array> &chunk,
+                      std::size_t row, std::string &value) {
+    std::shared_ptr<arrow::Scalar> scalar;
+    get_value(chunk, row, scalar);
+    value = scalar->ToString();
+}
+
+arrow::Status
+read_bd_topo_as_grouped_edges(const std::string &edges_parquet_file,
+                              const std::string &intersections_parquet_file,
+                              std::vector<BDTOPOEdge> &edges) {
+    std::cout << std::format("Reading {}...", edges_parquet_file) << std::endl;
+    arrow::MemoryPool *pool = arrow::default_memory_pool();
+    std::shared_ptr<arrow::io::RandomAccessFile> input;
+    ARROW_ASSIGN_OR_RAISE(input,
+                          arrow::io::ReadableFile::Open(edges_parquet_file));
+
+    // Open Parquet file reader
+    std::cout << "Opening the reader..." << std::endl;
+    std::unique_ptr<parquet::arrow::FileReader> arrow_reader;
+    ARROW_ASSIGN_OR_RAISE(arrow_reader, parquet::arrow::OpenFile(input, pool));
+
+    // Read entire file as a single Arrow table
+    std::cout << "Reading into a table..." << std::endl;
+    std::shared_ptr<arrow::Table> table;
+    ARROW_RETURN_NOT_OK(arrow_reader->ReadTable(&table));
+
+    // Find the geometry column and other relevant columns
+    // std::cout << "Schema:" << std::endl;
+    auto schema = table->schema();
+    int num_fields = schema->num_fields();
+    int geom_field_idx = -1;
+    int building_id_field_idx = -1;
+    int polygon_idx_field_idx = -1;
+    int ring_idx_field_idx = -1;
+    int edge_id_field_idx = -1;
+    for (int i = 0; i < num_fields; ++i) {
+        auto field = schema->field(i);
+        if (field->name() == "geometry") {
+            geom_field_idx = i;
+        } else if (field->name() == "cleabs") {
+            building_id_field_idx = i;
+        } else if (field->name() == "idx_polygon") {
+            polygon_idx_field_idx = i;
+        } else if (field->name() == "idx_ring") {
+            ring_idx_field_idx = i;
+        } else if (field->name() == "idx_edge") {
+            edge_id_field_idx = i;
+        }
+    }
+
+    // Check that required columns are present
+    if (geom_field_idx == -1) {
+        return arrow::Status::Invalid(
+            "Geometry column not found in Parquet file");
+    }
+    if (building_id_field_idx == -1) {
+        return arrow::Status::Invalid(
+            "Building ID column not found in Parquet file");
+    }
+    if (polygon_idx_field_idx == -1) {
+        return arrow::Status::Invalid(
+            "Polygon index column not found in Parquet file");
+    }
+    if (ring_idx_field_idx == -1) {
+        return arrow::Status::Invalid(
+            "Ring index column not found in Parquet file");
+    }
+    if (edge_id_field_idx == -1) {
+        return arrow::Status::Invalid(
+            "Edge ID column not found in Parquet file");
+    }
+
+    long num_rows = table->num_rows();
+    // num_rows = std::min(
+    //     num_rows, static_cast<long>(10)); // Limit to 100k rows for testing
+    std::cout << "Number of features: " << num_rows << std::endl;
+    std::cout << "Number of columns: " << num_fields << std::endl;
+
+    // Read the geometries and attributes from the table and construct the
+    // output
+    ProgressBarTotal progress_bar(num_rows, "Processing building outlines");
+    edges.clear();
+    for (std::size_t row = 0; row < num_rows; ++row) {
+        auto geom_chunk = table->column(geom_field_idx)->chunk(0);
+        auto building_id_chunk = table->column(building_id_field_idx)->chunk(0);
+        auto polygon_idx_chunk = table->column(polygon_idx_field_idx)->chunk(0);
+        auto ring_idx_chunk = table->column(ring_idx_field_idx)->chunk(0);
+        auto edge_id_chunk = table->column(edge_id_field_idx)->chunk(0);
+
+        if (geom_chunk->IsNull(row)) {
+            std::cerr << "Warning: Geometry is null for row " << row
+                      << ", skipping this feature." << std::endl;
+            continue;
+        }
+        auto geom_scalar = geom_chunk->GetScalar(row);
+        if (!geom_scalar.ok()) {
+            std::cerr << "Warning: Failed to get geometry scalar for row "
+                      << row << ", skipping this feature." << std::endl;
+            continue;
+        }
+        auto geom_scalar_ptr = geom_scalar.ValueOrDie();
+        std::cout << geom_scalar_ptr << std::endl;
+        // std::unique_ptr<geos::geom::Geometry> geometry =
+        //     wkb_reader.hex_to_geometry(geom_scalar_ptr);
+        // auto multi_polygon = parseWKBToMultiPolygon(geom_scalar_ptr);
+
+        // Extract attributes
+        std::string building_id;
+        uint polygon_idx;
+        uint ring_idx;
+        uint edge_id;
+        // std::string outline_source_str;
+
+        get_value_string(building_id_chunk, row, building_id);
+        get_value_uint(polygon_idx_chunk, row, polygon_idx);
+        get_value_uint(ring_idx_chunk, row, ring_idx);
+        get_value_uint(edge_id_chunk, row, edge_id);
+        // get_value_string(outline_source_chunk, row, outline_source_str);
+        // OutlineSource::Id outline_source =
+        //     OutlineSource::from_string(outline_source_str);
+
+        try {
+            edges.push_back({
+                building_id,
+                polygon_idx,
+                ring_idx,
+                edge_id,
+                // outline_source,
+            });
+        } catch (const std::exception &e) {
+            std::cerr << "Warning: Failed to process geometry for row " << row
+                      << ": " << e.what() << ", skipping this feature."
+                      << std::endl;
+        }
+        progress_bar.increment(1);
+    }
+    progress_bar.finish();
 
     return arrow::Status::OK();
 }

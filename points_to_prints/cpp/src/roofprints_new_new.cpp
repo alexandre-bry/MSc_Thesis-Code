@@ -1,6 +1,12 @@
 #include "roofprints_new_new.hpp"
 
+#include <filesystem>
 #include <vector>
+
+#include "las/reader.hpp"
+#include "parquet.hpp"
+#include "points.hpp"
+#include "utils/cgal.hpp"
 
 NewRoofprints::Edge::Edge(Point_2 initial_start, Point_2 initial_end)
     : initial_start(initial_start), initial_end(initial_end),
@@ -144,4 +150,60 @@ NewRoofprints::AllOutlines NewRoofprints::make_all_outlines(
     }
 
     // TODO
+}
+
+void _compute_roofprints(const PtsStructs::StoragePtr las_points,
+                         const std::vector<BDTOPOEdge> &all_outlines_edges,
+                         std::vector<BDTOPOEdge> &optimized_outlines_edges) {}
+
+void NewRoofprints::compute_roofprints(
+    const std::string &input_las_file,
+    const std::string &input_bd_topo_edges_file,
+    const std::string &input_bd_topo_intersections_file,
+    const std::string &output_roofprints_file, double las_buffer_distance,
+    double outline_buffer_distance, bool overwrite) {
+
+    if (std::filesystem::exists(output_roofprints_file) && !overwrite) {
+        throw std::runtime_error("Output file already exists: " +
+                                 output_roofprints_file);
+    }
+
+    std::filesystem::create_directories(
+        std::filesystem::path(output_roofprints_file).parent_path());
+
+    // Read the LAS file and get the point view
+    std::cout << "Reading LAS file..." << std::endl;
+    NewLasReader las_reader(input_las_file);
+
+    // Read the building outlines from the BD TOPO file
+    std::vector<BDTOPOEdge> initial_edges;
+    auto status = read_bd_topo_as_grouped_edges(
+        input_bd_topo_edges_file, input_bd_topo_intersections_file,
+        initial_edges);
+    if (!status.ok()) {
+        std::cerr << "Error reading BD TOPO: " << status.ToString()
+                  << std::endl;
+        throw std::runtime_error("Failed to read edges from BD TOPO");
+    }
+    std::cout << "Successfully read " << initial_edges.size()
+              << " edges from BD TOPO." << std::endl;
+
+    // Compute the roofprints
+    std::vector<BDTOPOEdge> optimized_edges;
+    _compute_roofprints(las_reader.points, initial_edges, optimized_edges);
+    std::cout << "Optimized " << optimized_edges.size() << " edges."
+              << std::endl;
+
+    std::cout << "Transform Polygons into MultiPolygons" << std::endl;
+
+    // Write the roofprints to a Parquet file
+    std::cout << "Writing roofprints to Parquet file..." << std::endl;
+    auto write_status =
+        write_geoms_to_parquet(roofprints, output_roofprints_file, overwrite);
+
+    if (!write_status.ok()) {
+        std::cerr << "Error writing roofprints to Parquet: "
+                  << write_status.ToString() << std::endl;
+        throw std::runtime_error("Failed to write roofprints to Parquet");
+    }
 }

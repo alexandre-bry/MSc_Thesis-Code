@@ -126,4 +126,11 @@ class AllOutlines {
 AllOutlines make_all_outlines(const EdgeVector<Edge> &edges,
                               const OutlineVector<OutlineAsEdges> &outlines);
 
+void compute_roofprints(const std::string &input_las_file,
+                        const std::string &input_bd_topo_edges_file,
+                        const std::string &input_bd_topo_intersections_file,
+                        const std::string &output_roofprints_file,
+                        double las_buffer_distance,
+                        double outline_buffer_distance, bool overwrite);
+
 } // namespace NewRoofprints

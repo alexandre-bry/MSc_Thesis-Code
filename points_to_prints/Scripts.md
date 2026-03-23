@@ -150,39 +150,28 @@ TO 'data/bd_topo_grouped.parquet'
 Make a test table with only 10 rows:
 
 ```sql
-CREATE TABLE test_unnest AS (SELECT cleabs, geometry, group_id FROM bd_topo);
-SELECT * FROM test_unnest;
+CREATE SCHEMA IF NOT EXISTS test;
 ```
 
-or make a test table with good examples:
-
 ```sql
-CREATE TABLE test_unnest (
-    cleabs VARCHAR,
-    geometry GEOMETRY('EPSG:2154'),
-    group_id VARCHAR
-);
-INSERT INTO test_unnest (cleabs, geometry, group_id) VALUES
-    ('1', 'MULTIPOLYGONZ ( ( (0 0 2, 0 3 2, 3 3 2, 3 0 2, 0 0 2), (1 1 2, 1 2 2, 2 2 2, 2 1 2, 1 1 2) ) )'::geometry, 'group1'),
-    ('2', 'MULTIPOLYGONZ ( ( (0 0 2, 0 3 2, 3 3 2, 3 0 2, 0 0 2) ), ( (1 1 2, 1 2 2, 2 2 2, 2 1 2, 1 1 2) ) )'::geometry, 'group2');
-SELECT * FROM test_unnest;
+CREATE TABLE test.multipoly AS (SELECT cleabs, geometry FROM bd_topo) LIMIT 10;
+SELECT * FROM test.multipoly;
 ```
 
-Unnest the MultiPolygonZ into PolygonZ:
-
 ```sql
-CREATE TABLE test_unnest_polygons AS
+-- Unnest the MultiPolygonZ into PolygonZ:
+CREATE TABLE test.poly AS
 SELECT cleabs, path[1] - 1 AS idx_polygon, geom AS geometry FROM (
     SELECT cleabs, UNNEST(ST_Dump(geometry), recursive := true)
-    FROM test_unnest
+    FROM test.multipoly
     );
-SELECT * FROM test_unnest_polygons;
+-- Show the polygons:
+SELECT * FROM test.poly;
 ```
 
-Unnest the PolygonZ into LinearRingZ:
-
 ```sql
-CREATE TABLE test_unnest_linearrings AS
+-- Unnest the PolygonZ into LinearRingZ:
+CREATE TABLE test.rings AS
 SELECT 
   cleabs,
   idx_polygon,
@@ -191,27 +180,55 @@ SELECT
     WHEN idx_ring = 0 THEN ST_ExteriorRing(geometry)
     ELSE ST_InteriorRingN(geometry, idx_ring)
   END AS geometry
-FROM test_unnest_polygons
+FROM test.poly
 CROSS JOIN generate_series(0, ST_NInteriorRings(geometry)) AS i(idx_ring);
-SELECT * FROM test_unnest_linearrings;
+-- Show the rings:
+SELECT * FROM test.rings;
 ```
 
-Unnest the LinearRingZ into PointZ:
-
 ```sql
-CREATE TABLE test_unnest_points AS
+-- Unnest the LinearRingZ into LineStringZ with two points per row:
+CREATE TABLE test.edges AS
 SELECT
   cleabs,
   idx_polygon,
   idx_ring,
-  idx_point-1 AS idx_point,
-  ST_PointN(geometry, idx_point::INTEGER) AS geometry
-FROM test_unnest_linearrings
-CROSS JOIN generate_series(1, ST_NPoints(geometry)) AS i(idx_point);
-SELECT * FROM test_unnest_points ORDER BY cleabs, idx_polygon, idx_ring, idx_point;
+  idx_point-1 AS idx_edge,
+  ST_MakeLine(ST_PointN(geometry, idx_point::INTEGER), ST_PointN(geometry, (idx_point+1)::INTEGER)) AS geometry
+FROM test.rings
+CROSS JOIN generate_series(1, ST_NPoints(geometry)-1) AS i(idx_point)
+ORDER BY cleabs, idx_polygon, idx_ring, idx_edge;
+-- Add an incremental index to the edges:
+CREATE SEQUENCE seq_edges_ids START 1;
+ALTER TABLE test.edges ADD COLUMN id INTEGER;
+UPDATE test.edges SET id = nextval('seq_edges_ids');
+-- Show the edges:
+SELECT * FROM test.edges;
 ```
 
-Pack the indices:
+```sql
+-- Compute the intersections between all edges from different polygons:
+CREATE TABLE test.intersections AS
+SELECT
+  a.id AS id_a,
+  b.id AS id_b,
+  ST_Intersection(a.geometry, b.geometry) AS geometry
+FROM test.edges a
+JOIN test.edges b
+  ON a.cleabs < b.cleabs
+ AND ST_Intersects(a.geometry, b.geometry);
+-- Show the intersections:
+SELECT * FROM test.intersections ORDER BY id_a, id_b;
+```
+
+```sql
+-- Only show the intersections that are lines:
+SELECT * FROM test.intersections
+WHERE ST_GeometryType(geometry) = 'LINESTRING'
+ORDER BY id_a, id_b;
+```
+
+<!-- Pack the indices:
 
 ```sql
 CREATE TABLE test_unnest_points_packed AS
@@ -220,14 +237,33 @@ SELECT
     geometry
 FROM test_unnest_points
 ORDER BY cleabs, idx_polygon, idx_ring, idx_point;
+``` -->
+
+```sql
+CREATE OR REPLACE TABLE intersections.edges_new AS
+SELECT 
+    cleabs, idx_polygon, idx_ring, idx_edge, 
+    geometry,
+    id,
+    STRUCT_PACK(
+        xmin := ST_XMin("geometry"),
+        ymin := ST_YMin("geometry"),
+        xmax := ST_XMax("geometry"),
+        ymax := ST_YMax("geometry")
+    ) AS bbox
+FROM intersections.edges;
+```
+
+```sql
+COPY (
+    SELECT * FROM test.edges
+    ORDER BY cleabs, idx_polygon, idx_ring, idx_edge)
+TO 'data/bd_topo_edges.parquet'
+(FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE 100_000);
 ```
 
 Remove all tables:
 
 ```sql
-DROP TABLE test_unnest_points_packed;
-DROP TABLE test_unnest_points;
-DROP TABLE test_unnest_linearrings;
-DROP TABLE test_unnest_polygons;
-DROP TABLE test_unnest;
+DROP TABLE test.*;
 ```

@@ -23,6 +23,7 @@
 
 #include "geometry.hpp"
 #include "pbar.hpp"
+#include "utils/cgal.hpp"
 
 struct TestParquetOptions {
     std::string input_file;
@@ -43,6 +44,21 @@ arrow::Status read_building_outlines_from_bd_topo(
 arrow::Status write_multi_polygons_to_parquet(
     const std::vector<MultiPolygonZWithAttributes> &multi_polygons,
     const std::string &output_file, bool overwrite);
+
+struct BDTOPOEdge {
+    std::string building_id;
+    uint polygon_idx;
+    uint ring_idx;
+    uint edge_idx;
+};
+
+BDTOPOEdge edge(std::string building_id, uint polygon_idx, uint ring_idx,
+                uint edge_idx);
+
+arrow::Status
+read_bd_topo_as_grouped_edges(const std::string &edges_parquet_file,
+                              const std::string &intersections_parquet_file,
+                              std::vector<BDTOPOEdge> &edges);
 
 // Forward declaration for function used by template
 char *buildGeoMetaData(std::string crs_epsg = "EPSG:2154",
