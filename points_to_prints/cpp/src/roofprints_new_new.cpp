@@ -8,15 +8,17 @@
 #include "points.hpp"
 #include "utils/cgal.hpp"
 
-NewRoofprints::Edge::Edge(Point_2 initial_start, Point_2 initial_end)
-    : initial_start(initial_start), initial_end(initial_end),
-      line(initial_start, initial_end) {
+NewRoofprints::Edge::Edge(Point_3 initial_start, Point_3 initial_end)
+    : initial_start(initial_start), initial_end(initial_end) {
+    Point_2 start_2d(initial_start.x(), initial_start.y());
+    Point_2 end_2d(initial_end.x(), initial_end.y());
+    line = Line_2(start_2d, end_2d);
     direction = line.direction().to_vector();
     direction /= std::sqrt(direction.squared_length());
 }
 
-Point_2 NewRoofprints::Edge::get_initial_start() const { return initial_start; }
-Point_2 NewRoofprints::Edge::get_initial_end() const { return initial_end; }
+Point_3 NewRoofprints::Edge::get_initial_start() const { return initial_start; }
+Point_3 NewRoofprints::Edge::get_initial_end() const { return initial_end; }
 Vector_2 NewRoofprints::Edge::get_direction() const { return direction; }
 Line_2 NewRoofprints::Edge::to_line() const { return line; }
 
@@ -24,36 +26,39 @@ void NewRoofprints::Edge::translate(Vector_2 offset) {
     line = Line_2(line.point(0) + offset, line.direction());
 }
 
-NewRoofprints::EdgeGroup::EdgeGroup(const std::vector<EdgeId> &edge_ids)
+NewRoofprints::EdgeSeq::EdgeSeq(const std::vector<EdgeId> &edge_ids)
     : edge_ids(edge_ids) {}
 
 NewRoofprints::OutlineAsEdges::OutlineAsEdges(
     const std::vector<std::vector<EdgeId>> &polygons)
     : polygons(polygons) {}
 
-NewRoofprints::SuperOutline::SuperOutline(
-    const std::vector<OutlineId> &outline_ids)
-    : outline_ids(outline_ids) {}
+NewRoofprints::OptimizationUnit::OptimizationUnit(
+    const std::vector<EdgeSeqGroupId> &edge_seq_group_ids)
+    : edge_seq_group_ids(edge_seq_group_ids) {}
 
 NewRoofprints::AllOutlines::AllOutlines(
     const EdgeVector<Edge> &edges, const EdgeVector<EdgeId> &prev_edge_ids,
     const EdgeVector<EdgeId> &next_edge_ids,
-    const EdgeGroupVector<EdgeGroup> &edge_groups,
-    const EdgeVector<EdgeGroupId> &edge_id_to_edge_group_id,
-    const EdgeGroupVector<EdgeGroupId> &prev_edge_group_ids,
-    const EdgeGroupVector<EdgeGroupId> &next_edge_group_ids,
+    const EdgeSeqVector<EdgeSeq> &edge_seqs,
+    const EdgeVector<EdgeSeqId> &edge_id_to_edge_seq_id,
+    const EdgeSeqVector<EdgeSeqId> &prev_edge_seq_ids,
+    const EdgeSeqVector<EdgeSeqId> &next_edge_seq_ids,
+    const EdgeSeqGroupVector<EdgeSeqGroup> &edge_seq_groups,
+    const EdgeSeqVector<EdgeSeqGroupId> &edge_seq_id_to_edge_seq_group_id,
     const OutlineVector<OutlineAsEdges> &outlines,
-    const EdgeGroupVector<OutlineId> &edge_group_id_to_outline_id,
-    const SuperOutlineVector<SuperOutline> &super_outlines,
-    const OutlineVector<SuperOutlineId> &outline_id_to_super_outline_id)
+    const EdgeSeqVector<OutlineId> &edge_seq_id_to_outline_id,
+    const OptimizationUnitVector<OptimizationUnit> &optim_units,
+    const EdgeSeqGroupVector<OptimizationUnitId>
+        &edge_seq_group_id_to_optim_unit_id)
     : edges(edges), prev_edge_ids(prev_edge_ids), next_edge_ids(next_edge_ids),
-      edge_groups(edge_groups),
-      edge_id_to_edge_group_id(edge_id_to_edge_group_id),
-      prev_edge_group_ids(prev_edge_group_ids),
-      next_edge_group_ids(next_edge_group_ids), outlines(outlines),
-      edge_group_id_to_outline_id(edge_group_id_to_outline_id),
-      super_outlines(super_outlines),
-      outline_id_to_super_outline_id(outline_id_to_super_outline_id) {}
+      edge_seqs(edge_seqs), edge_id_to_edge_seq_id(edge_id_to_edge_seq_id),
+      prev_edge_seq_ids(prev_edge_seq_ids),
+      next_edge_seq_ids(next_edge_seq_ids), edge_seq_groups(edge_seq_groups),
+      edge_seq_id_to_edge_seq_group_id(edge_seq_id_to_edge_seq_group_id),
+      outlines(outlines), edge_seq_id_to_outline_id(edge_seq_id_to_outline_id),
+      optim_units(optim_units),
+      edge_seq_group_id_to_optim_unit_id(edge_seq_group_id_to_optim_unit_id) {}
 
 const NewRoofprints::Edge &
 NewRoofprints::AllOutlines::get_edge(EdgeId edge_id) const {
@@ -64,19 +69,24 @@ NewRoofprints::Edge &NewRoofprints::AllOutlines::get_edge(EdgeId edge_id) {
     return edges.at(edge_id);
 }
 
-NewRoofprints::EdgeGroupId
-NewRoofprints::AllOutlines::get_edge_group_id(EdgeId edge_id) const {
-    return edge_id_to_edge_group_id.at(edge_id);
+NewRoofprints::EdgeSeqId
+NewRoofprints::AllOutlines::get_edge_seq_id(EdgeId edge_id) const {
+    return edge_id_to_edge_seq_id.at(edge_id);
+}
+
+NewRoofprints::EdgeSeqGroupId
+NewRoofprints::AllOutlines::get_edge_seq_group_id(EdgeSeqId edge_seq_id) const {
+    return edge_seq_id_to_edge_seq_group_id.at(edge_seq_id);
 }
 
 NewRoofprints::OutlineId
-NewRoofprints::AllOutlines::get_outline_id(EdgeGroupId edge_group_id) const {
-    return edge_group_id_to_outline_id.at(edge_group_id);
+NewRoofprints::AllOutlines::get_outline_id(EdgeSeqId edge_seq_id) const {
+    return edge_seq_id_to_outline_id.at(edge_seq_id);
 }
 
-NewRoofprints::SuperOutlineId
-NewRoofprints::AllOutlines::get_super_outline_id(OutlineId outline_id) const {
-    return outline_id_to_super_outline_id.at(outline_id);
+NewRoofprints::OptimizationUnitId NewRoofprints::AllOutlines::get_optim_unit_id(
+    EdgeSeqGroupId edge_seq_group_id) const {
+    return edge_seq_group_id_to_optim_unit_id.at(edge_seq_group_id);
 }
 
 NewRoofprints::EdgeId
@@ -89,49 +99,64 @@ NewRoofprints::AllOutlines::get_next_edge_id(EdgeId edge_id) const {
     return next_edge_ids.at(edge_id);
 }
 
-NewRoofprints::EdgeGroupId NewRoofprints::AllOutlines::get_prev_edge_group_id(
-    EdgeGroupId edge_group_id) const {
-    return prev_edge_group_ids.at(edge_group_id);
+NewRoofprints::EdgeSeqId
+NewRoofprints::AllOutlines::get_prev_edge_seq_id(EdgeSeqId edge_seq_id) const {
+    return prev_edge_seq_ids.at(edge_seq_id);
 }
 
-NewRoofprints::EdgeGroupId NewRoofprints::AllOutlines::get_next_edge_group_id(
-    EdgeGroupId edge_group_id) const {
-    return next_edge_group_ids.at(edge_group_id);
+NewRoofprints::EdgeSeqId
+NewRoofprints::AllOutlines::get_next_edge_seq_id(EdgeSeqId edge_seq_id) const {
+    return next_edge_seq_ids.at(edge_seq_id);
 }
 
 Point_2 NewRoofprints::AllOutlines::get_edge_start(EdgeId edge_id) const {
-    return get_edge(edge_id).get_initial_start();
+    EdgeId prev_edge_id = get_prev_edge_id(edge_id);
+    Edge current_edge = get_edge(edge_id);
+    Edge prev_edge = get_edge(prev_edge_id);
+    return CustomCGAL::intersection(current_edge.to_line(),
+                                    prev_edge.to_line());
 }
 
 Point_2 NewRoofprints::AllOutlines::get_edge_end(EdgeId edge_id) const {
-    return get_edge(edge_id).get_initial_end();
+    EdgeId next_edge_id = get_next_edge_id(edge_id);
+    Edge current_edge = get_edge(edge_id);
+    Edge next_edge = get_edge(next_edge_id);
+    return CustomCGAL::intersection(current_edge.to_line(),
+                                    next_edge.to_line());
 }
 
 NewRoofprints::EdgeId NewRoofprints::AllOutlines::edge_count() const {
     return edges.size_as_strong_index();
 }
 
-NewRoofprints::EdgeGroupId
-NewRoofprints::AllOutlines::edge_group_count() const {
-    return edge_groups.size_as_strong_index();
+NewRoofprints::EdgeSeqId NewRoofprints::AllOutlines::edge_seq_count() const {
+    return edge_seqs.size_as_strong_index();
+}
+
+NewRoofprints::EdgeSeqGroupId
+NewRoofprints::AllOutlines::edge_seq_group_count() const {
+    return edge_seq_groups.size_as_strong_index();
 }
 
 NewRoofprints::OutlineId NewRoofprints::AllOutlines::outline_count() const {
     return outlines.size_as_strong_index();
 }
 
-NewRoofprints::SuperOutlineId
-NewRoofprints::AllOutlines::super_outline_count() const {
-    return super_outlines.size_as_strong_index();
+NewRoofprints::OptimizationUnitId
+NewRoofprints::AllOutlines::optim_unit_count() const {
+    return optim_units.size_as_strong_index();
 }
 
 NewRoofprints::AllOutlines NewRoofprints::make_all_outlines(
     const EdgeVector<Edge> &edges,
-    const OutlineVector<OutlineAsEdges> &outlines) {
+    const OutlineVector<OutlineAsEdges> &outlines,
+    const std::vector<std::pair<EdgeId, EdgeId>> &intersections) {
+
+    /* -------------------------------- Edges ------------------------------- */
 
     // Find the previous and next edge for each edge
-    std::vector<EdgeId> prev_edge_ids(edges.size());
-    std::vector<EdgeId> next_edge_ids(edges.size());
+    EdgeVector<EdgeId> prev_edge_ids(edges.size());
+    EdgeVector<EdgeId> next_edge_ids(edges.size());
     for (const auto &outline : outlines) {
         if (outline.polygons.empty()) {
             throw std::runtime_error("Outline has no polygons");
@@ -149,7 +174,251 @@ NewRoofprints::AllOutlines NewRoofprints::make_all_outlines(
         }
     }
 
-    // TODO
+    /* --------------------------- Edge sequences --------------------------- */
+
+    // Build the edge sequences based on connectivity and angles between edges
+    EdgeSeqVector<EdgeSeq> edge_seqs;
+    EdgeVector<bool> edge_visited(edges.size(), false);
+    EdgeVector<EdgeSeqId> edge_id_to_edge_seq_id(edges.size());
+    for (EdgeId source_edge_id(0); source_edge_id < edges.size();
+         ++source_edge_id) {
+        if (edge_visited[source_edge_id]) {
+            continue;
+        }
+        edge_visited[source_edge_id] = true;
+
+        CustomCGAL::Angle tolerance_angle =
+            CustomCGAL::Angle::from_degrees(20.0);
+
+        // Find all almost collinear edges after
+        std::vector<EdgeId> edge_seq_next_edge_ids;
+        EdgeId current_edge_id = source_edge_id;
+        while (true) {
+            // Get the next edge
+            EdgeId next_edge_id = next_edge_ids[current_edge_id];
+
+            // Check if the connected edge is close enough in angle
+            const Edge &current_edge = edges[current_edge_id];
+            const Edge &next_edge = edges[next_edge_id];
+            bool are_parallel = CustomCGAL::are_almost_parallel(
+                current_edge.get_direction(), next_edge.get_direction(),
+                tolerance_angle);
+
+            // If the next edge is not close enough in angle, stop the sequence
+            if (!are_parallel) {
+                break;
+            }
+
+            edge_visited[current_edge_id] = true;
+            edge_seq_next_edge_ids.push_back(current_edge_id);
+            current_edge_id = next_edge_id;
+        }
+
+        // Find all almost collinear edges before
+        std::vector<EdgeId> edge_seq_prev_edge_ids;
+        current_edge_id = source_edge_id;
+        while (true) {
+            // Get the previous edge
+            EdgeId prev_edge_id = prev_edge_ids[current_edge_id];
+
+            // Check if the connected edge is close enough in angle
+            const Edge &current_edge = edges[current_edge_id];
+            const Edge &prev_edge = edges[prev_edge_id];
+
+            bool are_parallel = CustomCGAL::are_almost_parallel(
+                current_edge.get_direction(), prev_edge.get_direction(),
+                tolerance_angle);
+
+            // If the previous edge is not close enough in angle, stop the
+            // sequence
+            if (!are_parallel) {
+                break;
+            }
+
+            edge_visited[current_edge_id] = true;
+            edge_seq_prev_edge_ids.push_back(current_edge_id);
+            current_edge_id = prev_edge_id;
+        }
+
+        // Build the edge sequence
+        std::vector<EdgeId> edge_seq_edge_ids;
+        for (auto it = edge_seq_prev_edge_ids.rbegin();
+             it != edge_seq_prev_edge_ids.rend(); ++it) {
+            edge_seq_edge_ids.push_back(*it);
+        }
+        edge_seq_edge_ids.push_back(source_edge_id);
+        for (const auto &edge_id : edge_seq_next_edge_ids) {
+            edge_seq_edge_ids.push_back(edge_id);
+        }
+
+        // Store the edge sequence and its mapping to edges
+        EdgeSeqId edge_seq_id = edge_seqs.size_as_strong_index();
+        edge_seqs.push_back(EdgeSeq(edge_seq_edge_ids));
+        for (const auto &edge_id : edge_seq_edge_ids) {
+            edge_id_to_edge_seq_id[edge_id] = edge_seq_id;
+        }
+    }
+
+    // Compute the previous and next edge sequence for each edge sequence
+    EdgeSeqVector<EdgeSeqId> prev_edge_seq_ids(edge_seqs.size());
+    EdgeSeqVector<EdgeSeqId> next_edge_seq_ids(edge_seqs.size());
+    for (EdgeSeqId edge_seq_id(0); edge_seq_id < edge_seqs.size();
+         ++edge_seq_id) {
+        const EdgeSeq &edge_seq = edge_seqs[edge_seq_id];
+        EdgeId first_edge_id = edge_seq.edge_ids.front();
+        EdgeId last_edge_id = edge_seq.edge_ids.back();
+        prev_edge_seq_ids[edge_seq_id] =
+            edge_id_to_edge_seq_id[prev_edge_ids[first_edge_id]];
+        next_edge_seq_ids[edge_seq_id] =
+            edge_id_to_edge_seq_id[next_edge_ids[last_edge_id]];
+    }
+
+    /* ------------------------ Edge sequence groups ------------------------ */
+
+    // Compute the edge sequence groups based on intersections between edges
+    EdgeSeqGroupVector<EdgeSeqGroup> edge_seq_groups;
+    EdgeSeqVector<EdgeSeqGroupId> edge_seq_id_to_edge_seq_group_id(
+        edge_seqs.size());
+    EdgeSeqVector<EdgeSeqId> edge_seq_id_parent(edge_seqs.size());
+    EdgeSeqVector<EdgeSeqId> edge_seq_id_root(edge_seqs.size());
+    for (EdgeSeqId edge_seq_id(0); edge_seq_id < edge_seqs.size();
+         ++edge_seq_id) {
+        edge_seq_id_parent[edge_seq_id] = edge_seq_id;
+    }
+    for (auto &intersection : intersections) {
+        EdgeId edge_id_1 = intersection.first;
+        EdgeId edge_id_2 = intersection.second;
+        EdgeSeqId edge_seq_id_1 = edge_id_to_edge_seq_id[edge_id_1];
+        EdgeSeqId edge_seq_id_2 = edge_id_to_edge_seq_id[edge_id_2];
+
+        edge_seq_id_parent[edge_seq_id_1] = edge_seq_id_parent[edge_seq_id_2];
+    }
+    // Pick a EdgeSeqGroupId for each root edge sequence
+    std::map<EdgeSeqId, EdgeSeqGroupId> _edge_seq_id_to_edge_seq_group_id_map;
+    for (EdgeSeqId edge_seq_id(0); edge_seq_id < edge_seqs.size();
+         ++edge_seq_id) {
+        // If root
+        if (edge_seq_id_parent[edge_seq_id] == edge_seq_id) {
+            _edge_seq_id_to_edge_seq_group_id_map[edge_seq_id] =
+                EdgeSeqGroupId(_edge_seq_id_to_edge_seq_group_id_map.size());
+        }
+    }
+    // Assign the EdgeSeqGroupId to each edge sequence based on its root parent
+    for (EdgeSeqId edge_seq_id(0); edge_seq_id < edge_seqs.size();
+         ++edge_seq_id) {
+        // Find the root parent of the edge sequence
+        std::vector<EdgeSeqId> path({edge_seq_id});
+        while (edge_seq_id_parent[path.back()] != path.back()) {
+            path.push_back(edge_seq_id_parent[path.back()]);
+        }
+        for (const EdgeSeqId &edge_seq_id : path) {
+            edge_seq_id_parent[edge_seq_id] = path.back();
+        }
+    }
+    // Build the edge sequence groups based on the mapping
+    edge_seq_groups.resize(_edge_seq_id_to_edge_seq_group_id_map.size());
+    for (EdgeSeqId edge_seq_id(0); edge_seq_id < edge_seqs.size();
+         ++edge_seq_id) {
+        // Get the edge sequence group id
+        EdgeSeqGroupId edge_seq_group_id = _edge_seq_id_to_edge_seq_group_id_map
+            [edge_seq_id_parent[edge_seq_id]];
+
+        // Add the edge sequence to its group
+        edge_seq_groups[edge_seq_group_id].edge_seq_ids.push_back(edge_seq_id);
+
+        // Store the mapping from edge sequence to edge sequence group
+        edge_seq_id_to_edge_seq_group_id[edge_seq_id] = edge_seq_group_id;
+    }
+
+    /* ------------------------------ Outlines ------------------------------ */
+
+    // Compute the mapping from edge sequence to outline
+    EdgeSeqVector<OutlineId> edge_seq_id_to_outline_id(edge_seqs.size());
+    for (OutlineId outline_id(0); outline_id < outlines.size(); ++outline_id) {
+        const auto &outline = outlines[outline_id];
+        for (const auto &polygon : outline.polygons) {
+            for (const auto &edge_id : polygon) {
+                EdgeSeqId edge_seq_id = edge_id_to_edge_seq_id[edge_id];
+                edge_seq_id_to_outline_id[edge_seq_id] = outline_id;
+            }
+        }
+    }
+
+    /* ------------------------- Optimization units ------------------------- */
+
+    // Compute the optimization units based on edge sequence groups
+    OptimizationUnitVector<OptimizationUnit> optim_units;
+    EdgeSeqGroupVector<OptimizationUnitId> edge_seq_group_id_to_optim_unit_id(
+        edge_seq_groups.size());
+    EdgeSeqGroupVector<bool> edge_seq_group_visited(edge_seq_groups.size(),
+                                                    false);
+    for (EdgeSeqGroupId edge_seq_group_id(0);
+         edge_seq_group_id < edge_seq_groups.size(); ++edge_seq_group_id) {
+
+        if (edge_seq_group_visited[edge_seq_group_id]) {
+            continue;
+        }
+
+        // Get a new index for the optimization unit
+        OptimizationUnitId optim_unit_id = optim_units.size_as_strong_index();
+
+        // Find all edge sequence groups that are connected to the current edge
+        // sequence group through shared outlines
+        std::vector<EdgeSeqGroupId> edge_seq_group_ids({edge_seq_group_id});
+        std::vector<EdgeSeqGroupId> edge_seq_group_ids_to_visit(
+            {edge_seq_group_id});
+        while (!edge_seq_group_ids_to_visit.empty()) {
+            EdgeSeqGroupId current_edge_seq_group_id =
+                edge_seq_group_ids_to_visit.back();
+            edge_seq_group_ids_to_visit.pop_back();
+            edge_seq_group_visited[current_edge_seq_group_id] = true;
+
+            // Get the edge sequences in the current edge sequence group
+            const auto &current_edge_seq_group =
+                edge_seq_groups[current_edge_seq_group_id];
+            for (const auto &edge_seq_id :
+                 current_edge_seq_group.edge_seq_ids) {
+                // Get the next and previous edge sequence id
+                EdgeSeqId next_edge_seq_id = next_edge_seq_ids[edge_seq_id];
+                EdgeSeqId prev_edge_seq_id = prev_edge_seq_ids[edge_seq_id];
+
+                // Get the edge sequence group id of the next and previous edge
+                // sequence
+                EdgeSeqGroupId next_edge_seq_group_id =
+                    edge_seq_id_to_edge_seq_group_id[next_edge_seq_id];
+                EdgeSeqGroupId prev_edge_seq_group_id =
+                    edge_seq_id_to_edge_seq_group_id[prev_edge_seq_id];
+
+                // If the next edge sequence group is not visited, add it to the
+                // optimization unit
+                if (!edge_seq_group_visited[next_edge_seq_group_id]) {
+                    edge_seq_group_ids_to_visit.push_back(
+                        next_edge_seq_group_id);
+                    edge_seq_group_ids.push_back(next_edge_seq_group_id);
+                }
+                // If the previous edge sequence group is not visited, add it to
+                // the optimization unit
+                if (!edge_seq_group_visited[prev_edge_seq_group_id]) {
+                    edge_seq_group_ids_to_visit.push_back(
+                        prev_edge_seq_group_id);
+                    edge_seq_group_ids.push_back(prev_edge_seq_group_id);
+                }
+            }
+        }
+
+        // Build the optimization unit based on the edge sequence groups
+        optim_units.push_back(OptimizationUnit(edge_seq_group_ids));
+        for (const auto &edge_seq_group_id : edge_seq_group_ids) {
+            edge_seq_group_id_to_optim_unit_id[edge_seq_group_id] =
+                optim_unit_id;
+        }
+    }
+
+    return AllOutlines(
+        edges, prev_edge_ids, next_edge_ids, edge_seqs, edge_id_to_edge_seq_id,
+        prev_edge_seq_ids, next_edge_seq_ids, edge_seq_groups,
+        edge_seq_id_to_edge_seq_group_id, outlines, edge_seq_id_to_outline_id,
+        optim_units, edge_seq_group_id_to_optim_unit_id);
 }
 
 void _compute_roofprints(const PtsStructs::StoragePtr las_points,
@@ -160,8 +429,7 @@ void NewRoofprints::compute_roofprints(
     const std::string &input_las_file,
     const std::string &input_bd_topo_edges_file,
     const std::string &input_bd_topo_intersections_file,
-    const std::string &output_roofprints_file, double las_buffer_distance,
-    double outline_buffer_distance, bool overwrite) {
+    const std::string &output_roofprints_file, bool overwrite) {
 
     if (std::filesystem::exists(output_roofprints_file) && !overwrite) {
         throw std::runtime_error("Output file already exists: " +
@@ -177,9 +445,10 @@ void NewRoofprints::compute_roofprints(
 
     // Read the building outlines from the BD TOPO file
     std::vector<BDTOPOEdge> initial_edges;
+    std::vector<std::pair<std::size_t, std::size_t>> _intersections;
     auto status = read_bd_topo_as_grouped_edges(
         input_bd_topo_edges_file, input_bd_topo_intersections_file,
-        initial_edges);
+        initial_edges, _intersections);
     if (!status.ok()) {
         std::cerr << "Error reading BD TOPO: " << status.ToString()
                   << std::endl;
@@ -187,6 +456,25 @@ void NewRoofprints::compute_roofprints(
     }
     std::cout << "Successfully read " << initial_edges.size()
               << " edges from BD TOPO." << std::endl;
+
+    // Format the edges for the AllOutlines data structures
+    EdgeVector<Edge> edges;
+    std::map<uint, EdgeId> edge_id_map;
+    std::vector<std::pair<EdgeId, EdgeId>> intersections;
+    for (const auto &edge : initial_edges) {
+        edges.push_back(Edge(edge.start, edge.end));
+        edge_id_map[edge.edge_id] = EdgeId(edges.size() - 1);
+    }
+    for (const auto &intersection : _intersections) {
+        uint edge_id_1 = intersection.first;
+        uint edge_id_2 = intersection.second;
+        intersections.push_back(
+            {edge_id_map[edge_id_1], edge_id_map[edge_id_2]});
+    }
+    OutlineVector<OutlineAsEdges> outlines;
+    // TODO: Build the outlines from the edges
+
+    // Build the AllOutlines data structure
 
     // Compute the roofprints
     std::vector<BDTOPOEdge> optimized_edges;
@@ -196,14 +484,14 @@ void NewRoofprints::compute_roofprints(
 
     std::cout << "Transform Polygons into MultiPolygons" << std::endl;
 
-    // Write the roofprints to a Parquet file
-    std::cout << "Writing roofprints to Parquet file..." << std::endl;
-    auto write_status =
-        write_geoms_to_parquet(roofprints, output_roofprints_file, overwrite);
+    // // Write the roofprints to a Parquet file
+    // std::cout << "Writing roofprints to Parquet file..." << std::endl;
+    // auto write_status = write_geoms_to_parquet(
+    //     optimized_edges, output_roofprints_file, overwrite);
 
-    if (!write_status.ok()) {
-        std::cerr << "Error writing roofprints to Parquet: "
-                  << write_status.ToString() << std::endl;
-        throw std::runtime_error("Failed to write roofprints to Parquet");
-    }
+    // if (!write_status.ok()) {
+    //     std::cerr << "Error writing roofprints to Parquet: "
+    //               << write_status.ToString() << std::endl;
+    //     throw std::runtime_error("Failed to write roofprints to Parquet");
+    // }
 }

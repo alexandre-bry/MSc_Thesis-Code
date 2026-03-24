@@ -267,3 +267,92 @@ Remove all tables:
 ```sql
 DROP TABLE test.*;
 ```
+
+## Group buildings
+
+```sql
+LOAD spatial;
+
+-- Load the data
+CREATE TABLE multipolygons AS SELECT cleabs, geometry FROM 'data/input/BD_TOPO/2025-12-15.parquet';
+CREATE TABLE edges AS SELECT * FROM 'data/bd_topo-edges.parquet';
+CREATE TABLE intersections AS SELECT * FROM 'data/bd_topo-intersections.parquet' WHERE ST_GeometryType(geometry) = 'LINESTRING';
+
+-- Create a graph schema
+CREATE SCHEMA IF NOT EXISTS graph;
+
+-- Create a flat edge table (undirected, avoid duplicates if needed)
+CREATE TABLE graph.edges AS
+SELECT
+    cleabs_a AS src,
+    cleabs_b AS dst
+FROM (
+    SELECT ea.cleabs AS cleabs_a, eb.cleabs AS cleabs_b
+    FROM intersections i
+    JOIN edges AS ea ON i.id_a = ea.id
+    JOIN edges AS eb ON i.id_b = eb.id
+    GROUP BY (cleabs_a, cleabs_b)
+    HAVING cleabs_a < cleabs_b
+) t;
+
+-- Compute the connected components with a recursive CTE
+CREATE TABLE graph.node_to_root AS
+WITH RECURSIVE reach(root, node) AS (
+    SELECT src AS root, src AS node
+    FROM graph.edges
+    UNION
+    SELECT r.root, e.dst
+    FROM reach r
+    JOIN graph.edges e ON e.src = r.node
+)
+SELECT node, MIN(root) AS root_id
+FROM reach
+GROUP BY node;
+
+-- Add the isolated nodes (buildings with no intersection)
+INSERT INTO graph.node_to_root (node, root_id)
+SELECT cleabs, cleabs
+FROM multipolygons
+WHERE cleabs NOT IN (SELECT node FROM graph.node_to_root);
+
+-- Group the nodes by their root to get the connected components
+-- The group id is a new incremental index
+CREATE TABLE graph.components AS
+SELECT
+    row_number() OVER (ORDER BY root_id) AS group_id,
+    list(node ORDER BY node) AS cleabs_list
+FROM graph.node_to_root
+GROUP BY root_id
+ORDER BY root_id;
+
+-- Sum the number of buildings in each group
+SELECT group_id, array_length(cleabs_list) AS num_buildings
+FROM graph.components
+ORDER BY num_buildings DESC;
+
+-- Compute the extent of each group
+CREATE TABLE graph.components_with_extent AS
+SELECT
+    c.group_id,
+    c.cleabs_list,
+    ST_Extent_Agg(m.geometry) AS extent
+FROM (
+    SELECT group_id, cleabs_list, UNNEST(cleabs_list) AS cleabs
+    FROM graph.components
+) c JOIN multipolygons m
+ON m.cleabs = c.cleabs
+GROUP BY (c.group_id, c.cleabs_list)
+ORDER BY c.group_id;
+
+-- Export the components with their extent as GeoParquet
+COPY (
+    WITH full_extent AS (
+        SELECT ST_Extent(ST_Extent_Agg(extent)) AS extent
+        FROM graph.components_with_extent
+    )
+    SELECT * FROM graph.components_with_extent
+    ORDER BY ST_Hilbert(extent, (SELECT extent FROM full_extent))
+)
+TO 'data/bd_topo/groups.parquet'
+(FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE 10_000);
+```

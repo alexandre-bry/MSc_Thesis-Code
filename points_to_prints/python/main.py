@@ -11,10 +11,9 @@ from pathlib import Path
 from typing import Annotated, List
 
 import typer
-from bd_topo_crop import crop_parquet_from_las
-from bd_topo_intersections import compute_export_intersections
+from bd_topo_intersections import compute_export_intersections, crop_intersections_files
 from download import download_lidar_hd_data
-from las_manipulations import identity_convert, merge_files, split_file
+from las_manipulations import get_las_bounds, identity_convert, merge_files, split_file
 from tqdm.contrib.logging import logging_redirect_tqdm
 
 
@@ -232,13 +231,15 @@ def split_las(
     with logging_redirect_tqdm():
         output_file_template.parent.mkdir(parents=True, exist_ok=True)
 
-        split_file(
+        all_output_files = split_file(
             input_file=input_file,
             output_file_template=output_file_template,
             dimension=dimension,
             use_value_in_filename=use_value_in_filename,
             overwrite=overwrite,
         )
+
+    return all_output_files
 
 
 @app.command("merge_las", help="Merge multiple .laz files into a single .laz file.")
@@ -335,10 +336,22 @@ def download_lidar_hd(
 
 
 @app.command(
-    "run_pipeline_before",
-    help="Run the initial steps of the pipeline before the computation of the trajectory.",
+    "run_pipeline",
+    help="Run the pipeline.",
 )
-def run_pipeline_before(
+def run_pipeline(
+    other_data_dir: Annotated[
+        Path,
+        typer.Option(
+            "-d",
+            "--other_data_dir",
+            help="Directory containing the other data files (BD TOPO parquet file, etc.) needed for the pipeline.",
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+        ),
+    ],
     tile_dir: Annotated[
         Path,
         typer.Option(
@@ -368,6 +381,13 @@ def run_pipeline_before(
         typer.Option(
             "--overwrite",
             help="Whether to overwrite the output files.",
+        ),
+    ] = False,
+    skip_existing: Annotated[
+        bool,
+        typer.Option(
+            "--skip_existing",
+            help="Whether to skip processing files that already have output files.",
         ),
     ] = False,
     verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
@@ -378,7 +398,7 @@ def run_pipeline_before(
         source_laz_file = tile_dir / "lidarhd.copc.laz"
 
         # Split the source .laz file into multiple files based on the "PointSourceId" attribute
-        split_las(
+        all_strip_files = split_las(
             input_file=source_laz_file,
             output_file_template=tile_dir / "axis_#.laz",
             dimension="PointSourceId",
@@ -386,60 +406,75 @@ def run_pipeline_before(
             overwrite=overwrite,
             verbose_int=verbose_int,
         )
+        all_strip_files = sorted(all_strip_files)
 
+        # Compute the trajectory for each split file
+        for strip_file in all_strip_files:
+            command = ["./LiDARHD_Traj_Estimation/build/SensorLiDARHD", str(strip_file)]
+            logging.debug(
+                f"Computing trajectory for {strip_file.name} with command: {' '.join(command)}"
+            )
+            return_code = run_command_with_tqdm_logging(command)
+            logging.debug(
+                f"Return code for trajectory computation of {strip_file.name}: {return_code}"
+            )
+            if return_code != 0:
+                logging.error(f"Failed to compute trajectory for {strip_file.name}.")
+            else:
+                logging.info(f"Successfully computed trajectory for {strip_file.name}.")
 
-@app.command(
-    "run_pipeline",
-    help="Run the final steps of the pipeline, after the computation of the trajectory.",
-)
-def run_pipeline(
-    tile_dir: Annotated[
-        Path,
-        typer.Option(
-            "-t",
-            "--tile_dir",
-            help="Directory containing the downloaded tile .laz files.",
-            exists=True,
-            file_okay=False,
-            dir_okay=True,
-            readable=True,
-        ),
-    ],
-    bd_topo_file: Annotated[
-        Path,
-        typer.Option(
-            "-b",
-            "--bd_topo_file",
-            help="Path to the BD_TOPO parquet file.",
-            exists=True,
-            file_okay=True,
-            dir_okay=False,
-            readable=True,
-        ),
-    ],
-    overwrite: Annotated[
-        bool,
-        typer.Option(
-            "--overwrite",
-            help="Whether to overwrite the output files.",
-        ),
-    ] = False,
-    verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
-):
-    setup_logging(verbose=Verbose.from_int(verbose_int))
+            # Check if the trajectory file was created
+            trajectory_file = strip_file.parent / f"{strip_file.stem}_1.txt"
+            if not trajectory_file.exists():
+                logging.error(
+                    f"Trajectory file not found for {strip_file.name}: {trajectory_file}"
+                )
 
-    with logging_redirect_tqdm():
-        # Find all the axis_*.laz files in the tile_dir
-        laz_files = sorted(
-            [
-                p
-                for p in tile_dir.glob("axis_*.laz")
-                if re.fullmatch(r"axis_\d+\.laz", p.name)
-            ]
+            # Rename it to match the expected format for the next steps
+            expected_trajectory_file = (
+                strip_file.parent / f"{strip_file.stem}-trajectory.txt"
+            )
+            trajectory_file.rename(expected_trajectory_file)
+
+            # Check if there was a second file created
+            second_trajectory_file = strip_file.parent / f"{strip_file.stem}_2.txt"
+            if second_trajectory_file.exists():
+                logging.error(
+                    f"Second trajectory file found for {strip_file.name}: {second_trajectory_file}. This may indicate an issue with the trajectory computation."
+                )
+
+        # Check that the intersections of the BD TOPO are available
+        bd_topo_dir = other_data_dir / "bd_topo"
+        edges_file = bd_topo_dir / "edges.parquet"
+        intersections_file = bd_topo_dir / "intersections.parquet"
+        groups_file = bd_topo_dir / "building_groups.parquet"
+        fail = False
+        for file in [edges_file, intersections_file, groups_file]:
+            if not file.exists():
+                logging.error(f"Required BD TOPO file not found: {file}")
+                fail = True
+            else:
+                logging.info(f"Found required BD TOPO file: {file}")
+        if fail:
+            raise FileNotFoundError(
+                "One or more required BD TOPO files are missing. Please ensure they are present in the specified directory."
+            )
+
+        # Crop the BD TOPO data to the bounds of the source .laz file
+        cropped_edges_file = tile_dir / "bd_topo-edges.parquet"
+        cropped_intersections_file = tile_dir / "bd_topo-intersections.parquet"
+        cropped_groups_file = tile_dir / "bd_topo-building_groups.parquet"
+        bounding_box = get_las_bounds(source_laz_file)
+        crop_intersections_files(
+            input_edges_file=edges_file,
+            input_intersections_file=intersections_file,
+            input_building_groups_file=groups_file,
+            output_edges_file=cropped_edges_file,
+            output_intersections_file=cropped_intersections_file,
+            output_building_groups_file=cropped_groups_file,
+            bounding_box=bounding_box,
+            overwrite=overwrite,
         )
-        if len(laz_files) == 0:
-            logging.error(f"No axis_*.laz files found in directory: {tile_dir}")
-            return
 
         # Build the C++ tools using pixi
         command = ["pixi", "run", "--quiet", "cpp-build"]
@@ -451,10 +486,10 @@ def run_pipeline(
             logging.info("C++ tools built successfully.")
 
         # Process each .laz file with the C++ pipeline
-        total_files = len(laz_files)
+        total_files = len(all_strip_files)
         distances_files = []
         edges_files = []
-        for index, laz_file in enumerate(laz_files, start=1):
+        for index, laz_file in enumerate(all_strip_files, start=1):
             logging.info(
                 f"\n\nO----- [{index}/{total_files}] Processing tile: {laz_file.name} -----O\n"
             )
@@ -530,6 +565,9 @@ def run_pipeline(
     except Exception as e:
         logging.error(f"An unexpected error occurred while merging edges files: {e}")
 
+    # Exit here to skip the roofprint computation for now, since it is not working correctly yet
+    exit(0)
+
     # Then, compute the roofprints using the merged edges
     logging.info("\n\nO----- Computing roofprints -----O\n")
     roofprints_file = tile_dir / "roofprints.parquet"
@@ -600,6 +638,21 @@ def bd_topo_intersections(
             help="Path to the output intersections parquet file.",
         ),
     ],
+    output_groups_file: Annotated[
+        Path,
+        typer.Option(
+            "-g",
+            "--output_groups_file",
+            help="Path to the output building groups parquet file.",
+        ),
+    ],
+    overwrite: Annotated[
+        bool,
+        typer.Option(
+            "--overwrite",
+            help="Whether to overwrite the output files.",
+        ),
+    ] = False,
     verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
 ):
     setup_logging(verbose=Verbose.from_int(verbose_int))
@@ -608,11 +661,13 @@ def bd_topo_intersections(
             bd_topo_file=bd_topo_file,
             output_edges_file=output_edges_file,
             output_intersections_file=output_intersections_file,
+            output_building_groups_file=output_groups_file,
+            overwrite=overwrite,
         )
 
 
 @app.command(
-    "bd_topo_crop",
+    "bd_topo_crop_intersections",
     help="Crop the BD TOPO data to the bounds of a given LAS file and export the cropped data to a parquet file.",
 )
 def bd_topo_crop(
@@ -628,35 +683,87 @@ def bd_topo_crop(
             readable=True,
         ),
     ],
-    bd_topo_file: Annotated[
+    edges_file: Annotated[
         Path,
         typer.Option(
-            "-b",
-            "--bd_topo_file",
-            help="Path to the BD_TOPO parquet file.",
+            "-e",
+            "--edges_file",
+            help="Path to the edges parquet file.",
             exists=True,
             file_okay=True,
             dir_okay=False,
             readable=True,
         ),
     ],
-    output_file: Annotated[
+    intersections_file: Annotated[
+        Path,
+        typer.Option(
+            "-i",
+            "--intersections_file",
+            help="Path to the intersections parquet file.",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ],
+    groups_file: Annotated[
+        Path,
+        typer.Option(
+            "-g",
+            "--groups_file",
+            help="Path to the building groups parquet file.",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ],
+    output_edges_file: Annotated[
         Path,
         typer.Option(
             "-o",
-            "--output_file",
-            help="Path to the output cropped BD TOPO parquet file.",
+            "--output_edges_file",
+            help="Path to the output cropped edges parquet file.",
         ),
     ],
+    output_intersections_file: Annotated[
+        Path,
+        typer.Option(
+            "-p",
+            "--output_intersections_file",
+            help="Path to the output cropped intersections parquet file.",
+        ),
+    ],
+    output_groups_file: Annotated[
+        Path,
+        typer.Option(
+            "-q",
+            "--output_groups_file",
+            help="Path to the output cropped building groups parquet file.",
+        ),
+    ],
+    overwrite: Annotated[
+        bool,
+        typer.Option(
+            "--overwrite",
+            help="Whether to overwrite the output file if it already exists.",
+        ),
+    ] = False,
     verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
 ):
     setup_logging(verbose=Verbose.from_int(verbose_int))
     with logging_redirect_tqdm():
-        crop_parquet_from_las(
-            input_las_file=las_file,
-            input_parquet_file=bd_topo_file,
-            output_parquet_file=output_file,
-            overwrite=False,
+        bounding_box = get_las_bounds(las_file)
+        crop_intersections_files(
+            input_edges_file=edges_file,
+            input_intersections_file=intersections_file,
+            input_building_groups_file=groups_file,
+            output_edges_file=output_edges_file,
+            output_intersections_file=output_intersections_file,
+            output_building_groups_file=output_groups_file,
+            bounding_box=bounding_box,
+            overwrite=overwrite,
         )
 
 

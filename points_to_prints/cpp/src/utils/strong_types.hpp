@@ -66,6 +66,8 @@ template <typename StrongIndex, typename T> class StrongTypedVector {
   public:
     using value_type = T;
     using size_type = typename Storage::size_type;
+        using reference = typename Storage::reference;
+        using const_reference = typename Storage::const_reference;
 
     StrongTypedVector() = default;
     explicit StrongTypedVector(size_type count) : values(count) {}
@@ -78,14 +80,19 @@ template <typename StrongIndex, typename T> class StrongTypedVector {
     }
     void clear() { values.clear(); }
     void reserve(size_type count) { values.reserve(count); }
+    void resize(size_type count) { values.resize(count); }
 
     bool contains(StrongIndex id) const { return to_index(id) < values.size(); }
 
-    T &operator[](StrongIndex id) { return values[to_index(id)]; }
-    const T &operator[](StrongIndex id) const { return values[to_index(id)]; }
+    reference operator[](StrongIndex id) { return values[to_index(id)]; }
+    const_reference operator[](StrongIndex id) const {
+        return values[to_index(id)];
+    }
 
-    T &at(StrongIndex id) { return values.at(to_index(id)); }
-    const T &at(StrongIndex id) const { return values.at(to_index(id)); }
+    reference at(StrongIndex id) { return values.at(to_index(id)); }
+    const_reference at(StrongIndex id) const {
+        return values.at(to_index(id));
+    }
 
     StrongIndex push_back(const T &value) {
         values.push_back(value);

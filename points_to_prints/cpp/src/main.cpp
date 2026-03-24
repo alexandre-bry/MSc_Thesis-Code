@@ -7,7 +7,7 @@
 #include "las_filter.hpp"
 #include "parquet.hpp"
 #include "pca.hpp"
-#include "roofprints_new.hpp"
+#include "roofprints_new_new.hpp"
 
 void setup_sort_by_gps_time(CLI::App &app) {
     auto opt = std::make_shared<SortByGpsTimeOptions>();
@@ -146,42 +146,35 @@ void setup_read_write_bd_topo(CLI::App &app) {
 }
 
 void setup_compute_roofprints(CLI::App &app) {
-    auto opt = std::make_shared<Roofprints::ComputeRoofprintsOptions>();
+    auto opt = std::make_shared<NewRoofprints::ComputeRoofprintsOptions>();
 
     CLI::App *sub =
         app.add_subcommand("compute_roofprints", "Compute roofprints");
     std::string input_las_file;
-    sub->add_option("-i,--input-las", opt->input_las_file, "Input LAS file")
+    sub->add_option("-l,--input-las", opt->input_las_file, "Input LAS file")
         ->required();
-    std::string input_bd_topo_file;
-    sub->add_option("-b,--input-bd-topo", opt->input_bd_topo_file,
-                    "Input BD TOPO Parquet file with building outlines")
+    std::string input_bd_topo_edges_file;
+    sub->add_option("-b,--input-bd-topo-edges", opt->input_bd_topo_edges_file,
+                    "Input BD TOPO Parquet file with building edges")
+        ->required();
+    std::string input_bd_topo_intersections_file;
+    sub->add_option("-i,--input-bd-topo-intersections",
+                    opt->input_bd_topo_intersections_file,
+                    "Input BD TOPO Parquet file with building intersections")
         ->required();
     std::string output_roofprints_file;
     sub->add_option("-o,--output-roofprints", opt->output_roofprints_file,
                     "Output Parquet file for roofprints")
         ->required();
-    double las_buffer_distance;
-    sub->add_option("--las-buffer", opt->las_buffer_distance,
-                    "Buffer distance to apply to points when selecting them "
-                    "for roofprint computation (in the same units as the LAS "
-                    "coordinates)")
-        ->default_val(10);
-    double outline_buffer_distance;
-    sub->add_option("--outline-buffer", opt->outline_buffer_distance,
-                    "Buffer distance to apply to building outlines when "
-                    "selecting points for roofprint computation (in the same "
-                    "units as the LAS coordinates)")
-        ->default_val(3);
     bool overwrite = false;
     sub->add_flag("-f,--overwrite", opt->overwrite,
                   "Overwrite the output file if it exists");
 
     sub->callback([opt]() {
-        Roofprints::compute_roofprints(
-            opt->input_las_file, opt->input_bd_topo_file,
-            opt->output_roofprints_file, opt->las_buffer_distance,
-            opt->outline_buffer_distance, opt->overwrite);
+        NewRoofprints::compute_roofprints(
+            opt->input_las_file, opt->input_bd_topo_edges_file,
+            opt->input_bd_topo_intersections_file, opt->output_roofprints_file,
+            opt->overwrite);
     });
 }
 

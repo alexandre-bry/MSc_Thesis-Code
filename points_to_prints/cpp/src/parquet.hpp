@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <format>
@@ -50,15 +51,16 @@ struct BDTOPOEdge {
     uint polygon_idx;
     uint ring_idx;
     uint edge_idx;
+    uint edge_id;
+    Point_3 start;
+    Point_3 end;
 };
 
-BDTOPOEdge edge(std::string building_id, uint polygon_idx, uint ring_idx,
-                uint edge_idx);
-
-arrow::Status
-read_bd_topo_as_grouped_edges(const std::string &edges_parquet_file,
-                              const std::string &intersections_parquet_file,
-                              std::vector<BDTOPOEdge> &edges);
+arrow::Status read_bd_topo_as_grouped_edges(
+    const std::string &edges_parquet_file,
+    const std::string &intersections_parquet_file,
+    std::vector<BDTOPOEdge> &edges,
+    std::vector<std::pair<std::size_t, std::size_t>> &intersections);
 
 // Forward declaration for function used by template
 char *buildGeoMetaData(std::string crs_epsg = "EPSG:2154",

@@ -578,11 +578,13 @@ void get_value_uint(const std::shared_ptr<arrow::Array> &chunk, std::size_t row,
         throw std::runtime_error("Value is null for row " +
                                  std::to_string(row));
     }
-    if (scalar->type->id() != arrow::Type::UINT64) {
-        throw std::runtime_error("Expected UINT64 type for row " +
-                                 std::to_string(row));
-    }
-    auto uint_scalar = std::static_pointer_cast<arrow::UInt64Scalar>(scalar);
+    // if (scalar->type->id() != arrow::Type::UINT64) {
+    //     throw std::runtime_error("Expected UINT64 type for row " +
+    //                              std::to_string(row));
+    // }
+    auto uint_scalar = std::static_pointer_cast<arrow::UInt32Scalar>(scalar);
+    std::cout << "Value for row " << row << ": " << uint_scalar->value
+              << std::endl;
     value = uint_scalar->value;
 }
 
@@ -593,10 +595,11 @@ void get_value_string(const std::shared_ptr<arrow::Array> &chunk,
     value = scalar->ToString();
 }
 
-arrow::Status
-read_bd_topo_as_grouped_edges(const std::string &edges_parquet_file,
-                              const std::string &intersections_parquet_file,
-                              std::vector<BDTOPOEdge> &edges) {
+arrow::Status read_bd_topo_as_grouped_edges(
+    const std::string &edges_parquet_file,
+    const std::string &intersections_parquet_file,
+    std::vector<BDTOPOEdge> &edges,
+    std::vector<std::pair<std::size_t, std::size_t>> &intersections) {
     std::cout << std::format("Reading {}...", edges_parquet_file) << std::endl;
     arrow::MemoryPool *pool = arrow::default_memory_pool();
     std::shared_ptr<arrow::io::RandomAccessFile> input;
@@ -617,31 +620,33 @@ read_bd_topo_as_grouped_edges(const std::string &edges_parquet_file,
     // std::cout << "Schema:" << std::endl;
     auto schema = table->schema();
     int num_fields = schema->num_fields();
-    int geom_field_idx = -1;
     int building_id_field_idx = -1;
     int polygon_idx_field_idx = -1;
     int ring_idx_field_idx = -1;
+    int edge_idx_field_idx = -1;
     int edge_id_field_idx = -1;
+    int start_point_field_idx = -1;
+    int end_point_field_idx = -1;
     for (int i = 0; i < num_fields; ++i) {
         auto field = schema->field(i);
-        if (field->name() == "geometry") {
-            geom_field_idx = i;
-        } else if (field->name() == "cleabs") {
+        if (field->name() == "cleabs") {
             building_id_field_idx = i;
         } else if (field->name() == "idx_polygon") {
             polygon_idx_field_idx = i;
         } else if (field->name() == "idx_ring") {
             ring_idx_field_idx = i;
         } else if (field->name() == "idx_edge") {
+            edge_idx_field_idx = i;
+        } else if (field->name() == "edge_id") {
             edge_id_field_idx = i;
+        } else if (field->name() == "start_point") {
+            start_point_field_idx = i;
+        } else if (field->name() == "end_point") {
+            end_point_field_idx = i;
         }
     }
 
     // Check that required columns are present
-    if (geom_field_idx == -1) {
-        return arrow::Status::Invalid(
-            "Geometry column not found in Parquet file");
-    }
     if (building_id_field_idx == -1) {
         return arrow::Status::Invalid(
             "Building ID column not found in Parquet file");
@@ -654,9 +659,21 @@ read_bd_topo_as_grouped_edges(const std::string &edges_parquet_file,
         return arrow::Status::Invalid(
             "Ring index column not found in Parquet file");
     }
+    if (edge_idx_field_idx == -1) {
+        return arrow::Status::Invalid(
+            "Edge index column not found in Parquet file");
+    }
     if (edge_id_field_idx == -1) {
         return arrow::Status::Invalid(
             "Edge ID column not found in Parquet file");
+    }
+    if (start_point_field_idx == -1) {
+        return arrow::Status::Invalid(
+            "Start point column not found in Parquet file");
+    }
+    if (end_point_field_idx == -1) {
+        return arrow::Status::Invalid(
+            "End point column not found in Parquet file");
     }
 
     long num_rows = table->num_rows();
@@ -670,49 +687,46 @@ read_bd_topo_as_grouped_edges(const std::string &edges_parquet_file,
     ProgressBarTotal progress_bar(num_rows, "Processing building outlines");
     edges.clear();
     for (std::size_t row = 0; row < num_rows; ++row) {
-        auto geom_chunk = table->column(geom_field_idx)->chunk(0);
         auto building_id_chunk = table->column(building_id_field_idx)->chunk(0);
         auto polygon_idx_chunk = table->column(polygon_idx_field_idx)->chunk(0);
         auto ring_idx_chunk = table->column(ring_idx_field_idx)->chunk(0);
+        auto edge_idx_chunk = table->column(edge_idx_field_idx)->chunk(0);
         auto edge_id_chunk = table->column(edge_id_field_idx)->chunk(0);
-
-        if (geom_chunk->IsNull(row)) {
-            std::cerr << "Warning: Geometry is null for row " << row
-                      << ", skipping this feature." << std::endl;
-            continue;
-        }
-        auto geom_scalar = geom_chunk->GetScalar(row);
-        if (!geom_scalar.ok()) {
-            std::cerr << "Warning: Failed to get geometry scalar for row "
-                      << row << ", skipping this feature." << std::endl;
-            continue;
-        }
-        auto geom_scalar_ptr = geom_scalar.ValueOrDie();
-        std::cout << geom_scalar_ptr << std::endl;
-        // std::unique_ptr<geos::geom::Geometry> geometry =
-        //     wkb_reader.hex_to_geometry(geom_scalar_ptr);
-        // auto multi_polygon = parseWKBToMultiPolygon(geom_scalar_ptr);
+        auto start_point_chunk = table->column(start_point_field_idx)->chunk(0);
+        auto end_point_chunk = table->column(end_point_field_idx)->chunk(0);
 
         // Extract attributes
         std::string building_id;
         uint polygon_idx;
         uint ring_idx;
+        uint edge_idx;
         uint edge_id;
         // std::string outline_source_str;
+        std::shared_ptr<arrow::Scalar> start_point_scalar;
+        std::shared_ptr<arrow::Scalar> end_point_scalar;
+
+        // TODO: Figure out how to read the geometry attributes
 
         get_value_string(building_id_chunk, row, building_id);
         get_value_uint(polygon_idx_chunk, row, polygon_idx);
         get_value_uint(ring_idx_chunk, row, ring_idx);
+        get_value_uint(edge_idx_chunk, row, edge_idx);
         get_value_uint(edge_id_chunk, row, edge_id);
         // get_value_string(outline_source_chunk, row, outline_source_str);
         // OutlineSource::Id outline_source =
         //     OutlineSource::from_string(outline_source_str);
+        get_value(start_point_chunk, row, start_point_scalar);
+        std::cout << "Row " << row << ": start_point_scalar type = "
+                  << start_point_scalar->type->ToString() << std::endl;
+        std::cout << "Row " << row << ": start_point_scalar value = "
+                  << start_point_scalar->ToString() << std::endl;
 
         try {
             edges.push_back({
                 building_id,
                 polygon_idx,
                 ring_idx,
+                edge_idx,
                 edge_id,
                 // outline_source,
             });

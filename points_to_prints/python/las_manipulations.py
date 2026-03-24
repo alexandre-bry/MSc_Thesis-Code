@@ -10,6 +10,41 @@ from typing import Dict, List
 
 from pdal import Filter, Pipeline, Reader, Writer
 from tqdm import tqdm
+from utils import Box2154, Point2154
+
+
+def get_las_bounds(las_file: Path) -> Box2154:
+    # Open the LAS file and read the header to get the bounds
+    reader = Reader(str(las_file))
+    pipeline = Pipeline([reader])
+    pipeline.execute()
+    metadata = pipeline.metadata
+
+    las_metadata = metadata["metadata"]
+    proj_metadata = None
+    if "readers.las" in las_metadata:
+        proj_metadata = las_metadata["readers.las"]
+    elif "readers.copc" in las_metadata:
+        proj_metadata = las_metadata["readers.copc"]
+    else:
+        raise ValueError(
+            f"Could not find LAS metadata for file '{las_file}' in PDAL metadata output"
+        )
+
+    if (
+        "minx" not in proj_metadata
+        or "miny" not in proj_metadata
+        or "maxx" not in proj_metadata
+        or "maxy" not in proj_metadata
+    ):
+        raise ValueError(
+            f"Could not retrieve bounds from LAS metadata for file '{las_file}'"
+        )
+    minx = int(float(proj_metadata["minx"]))
+    miny = int(float(proj_metadata["miny"]))
+    maxx = int(float(proj_metadata["maxx"]))
+    maxy = int(float(proj_metadata["maxy"]))
+    return Box2154(Point2154(minx, miny), Point2154(maxx, maxy))
 
 
 def create_merge_pipeline(input_files: List[Path], output_file: Path) -> Dict:
@@ -131,7 +166,7 @@ def split_file(
     dimension: str,
     use_value_in_filename: bool,
     overwrite: bool,
-) -> None:
+) -> List[Path]:
     """
     Split a point cloud file into multiple files based on a specified dimension.
 
@@ -140,6 +175,9 @@ def split_file(
         output_file_template: Template for output file paths (should include # placeholder)
         dimension: Dimension to split on (e.g., "Classification")
         use_value_in_filename: Whether to use the dimension value in the filename
+
+    Returns:
+        List of paths to the created output files
 
     Raises:
         FileNotFoundError: If the input file doesn't exist
@@ -192,20 +230,31 @@ def split_file(
 
     # Write every output to a separate file
     tqdm_iterable = tqdm(
-        processing_pipeline.arrays,
+        enumerate(processing_pipeline.arrays),
         total=len(processing_pipeline.arrays),
         desc="Writing output files",
     )
-    for arr in tqdm_iterable:
+    all_output_files = []
+    for i, arr in tqdm_iterable:
+        # Get the value of the dimension for this array
         dimension_value = arr[dimension][0]
         tqdm_iterable.set_postfix({dimension: dimension_value})
         tqdm_iterable.refresh()
+
+        # Replace the # placeholder in the output file template
+        template_value_str = f"{dimension_value}" if use_value_in_filename else str(i)
+        output_file = Path(str(output_file_template).replace("#", template_value_str))
+        all_output_files.append(output_file)
+
+        # Write the array to the output file
         writer = Writer(
-            str(output_file_template).replace("#", f"{dimension_value}"),
+            str(output_file),
             extra_dims="all",
         )
         pipeline_writer = Pipeline([writer], arrays=[arr])
         pipeline_writer.execute()
+
+    return all_output_files
 
 
 def identity_convert(input_file: Path, output_file: Path, overwrite: bool) -> None:

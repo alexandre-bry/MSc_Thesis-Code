@@ -2,6 +2,7 @@
 .venv/
 .cache/
 .temp/
+.tmp/
 build/
 __pycache__/
 
