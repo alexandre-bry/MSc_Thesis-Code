@@ -17,6 +17,7 @@ pdal = ">=2.9.3,<3"
 pyproj = ">=3.7.2,<4"
 tqdm = ">=4.67.2,<5"
 typer = ">=0.21.1,<1"
+matplotlib = ">=3.10.8,<4"
 
 [feature.python.tasks]
 py = { cmd = "cd \"$INIT_CWD\" && python" }
