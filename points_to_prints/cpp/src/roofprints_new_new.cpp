@@ -1,5 +1,6 @@
 #include "roofprints_new_new.hpp"
 
+#include <cstdint>
 #include <filesystem>
 #include <vector>
 
@@ -23,7 +24,11 @@ Vector_2 NewRoofprints::Edge::get_direction() const { return direction; }
 Line_2 NewRoofprints::Edge::to_line() const { return line; }
 
 void NewRoofprints::Edge::translate(Vector_2 offset) {
-    line = Line_2(line.point(0) + offset, line.direction());
+    line = translated(offset);
+}
+
+Line_2 NewRoofprints::Edge::translated(Vector_2 offset) const {
+    return Line_2(line.point(0) + offset, line.direction());
 }
 
 NewRoofprints::EdgeSeq::EdgeSeq(const std::vector<EdgeId> &edge_ids)
@@ -152,7 +157,8 @@ NewRoofprints::AllOutlines NewRoofprints::make_all_outlines(
     const OutlineVector<OutlineAsEdges> &outlines,
     const std::vector<std::pair<EdgeId, EdgeId>> &intersections) {
 
-    /* -------------------------------- Edges ------------------------------- */
+    /* -------------------------------- Edges
+     * ------------------------------- */
 
     // Find the previous and next edge for each edge
     EdgeVector<EdgeId> prev_edge_ids(edges.size());
@@ -174,9 +180,11 @@ NewRoofprints::AllOutlines NewRoofprints::make_all_outlines(
         }
     }
 
-    /* --------------------------- Edge sequences --------------------------- */
+    /* --------------------------- Edge sequences
+     * --------------------------- */
 
-    // Build the edge sequences based on connectivity and angles between edges
+    // Build the edge sequences based on connectivity and angles between
+    // edges
     EdgeSeqVector<EdgeSeq> edge_seqs;
     EdgeVector<bool> edge_visited(edges.size(), false);
     EdgeVector<EdgeSeqId> edge_id_to_edge_seq_id(edges.size());
@@ -204,7 +212,8 @@ NewRoofprints::AllOutlines NewRoofprints::make_all_outlines(
                 current_edge.get_direction(), next_edge.get_direction(),
                 tolerance_angle);
 
-            // If the next edge is not close enough in angle, stop the sequence
+            // If the next edge is not close enough in angle, stop the
+            // sequence
             if (!are_parallel) {
                 break;
             }
@@ -273,7 +282,8 @@ NewRoofprints::AllOutlines NewRoofprints::make_all_outlines(
             edge_id_to_edge_seq_id[next_edge_ids[last_edge_id]];
     }
 
-    /* ------------------------ Edge sequence groups ------------------------ */
+    /* ------------------------ Edge sequence groups
+     * ------------------------ */
 
     // Compute the edge sequence groups based on intersections between edges
     EdgeSeqGroupVector<EdgeSeqGroup> edge_seq_groups;
@@ -303,7 +313,8 @@ NewRoofprints::AllOutlines NewRoofprints::make_all_outlines(
                 EdgeSeqGroupId(_edge_seq_id_to_edge_seq_group_id_map.size());
         }
     }
-    // Assign the EdgeSeqGroupId to each edge sequence based on its root parent
+    // Assign the EdgeSeqGroupId to each edge sequence based on its root
+    // parent
     for (EdgeSeqId edge_seq_id(0); edge_seq_id < edge_seqs.size();
          ++edge_seq_id) {
         // Find the root parent of the edge sequence
@@ -330,7 +341,8 @@ NewRoofprints::AllOutlines NewRoofprints::make_all_outlines(
         edge_seq_id_to_edge_seq_group_id[edge_seq_id] = edge_seq_group_id;
     }
 
-    /* ------------------------------ Outlines ------------------------------ */
+    /* ------------------------------ Outlines
+     * ------------------------------ */
 
     // Compute the mapping from edge sequence to outline
     EdgeSeqVector<OutlineId> edge_seq_id_to_outline_id(edge_seqs.size());
@@ -344,7 +356,8 @@ NewRoofprints::AllOutlines NewRoofprints::make_all_outlines(
         }
     }
 
-    /* ------------------------- Optimization units ------------------------- */
+    /* ------------------------- Optimization units
+     * ------------------------- */
 
     // Compute the optimization units based on edge sequence groups
     OptimizationUnitVector<OptimizationUnit> optim_units;
@@ -362,8 +375,8 @@ NewRoofprints::AllOutlines NewRoofprints::make_all_outlines(
         // Get a new index for the optimization unit
         OptimizationUnitId optim_unit_id = optim_units.size_as_strong_index();
 
-        // Find all edge sequence groups that are connected to the current edge
-        // sequence group through shared outlines
+        // Find all edge sequence groups that are connected to the current
+        // edge sequence group through shared outlines
         std::vector<EdgeSeqGroupId> edge_seq_group_ids({edge_seq_group_id});
         std::vector<EdgeSeqGroupId> edge_seq_group_ids_to_visit(
             {edge_seq_group_id});
@@ -382,22 +395,22 @@ NewRoofprints::AllOutlines NewRoofprints::make_all_outlines(
                 EdgeSeqId next_edge_seq_id = next_edge_seq_ids[edge_seq_id];
                 EdgeSeqId prev_edge_seq_id = prev_edge_seq_ids[edge_seq_id];
 
-                // Get the edge sequence group id of the next and previous edge
-                // sequence
+                // Get the edge sequence group id of the next and previous
+                // edge sequence
                 EdgeSeqGroupId next_edge_seq_group_id =
                     edge_seq_id_to_edge_seq_group_id[next_edge_seq_id];
                 EdgeSeqGroupId prev_edge_seq_group_id =
                     edge_seq_id_to_edge_seq_group_id[prev_edge_seq_id];
 
-                // If the next edge sequence group is not visited, add it to the
-                // optimization unit
+                // If the next edge sequence group is not visited, add it to
+                // the optimization unit
                 if (!edge_seq_group_visited[next_edge_seq_group_id]) {
                     edge_seq_group_ids_to_visit.push_back(
                         next_edge_seq_group_id);
                     edge_seq_group_ids.push_back(next_edge_seq_group_id);
                 }
-                // If the previous edge sequence group is not visited, add it to
-                // the optimization unit
+                // If the previous edge sequence group is not visited, add
+                // it to the optimization unit
                 if (!edge_seq_group_visited[prev_edge_seq_group_id]) {
                     edge_seq_group_ids_to_visit.push_back(
                         prev_edge_seq_group_id);
@@ -421,9 +434,146 @@ NewRoofprints::AllOutlines NewRoofprints::make_all_outlines(
         optim_units, edge_seq_group_id_to_optim_unit_id);
 }
 
-void _compute_roofprints(const PtsStructs::StoragePtr las_points,
-                         const std::vector<BDTOPOEdge> &all_outlines_edges,
-                         std::vector<BDTOPOEdge> &optimized_outlines_edges) {}
+double NewRoofprints::AllOutlines::compute_metric(
+    NewRoofprints::EdgeSeqId edge_seq_id, std::vector<double> offsets,
+    const PtsStructs::StoragePtr las_points, const KdTree_2 &las_kd_tree,
+    std::vector<double> &metrics) {
+    // TODO: Compute the metric efficiently for all offsets by projecting
+    // only once and then checking whether the projected points are within
+    // the edge segment for each offset
+
+    /* ----- Compute the bounding box in the two extremes of the offsets ---- */
+
+    const std::vector<std::size_t> current_las_indices =
+        las_kd_tree.search_indices_in_box(base_segment.bbox(),
+                                          max_absolute_offset);
+
+    std::vector<PtsStructs::PointId> current_las_point_ids;
+    current_las_point_ids.reserve(current_las_indices.size());
+    for (std::size_t idx : current_las_indices) {
+        current_las_point_ids.emplace_back(PtsStructs::PointId(idx));
+    }
+
+    // Compute the weights for the LAS points
+    std::vector<double> weights;
+    compute_weights(las_points, current_las_point_ids, weights);
+
+    // Compute the metric for each offset
+    metrics.resize(offsets.size(), 0.0);
+    for (size_t i = 0; i < offsets.size(); ++i) {
+        double offset = offsets[i];
+        Point_2 new_main_start =
+            main_start + offset * prev_scale * prev_direction;
+        Point_2 new_main_end = main_end + offset * next_scale * next_direction;
+
+        Roofprints::Edge new_main_edge(new_main_start, new_main_end);
+        if (new_main_edge.get_length() < 1e-6) {
+            std::cout << "The main edge is too small, skipping metric "
+                         "computation for this offset"
+                      << std::endl;
+            continue;
+        }
+        Roofprints::Edge new_prev_edge(prev_start, new_main_start);
+        Roofprints::Edge new_next_edge(new_main_end, next_end);
+
+        // Sum the scores for all points in the LAS point cloud
+        double total_score_main = 0.0;
+        double total_score_prev = 0.0;
+        double total_score_next = 0.0;
+        for (size_t j = 0; j < current_las_point_ids.size(); ++j) {
+            const PtsStructs::PointId las_point_id = current_las_point_ids[j];
+            const Point_2 &point = las_points->get_point_2d(las_point_id);
+
+            double score_main = compute_metric(point, new_main_edge);
+            double score_prev = compute_metric(point, new_prev_edge);
+            double score_next = compute_metric(point, new_next_edge);
+
+            total_score_main += score_main * weights[las_point_id];
+            total_score_prev += score_prev * weights[las_point_id];
+            total_score_next += score_next * weights[las_point_id];
+        }
+
+        double length_penalization_main =
+            std::min(new_main_edge.get_length(), MAX_LENGTH_PENALIZATION);
+        double length_penalization_prev =
+            std::min(new_prev_edge.get_length(), MAX_LENGTH_PENALIZATION);
+        double length_penalization_next =
+            std::min(new_next_edge.get_length(), MAX_LENGTH_PENALIZATION);
+
+        metrics[i] = (total_score_main / length_penalization_main) +
+                     (total_score_prev / length_penalization_prev) +
+                     (total_score_next / length_penalization_next);
+    }
+}
+
+double NewRoofprints::AllOutlines::compute_optimal_offset(
+    EdgeSeqGroupId edge_seq_group_id, double max_absolute_offset,
+    double offset_step, const KdTree_2 &las_kd_tree,
+    PtsStructs::StoragePtr las_points) {
+    // auto [min_offset_limit, max_offset_limit] =
+    // _compute_movement_limits();
+    auto [min_offset_limit, max_offset_limit] =
+        std::make_pair(-std::numeric_limits<double>::infinity(),
+                       std::numeric_limits<double>::infinity());
+    double actual_min_offset = std::max(min_offset_limit, -max_absolute_offset);
+    double actual_max_offset = std::min(max_offset_limit, max_absolute_offset);
+
+    // Build the list of offsets to evaluate
+    std::vector<double> offsets(0.0);
+    for (double offset = offset_step; offset <= actual_max_offset;
+         offset += offset_step) {
+        offsets.push_back(offset);
+    }
+    for (double offset = -offset_step; offset >= actual_min_offset;
+         offset -= offset_step) {
+        offsets.push_back(offset);
+    }
+
+    // Compute the metrics for all offsets
+    std::vector<double> metrics_sum;
+    for (const auto &edge_with_neighbours : edges_with_neighbours) {
+        std::vector<double> metrics;
+        edge_with_neighbours.compute_metric_for_offsets(
+            moving_direction, offsets, all_points, las_kd_tree, las_points,
+            metrics);
+        if (metrics_sum.empty()) {
+            metrics_sum = metrics;
+        } else {
+            for (size_t i = 0; i < metrics.size(); ++i) {
+                metrics_sum[i] += metrics[i];
+            }
+        }
+    }
+
+    // Find the best offset
+    double best_offset = 0.0;
+    double best_metric = -std::numeric_limits<double>::infinity();
+    for (size_t i = 0; i < offsets.size(); ++i) {
+        if (metrics_sum[i] > best_metric) {
+            best_metric = metrics_sum[i];
+            best_offset = offsets[i];
+        }
+    }
+
+    return best_offset;
+}
+
+void NewRoofprints::AllOutlines::optimize_unit(
+    const PtsStructs::StoragePtr las_points,
+    const OptimizationUnitId &optim_unit_id) {
+    const auto &optim_unit = optim_units[optim_unit_id];
+    std::cout << "Optimizing unit " << optim_unit_id << " with "
+              << optim_unit.edge_seq_group_ids.size() << " edge sequence groups"
+              << std::endl;
+}
+
+void NewRoofprints::AllOutlines::optimize_all_units(
+    const PtsStructs::StoragePtr las_points) {
+    for (OptimizationUnitId optim_unit_id(0);
+         optim_unit_id < optim_units.size(); ++optim_unit_id) {
+        optimize_unit(las_points, optim_unit_id);
+    }
+}
 
 void NewRoofprints::compute_roofprints(
     const std::string &input_las_file,
@@ -445,7 +595,7 @@ void NewRoofprints::compute_roofprints(
 
     // Read the building outlines from the BD TOPO file
     std::vector<BDTOPOEdge> initial_edges;
-    std::vector<std::pair<std::size_t, std::size_t>> _intersections;
+    std::vector<std::pair<uint32_t, uint32_t>> _intersections;
     auto status = read_bd_topo_as_grouped_edges(
         input_bd_topo_edges_file, input_bd_topo_intersections_file,
         initial_edges, _intersections);
@@ -459,30 +609,96 @@ void NewRoofprints::compute_roofprints(
 
     // Format the edges for the AllOutlines data structures
     EdgeVector<Edge> edges;
-    std::map<uint, EdgeId> edge_id_map;
+    std::map<uint32_t, EdgeId> edge_key_map;
     std::vector<std::pair<EdgeId, EdgeId>> intersections;
     for (const auto &edge : initial_edges) {
         edges.push_back(Edge(edge.start, edge.end));
-        edge_id_map[edge.edge_id] = EdgeId(edges.size() - 1);
+        edge_key_map[edge.edge_key] = EdgeId(edges.size() - 1);
     }
     for (const auto &intersection : _intersections) {
-        uint edge_id_1 = intersection.first;
-        uint edge_id_2 = intersection.second;
+        uint32_t edge_key_1 = intersection.first;
+        uint32_t edge_key_2 = intersection.second;
         intersections.push_back(
-            {edge_id_map[edge_id_1], edge_id_map[edge_id_2]});
+            {edge_key_map[edge_key_1], edge_key_map[edge_key_2]});
     }
+
+    // Rebuild the MultiPolygon hierarchy based on the edges and their
+    // building, polygon, and ring indices
+    std::map<std::string, std::vector<std::vector<EdgeId>>>
+        building_id_to_polygons;
+    std::map<std::string, std::vector<std::vector<bool>>> found_edges;
+    for (const auto &edge : initial_edges) {
+        auto building_id = edge.building_id;
+        auto polygon_idx = edge.polygon_idx;
+        auto ring_idx = edge.ring_idx;
+        auto edge_id = edge.edge_key;
+
+        if (building_id_to_polygons[building_id].size() <= polygon_idx) {
+            building_id_to_polygons[building_id].resize(polygon_idx + 1);
+            found_edges[building_id].resize(polygon_idx + 1);
+        }
+        if (building_id_to_polygons[building_id][polygon_idx].size() <=
+            ring_idx) {
+            building_id_to_polygons[building_id][polygon_idx].resize(ring_idx +
+                                                                     1);
+            found_edges[building_id][polygon_idx].resize(ring_idx + 1, false);
+        }
+        building_id_to_polygons[building_id][polygon_idx][ring_idx] =
+            edge_key_map[edge_id];
+        found_edges[building_id][polygon_idx][ring_idx] = true;
+    }
+
+    // Check for any missing edges in the hierarchy and throw an error if
+    // any are found
+    for (const auto &[building_id, polygons] : building_id_to_polygons) {
+        for (std::size_t polygon_idx = 0; polygon_idx < polygons.size();
+             ++polygon_idx) {
+            for (std::size_t ring_idx = 0;
+                 ring_idx < polygons[polygon_idx].size(); ++ring_idx) {
+                if (!found_edges[building_id][polygon_idx][ring_idx]) {
+                    throw std::runtime_error(
+                        "Warning: Missing edge for building " + building_id +
+                        ", polygon " + std::to_string(polygon_idx) + ", ring " +
+                        std::to_string(ring_idx));
+                }
+            }
+        }
+    }
+
+    // Build the expected structure
     OutlineVector<OutlineAsEdges> outlines;
-    // TODO: Build the outlines from the edges
+    for (const auto &[building_id, polygons] : building_id_to_polygons) {
+        std::vector<std::vector<EdgeId>> outline_polygons;
+        for (const auto &polygon : polygons) {
+            std::vector<EdgeId> outline_edges;
+            for (const auto &edge_id : polygon) {
+                outline_edges.push_back(edge_id);
+            }
+            if (!outline_edges.empty()) {
+                outline_polygons.push_back(outline_edges);
+            } else {
+                std::cerr << "Warning: Polygon with no edges in building "
+                          << building_id
+                          << ", skipping this polygon in the outline."
+                          << std::endl;
+            }
+        }
+        if (!outline_polygons.empty()) {
+            outlines.push_back(OutlineAsEdges(outline_polygons));
+        } else {
+            std::cerr << "Warning: Building " << building_id
+                      << " has no valid polygons, skipping this building in "
+                         "the outlines."
+                      << std::endl;
+        }
+    }
 
     // Build the AllOutlines data structure
+    AllOutlines all_outlines =
+        make_all_outlines(edges, outlines, intersections);
 
-    // Compute the roofprints
-    std::vector<BDTOPOEdge> optimized_edges;
-    _compute_roofprints(las_reader.points, initial_edges, optimized_edges);
-    std::cout << "Optimized " << optimized_edges.size() << " edges."
-              << std::endl;
-
-    std::cout << "Transform Polygons into MultiPolygons" << std::endl;
+    // Optimize the outlines
+    all_outlines.optimize_all_units(las_reader.points);
 
     // // Write the roofprints to a Parquet file
     // std::cout << "Writing roofprints to Parquet file..." << std::endl;
@@ -492,6 +708,7 @@ void NewRoofprints::compute_roofprints(
     // if (!write_status.ok()) {
     //     std::cerr << "Error writing roofprints to Parquet: "
     //               << write_status.ToString() << std::endl;
-    //     throw std::runtime_error("Failed to write roofprints to Parquet");
+    //     throw std::runtime_error("Failed to write roofprints to
+    //     Parquet");
     // }
 }

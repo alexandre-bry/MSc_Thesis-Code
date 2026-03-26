@@ -82,7 +82,9 @@ def create_merge_pipeline(input_files: List[Path], output_file: Path) -> Dict:
     return {"pipeline": pipeline}
 
 
-def merge_files(input_files: List[Path], output_file: Path, overwrite: bool) -> None:
+def merge_files(
+    input_files: List[Path], output_file: Path, overwrite: bool, skip_existing: bool
+) -> None:
     """
     Merge multiple point cloud files into a single output file.
 
@@ -90,6 +92,7 @@ def merge_files(input_files: List[Path], output_file: Path, overwrite: bool) -> 
         input_files: List of input point cloud file paths
         output_file: Output file path
         overwrite: Whether to overwrite the output file if it already exists
+        skip_existing: Whether to skip processing files that already exist
 
     Raises:
         FileNotFoundError: If any input file doesn't exist
@@ -109,6 +112,9 @@ def merge_files(input_files: List[Path], output_file: Path, overwrite: bool) -> 
 
     # Check if the output file already exists
     if output_path.exists() and not overwrite:
+        if skip_existing:
+            logging.info(f"Skipping existing output file: {output_path}")
+            return
         raise FileExistsError(f"Output file already exists: {output_path}")
 
     # Create pipeline
@@ -121,51 +127,12 @@ def merge_files(input_files: List[Path], output_file: Path, overwrite: bool) -> 
     pdal_pipeline.execute()
 
 
-def create_split_pipeline(
-    input_file: Path, output_file_template: Path, dimension: str
-) -> Pipeline:
-    """
-    Create a PDAL pipeline that splits a point cloud file based on a specified dimension.
-
-    Args:
-        input_file: Input point cloud file path
-        output_file_template: Template for output file paths (should include # placeholder)
-        dimension: Dimension to split on (e.g., "Classification")
-
-    Returns:
-        Dictionary representing the PDAL pipeline
-    """
-    input_file_str = str(input_file)
-    output_file_template_str = str(output_file_template)
-
-    reader = Reader(input_file_str)
-    filter_groupby = Filter("filters.groupby", dimension=dimension)
-
-    pipeline = Pipeline([reader, filter_groupby])
-
-    # pipeline = {"pipeline": [
-    #     {"type": "readers.las", "filename": input_file_str},
-    #     {
-    #         "type": "filters.groupby",
-    #         "dimension": dimension,
-    #     },
-    #     {
-    #         "type": "writers.las",
-    #         "filename": output_file_template_str,
-    #         "extra_dims": "all",
-    #     },
-    # ]
-    # }
-
-    return pipeline
-
-
 def split_file(
     input_file: Path,
     output_file_template: Path,
     dimension: str,
-    use_value_in_filename: bool,
     overwrite: bool,
+    skip_existing: bool,
 ) -> List[Path]:
     """
     Split a point cloud file into multiple files based on a specified dimension.
@@ -174,7 +141,8 @@ def split_file(
         input_file: Input point cloud file path
         output_file_template: Template for output file paths (should include # placeholder)
         dimension: Dimension to split on (e.g., "Classification")
-        use_value_in_filename: Whether to use the dimension value in the filename
+        overwrite: Whether to overwrite output files if they already exist
+        skip_existing: Whether to skip processing output files that already exist
 
     Returns:
         List of paths to the created output files
@@ -191,28 +159,6 @@ def split_file(
             "Output file template must contain a # placeholder for the dimension value"
         )
 
-    # Check if the output directory already contains files that match the output file template pattern
-    if not overwrite:
-        # Find the values for the dimension in the input file to determine the expected output files
-        reader = Reader(str(input_file))
-        reader_pipeline = Pipeline([reader])
-        reader_pipeline.execute()
-        dimension_values = set(reader_pipeline.arrays[0][dimension])
-
-        # Check if any of the expected output files already exist
-        already_existing_files = []
-        for value in dimension_values:
-            expected_output_file = output_file_template.with_name(
-                output_file_template.name.replace("#", f"{value}")
-            )
-            if expected_output_file.exists():
-                already_existing_files.append(expected_output_file)
-
-        if len(already_existing_files) > 0:
-            raise FileExistsError(
-                f"Output files already exist for the following dimension values: {list(map(str, already_existing_files))}.\nUse --overwrite to overwrite them."
-            )
-
     # Ensure output directory exists
     output_file_template.parent.mkdir(parents=True, exist_ok=True)
 
@@ -223,10 +169,41 @@ def split_file(
     processing_pipeline = Pipeline([reader, filter_groupby])
 
     # Run the pipeline
+    logging.info(
+        f"Processing input file '{input_file}' and splitting by dimension '{dimension}'"
+    )
+    logging.debug(
+        f"PDAL Pipeline: {json.dumps(processing_pipeline.pipeline, indent=2)}"
+    )
     processing_pipeline.execute()
     logging.debug(
         f"Found {len(processing_pipeline.arrays)} different values for dimension '{dimension}'"
     )
+
+    # Find the unique values for the dimension of interest
+    dimension_unique_values = [arr[dimension][0] for arr in processing_pipeline.arrays]
+    output_files = [
+        Path(str(output_file_template).replace("#", f"{dimension_value}"))
+        for dimension_value in dimension_unique_values
+    ]
+
+    # Check if the output directory already contains files that match the output file template pattern
+    if not overwrite or skip_existing:
+        # Count the number of existing files
+        already_existing_files = 0
+        for output_file in output_files:
+            if output_file.exists():
+                already_existing_files += 1
+
+        if skip_existing and already_existing_files == len(output_files):
+            logging.info(
+                f"All output files already exist for the following dimension values: {list(map(str, dimension_unique_values))}.\nSkipping processing due to --skip_existing flag."
+            )
+            return output_files
+        elif not overwrite and already_existing_files > 0:
+            raise FileExistsError(
+                f"Output files already exist for the following dimension values: {list(map(str, dimension_unique_values))}.\nUse --overwrite to overwrite them."
+            )
 
     # Write every output to a separate file
     tqdm_iterable = tqdm(
@@ -242,8 +219,7 @@ def split_file(
         tqdm_iterable.refresh()
 
         # Replace the # placeholder in the output file template
-        template_value_str = f"{dimension_value}" if use_value_in_filename else str(i)
-        output_file = Path(str(output_file_template).replace("#", template_value_str))
+        output_file = Path(str(output_file_template).replace("#", f"{dimension_value}"))
         all_output_files.append(output_file)
 
         # Write the array to the output file

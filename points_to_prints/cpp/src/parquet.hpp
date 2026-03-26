@@ -48,19 +48,25 @@ arrow::Status write_multi_polygons_to_parquet(
 
 struct BDTOPOEdge {
     std::string building_id;
-    uint polygon_idx;
-    uint ring_idx;
-    uint edge_idx;
-    uint edge_id;
+    uint8_t polygon_idx;
+    uint8_t ring_idx;
+    uint16_t edge_idx;
+    uint32_t edge_key;
     Point_3 start;
     Point_3 end;
 };
+
+// arrow::Status _old_read_bd_topo_as_grouped_edges(
+//     const std::string &edges_parquet_file,
+//     const std::string &intersections_parquet_file,
+//     std::vector<BDTOPOEdge> &edges,
+//     std::vector<std::pair<std::size_t, std::size_t>> &intersections);
 
 arrow::Status read_bd_topo_as_grouped_edges(
     const std::string &edges_parquet_file,
     const std::string &intersections_parquet_file,
     std::vector<BDTOPOEdge> &edges,
-    std::vector<std::pair<std::size_t, std::size_t>> &intersections);
+    std::vector<std::pair<uint32_t, uint32_t>> &intersections);
 
 // Forward declaration for function used by template
 char *buildGeoMetaData(std::string crs_epsg = "EPSG:2154",

@@ -24,10 +24,28 @@ GRAPH_EDGES_TABLE_NAME = "graph_edges"
 GRAPH_NODE_TO_ROOT_TABLE_NAME = "graph_node_to_root"
 GRAPH_COMPONENTS_TABLE_NAME = "graph_components"
 
-EDGE_ID_COLUMN_NAME = "edge_id"
 BUILDING_ID_COLUMN_NAME = "cleabs"
 GEOMETRY_COLUMN_NAME = "geometry"
 EXTENT_COLUMN_NAME = "extent"
+START_POINT_COLUMN_NAME = "start_point"
+END_POINT_COLUMN_NAME = "end_point"
+
+IDX_POLYGON = {
+    "name": "idx_polygon",
+    "type": "UINT8",
+}
+IDX_RING = {
+    "name": "idx_ring",
+    "type": "UINT8",
+}
+IDX_EDGE = {
+    "name": "idx_edge",
+    "type": "UINT16",
+}
+EDGE_KEY = {
+    "name": "edge_key",
+    "type": "UINT32",
+}
 
 
 def load_bd_topo_to_duckdb(con: DuckDBConnector, bd_topo_file: Path):
@@ -55,7 +73,8 @@ def unnest_multipoly_to_poly(con: DuckDBConnector):
         f"""
         CREATE OR REPLACE TABLE {SCHEMA_NAME}.{POLY_TABLE_NAME} AS
         SELECT
-            cleabs, path[1] - 1 AS idx_polygon,
+            cleabs,
+            (path[1] - 1)::{IDX_POLYGON['type']} AS {IDX_POLYGON['name']},
             geom AS {GEOMETRY_COLUMN_NAME}
         FROM (
             SELECT cleabs, UNNEST(ST_Dump({GEOMETRY_COLUMN_NAME}), recursive := true)
@@ -79,14 +98,14 @@ def unnest_poly_to_rings(con: DuckDBConnector):
         CREATE OR REPLACE TABLE {SCHEMA_NAME}.{RINGS_TABLE_NAME} AS
         SELECT 
             cleabs,
-            idx_polygon,
-            idx_ring,
+            {IDX_POLYGON['name']},
+            {IDX_RING['name']}::{IDX_RING['type']} AS {IDX_RING['name']},
             CASE
-                WHEN i.idx_ring = 0 THEN ST_ExteriorRing({GEOMETRY_COLUMN_NAME})
-                ELSE ST_InteriorRingN({GEOMETRY_COLUMN_NAME}, i.idx_ring)
+                WHEN i.{IDX_RING['name']} = 0 THEN ST_ExteriorRing({GEOMETRY_COLUMN_NAME})
+                ELSE ST_InteriorRingN({GEOMETRY_COLUMN_NAME}, i.{IDX_RING['name']})
             END AS {GEOMETRY_COLUMN_NAME}
         FROM {SCHEMA_NAME}.{POLY_TABLE_NAME}
-        CROSS JOIN generate_series(0, ST_NInteriorRings({GEOMETRY_COLUMN_NAME})) AS i(idx_ring);
+        CROSS JOIN generate_series(0, ST_NInteriorRings({GEOMETRY_COLUMN_NAME})) AS i({IDX_RING['name']});
         """
     )
 
@@ -106,18 +125,18 @@ def unnest_rings_to_edges(con: DuckDBConnector):
         CREATE OR REPLACE TABLE {SCHEMA_NAME}.{EDGES_TABLE_NAME} AS
         SELECT
             cleabs,
-            idx_polygon,
-            idx_ring,
-            idx_point-1 AS idx_edge,
-            ST_PointN({GEOMETRY_COLUMN_NAME}, idx_point::INTEGER) AS start_point,
-            ST_PointN({GEOMETRY_COLUMN_NAME}, (idx_point + 1)::INTEGER) AS end_point,
+            {IDX_POLYGON['name']},
+            {IDX_RING['name']},
+            (idx_point-1)::{IDX_EDGE['type']} AS {IDX_EDGE['name']},
+            ST_PointN({GEOMETRY_COLUMN_NAME}, idx_point::INTEGER) AS {START_POINT_COLUMN_NAME},
+            ST_PointN({GEOMETRY_COLUMN_NAME}, (idx_point + 1)::INTEGER) AS {END_POINT_COLUMN_NAME},
             ST_MakeLine(
                 ST_PointN({GEOMETRY_COLUMN_NAME}, idx_point::INTEGER),
                 ST_PointN({GEOMETRY_COLUMN_NAME}, (idx_point + 1)::INTEGER)
             ) AS {GEOMETRY_COLUMN_NAME}
         FROM {SCHEMA_NAME}.{RINGS_TABLE_NAME}
         CROSS JOIN generate_series(1, ST_NPoints({GEOMETRY_COLUMN_NAME}) - 1) AS i(idx_point)
-        ORDER BY cleabs, idx_polygon, idx_ring, idx_edge;
+        ORDER BY cleabs, {IDX_POLYGON['name']}, {IDX_RING['name']}, {IDX_EDGE['name']};
         """
     )
 
@@ -125,8 +144,8 @@ def unnest_rings_to_edges(con: DuckDBConnector):
     con.execute(
         f"""
         CREATE OR REPLACE SEQUENCE seq_edges_ids START 1;
-        ALTER TABLE {SCHEMA_NAME}.{EDGES_TABLE_NAME} ADD COLUMN {EDGE_ID_COLUMN_NAME} INTEGER;
-        UPDATE {SCHEMA_NAME}.{EDGES_TABLE_NAME} SET {EDGE_ID_COLUMN_NAME} = nextval('seq_edges_ids');
+        ALTER TABLE {SCHEMA_NAME}.{EDGES_TABLE_NAME} ADD COLUMN {EDGE_KEY['name']} {EDGE_KEY['type']};
+        UPDATE {SCHEMA_NAME}.{EDGES_TABLE_NAME} SET {EDGE_KEY['name']} = nextval('seq_edges_ids');
         """
     )
 
@@ -151,12 +170,12 @@ def compute_intersections(con: DuckDBConnector):
         f"""
         CREATE OR REPLACE TABLE {SCHEMA_NAME}.{INTERSECTIONS_TABLE_NAME}_temp AS
         SELECT
-            a.{EDGE_ID_COLUMN_NAME} AS {EDGE_ID_COLUMN_NAME}_a,
-            b.{EDGE_ID_COLUMN_NAME} AS {EDGE_ID_COLUMN_NAME}_b,
+            a.{EDGE_KEY['name']} AS {EDGE_KEY['name']}_a,
+            b.{EDGE_KEY['name']} AS {EDGE_KEY['name']}_b,
             ST_Intersection(a.{GEOMETRY_COLUMN_NAME}, b.{GEOMETRY_COLUMN_NAME}) AS {GEOMETRY_COLUMN_NAME}
         FROM {SCHEMA_NAME}.{EDGES_TABLE_NAME} a
         JOIN {SCHEMA_NAME}.{EDGES_TABLE_NAME} b
-            ON a.{EDGE_ID_COLUMN_NAME} < b.{EDGE_ID_COLUMN_NAME}
+            ON a.{EDGE_KEY['name']} < b.{EDGE_KEY['name']}
         AND ST_Intersects(a.{GEOMETRY_COLUMN_NAME}, b.{GEOMETRY_COLUMN_NAME});
         """
     )
@@ -211,8 +230,8 @@ def group_buildings(con: DuckDBConnector):
         FROM (
             SELECT ea.cleabs AS cleabs_a, eb.cleabs AS cleabs_b
             FROM {SCHEMA_NAME}.{INTERSECTIONS_TABLE_NAME} i
-            JOIN {SCHEMA_NAME}.{EDGES_TABLE_NAME} AS ea ON i.{EDGE_ID_COLUMN_NAME}_a = ea.{EDGE_ID_COLUMN_NAME}
-            JOIN {SCHEMA_NAME}.{EDGES_TABLE_NAME} AS eb ON i.{EDGE_ID_COLUMN_NAME}_b = eb.{EDGE_ID_COLUMN_NAME}
+            JOIN {SCHEMA_NAME}.{EDGES_TABLE_NAME} AS ea ON i.{EDGE_KEY['name']}_a = ea.{EDGE_KEY['name']}
+            JOIN {SCHEMA_NAME}.{EDGES_TABLE_NAME} AS eb ON i.{EDGE_KEY['name']}_b = eb.{EDGE_KEY['name']}
             GROUP BY (cleabs_a, cleabs_b)
             HAVING cleabs_a < cleabs_b
         ) t;
@@ -336,21 +355,23 @@ def crop_intersections_files(
     output_building_groups_file: Path,
     bounding_box: Box2154,
     overwrite: bool,
+    skip_existing: bool,
 ):
     output_files = [
         output_edges_file,
         output_intersections_file,
         output_building_groups_file,
     ]
-    for file in output_files:
-        if file.exists():
-            if overwrite:
-                logging.warning(f"Output file '{file}' already exists. Overwriting.")
-            else:
-                logging.error(
-                    f"Output file '{file}' already exists. Use --overwrite to overwrite it."
-                )
-                return
+    existing_output_files = [file for file in output_files if file.exists()]
+    if not overwrite and len(existing_output_files) > 0:
+        if skip_existing and len(existing_output_files) == len(output_files):
+            logging.info("Skipping existing output files.")
+            return
+        else:
+            raise FileExistsError(
+                f"Some output files already exist. Use --overwrite to overwrite them."
+            )
+
     output_edges_file.parent.mkdir(parents=True, exist_ok=True)
     output_intersections_file.parent.mkdir(parents=True, exist_ok=True)
     output_building_groups_file.parent.mkdir(parents=True, exist_ok=True)
@@ -406,7 +427,18 @@ def crop_intersections_files(
         )
         query = f"""
             CREATE OR REPLACE TABLE {SCHEMA_NAME}.{CROPPED_EDGES_TABLE_NAME} AS
-            SELECT e.* FROM intersections.edges e
+            SELECT
+                e.* EXCLUDE(
+                    e.{START_POINT_COLUMN_NAME},
+                    e.{END_POINT_COLUMN_NAME}
+                ),
+                ST_X(e.{START_POINT_COLUMN_NAME}) AS start_x,
+                ST_Y(e.{START_POINT_COLUMN_NAME}) AS start_y,
+                ST_Z(e.{START_POINT_COLUMN_NAME}) AS start_z,
+                ST_X(e.{END_POINT_COLUMN_NAME}) AS end_x,
+                ST_Y(e.{END_POINT_COLUMN_NAME}) AS end_y,
+                ST_Z(e.{END_POINT_COLUMN_NAME}) AS end_z
+            FROM intersections.edges e
             JOIN (
                 SELECT UNNEST(cleabs_list) AS cleabs
                 FROM intersections.cropped_building_groups
@@ -421,8 +453,8 @@ def crop_intersections_files(
             CREATE OR REPLACE TABLE {SCHEMA_NAME}.{CROPPED_INTERSECTIONS_TABLE_NAME} AS
             SELECT i.*
             FROM {SCHEMA_NAME}.{INTERSECTIONS_TABLE_NAME} i
-            JOIN {SCHEMA_NAME}.{CROPPED_EDGES_TABLE_NAME} e_a ON i.{EDGE_ID_COLUMN_NAME}_a = e_a.{EDGE_ID_COLUMN_NAME}
-            JOIN {SCHEMA_NAME}.{CROPPED_EDGES_TABLE_NAME} e_b ON i.{EDGE_ID_COLUMN_NAME}_b = e_b.{EDGE_ID_COLUMN_NAME}
+            JOIN {SCHEMA_NAME}.{CROPPED_EDGES_TABLE_NAME} e_a ON i.{EDGE_KEY['name']}_a = e_a.{EDGE_KEY['name']}
+            JOIN {SCHEMA_NAME}.{CROPPED_EDGES_TABLE_NAME} e_b ON i.{EDGE_KEY['name']}_b = e_b.{EDGE_KEY['name']}
         """
         con.execute(query)
 

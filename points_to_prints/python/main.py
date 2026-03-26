@@ -209,19 +209,26 @@ def split_las(
             help="The dimension to split by (e.g., 'Classification').",
         ),
     ],
-    use_value_in_filename: Annotated[
-        bool,
-        typer.Option(
-            "-n",
-            "--name_with_value",
-            help="Whether to include the dimension value in the output filename.",
-        ),
-    ] = False,
+    # use_value_in_filename: Annotated[
+    #     bool,
+    #     typer.Option(
+    #         "-n",
+    #         "--name_with_value",
+    #         help="Whether to include the dimension value in the output filename.",
+    #     ),
+    # ] = False,
     overwrite: Annotated[
         bool,
         typer.Option(
             "--overwrite",
             help="Whether to overwrite the files.",
+        ),
+    ] = False,
+    skip_existing: Annotated[
+        bool,
+        typer.Option(
+            "--skip_existing",
+            help="Whether to skip processing files that already exist.",
         ),
     ] = False,
     verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
@@ -235,8 +242,8 @@ def split_las(
             input_file=input_file,
             output_file_template=output_file_template,
             dimension=dimension,
-            use_value_in_filename=use_value_in_filename,
             overwrite=overwrite,
+            skip_existing=skip_existing,
         )
 
     return all_output_files
@@ -271,6 +278,13 @@ def merge_las(
             help="Whether to overwrite the files.",
         ),
     ] = False,
+    skip_existing: Annotated[
+        bool,
+        typer.Option(
+            "--skip_existing",
+            help="Whether to skip processing files that already exist.",
+        ),
+    ] = False,
     verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
 ):
     setup_logging(verbose=Verbose.from_int(verbose_int))
@@ -279,7 +293,10 @@ def merge_las(
         output_file.parent.mkdir(parents=True, exist_ok=True)
 
         merge_files(
-            input_files=input_files, output_file=output_file, overwrite=overwrite
+            input_files=input_files,
+            output_file=output_file,
+            overwrite=overwrite,
+            skip_existing=skip_existing,
         )
         logging.info(f"Successfully merged files into {output_file}")
 
@@ -402,17 +419,30 @@ def run_pipeline(
             input_file=source_laz_file,
             output_file_template=tile_dir / "axis_#.laz",
             dimension="PointSourceId",
-            use_value_in_filename=True,
             overwrite=overwrite,
+            skip_existing=skip_existing,
             verbose_int=verbose_int,
         )
         all_strip_files = sorted(all_strip_files)
 
         # Compute the trajectory for each split file
         for strip_file in all_strip_files:
+            final_trajectory_file = (
+                strip_file.parent / f"{strip_file.stem}-trajectory.txt"
+            )
+            if final_trajectory_file.exists() and skip_existing:
+                logging.info(
+                    f"Trajectory file already exists for {strip_file.name}: {final_trajectory_file}. Skipping trajectory computation due to --skip_existing flag."
+                )
+                continue
+            other_output_file = (
+                strip_file.parent / f"{strip_file.stem}_center_refine.txt"
+            )
+            command_trajectory_file_1 = strip_file.parent / f"{strip_file.stem}_1.txt"
+            command_trajectory_file_2 = strip_file.parent / f"{strip_file.stem}_2.txt"
             command = ["./LiDARHD_Traj_Estimation/build/SensorLiDARHD", str(strip_file)]
             logging.debug(
-                f"Computing trajectory for {strip_file.name} with command: {' '.join(command)}"
+                f"Computing trajectory for {strip_file.name} with command:\n{' '.join(command)}"
             )
             return_code = run_command_with_tqdm_logging(command)
             logging.debug(
@@ -424,24 +454,23 @@ def run_pipeline(
                 logging.info(f"Successfully computed trajectory for {strip_file.name}.")
 
             # Check if the trajectory file was created
-            trajectory_file = strip_file.parent / f"{strip_file.stem}_1.txt"
-            if not trajectory_file.exists():
+            if not command_trajectory_file_1.exists():
                 logging.error(
-                    f"Trajectory file not found for {strip_file.name}: {trajectory_file}"
+                    f"Trajectory file not found for {strip_file.name}: {command_trajectory_file_1}"
                 )
 
             # Rename it to match the expected format for the next steps
-            expected_trajectory_file = (
-                strip_file.parent / f"{strip_file.stem}-trajectory.txt"
-            )
-            trajectory_file.rename(expected_trajectory_file)
+            command_trajectory_file_1.rename(final_trajectory_file)
 
             # Check if there was a second file created
-            second_trajectory_file = strip_file.parent / f"{strip_file.stem}_2.txt"
-            if second_trajectory_file.exists():
+            if command_trajectory_file_2.exists():
                 logging.error(
-                    f"Second trajectory file found for {strip_file.name}: {second_trajectory_file}. This may indicate an issue with the trajectory computation."
+                    f"Second trajectory file found for {strip_file.name}: {command_trajectory_file_2}. This may indicate an issue with the trajectory computation."
                 )
+
+            # Remove the other output file if it exists, since it is not needed
+            if other_output_file.exists():
+                other_output_file.unlink()
 
         # Check that the intersections of the BD TOPO are available
         bd_topo_dir = other_data_dir / "bd_topo"
@@ -474,6 +503,7 @@ def run_pipeline(
             output_building_groups_file=cropped_groups_file,
             bounding_box=bounding_box,
             overwrite=overwrite,
+            skip_existing=skip_existing,
         )
 
         # Build the C++ tools using pixi
@@ -498,11 +528,16 @@ def run_pipeline(
             distances_files.append(distance_file)
             edges_files.append(edge_file)
 
-            if distance_file.exists() and edge_file.exists() and not overwrite:
-                logging.info(
-                    f"Output files for {laz_file.name} already exist. Skipping processing."
-                )
-                continue
+            if distance_file.exists() and edge_file.exists():
+                if skip_existing:
+                    logging.info(
+                        f"Output files for {laz_file.name} already exist. Skipping processing."
+                    )
+                    continue
+                elif not overwrite:
+                    raise FileExistsError(
+                        f"Output files for {laz_file.name} already exist. Use --overwrite to overwrite them or --skip_existing to skip processing."
+                    )
 
             command = [
                 "pixi",
@@ -539,31 +574,18 @@ def run_pipeline(
     merged_distances_file = tile_dir / "merged_distances.laz"
     merged_edges_file = tile_dir / "merged_edges.laz"
 
-    try:
-        merge_las(
-            input_files=distances_files,
-            output_file=merged_distances_file,
-            verbose_int=verbose_int,
-            overwrite=overwrite,
-        )
-    except FileExistsError as e:
-        logging.info(f"Distances file merge skipped: {e}")
-    except Exception as e:
-        logging.error(
-            f"An unexpected error occurred while merging distances files: {e}"
-        )
-
-    try:
-        merge_las(
-            input_files=edges_files,
-            output_file=merged_edges_file,
-            verbose_int=verbose_int,
-            overwrite=overwrite,
-        )
-    except FileExistsError as e:
-        logging.info(f"Edges file merge skipped: {e}")
-    except Exception as e:
-        logging.error(f"An unexpected error occurred while merging edges files: {e}")
+    merge_files(
+        input_files=distances_files,
+        output_file=merged_distances_file,
+        overwrite=overwrite,
+        skip_existing=skip_existing,
+    )
+    merge_files(
+        input_files=edges_files,
+        output_file=merged_edges_file,
+        overwrite=overwrite,
+        skip_existing=skip_existing,
+    )
 
     # Exit here to skip the roofprint computation for now, since it is not working correctly yet
     exit(0)
@@ -750,6 +772,13 @@ def bd_topo_crop(
             help="Whether to overwrite the output file if it already exists.",
         ),
     ] = False,
+    skip_existing: Annotated[
+        bool,
+        typer.Option(
+            "--skip_existing",
+            help="Whether to skip processing files that already exist.",
+        ),
+    ] = False,
     verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
 ):
     setup_logging(verbose=Verbose.from_int(verbose_int))
@@ -764,6 +793,7 @@ def bd_topo_crop(
             output_building_groups_file=output_groups_file,
             bounding_box=bounding_box,
             overwrite=overwrite,
+            skip_existing=skip_existing,
         )
 
 
@@ -824,5 +854,4 @@ def test(verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)
 
 
 if __name__ == "__main__":
-    app()
     app()

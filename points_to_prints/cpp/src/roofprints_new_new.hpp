@@ -4,6 +4,7 @@
 #include <memory>
 #include <vector>
 
+#include "points.hpp"
 #include "utils/cgal.hpp"
 #include "utils/strong_types.hpp"
 
@@ -31,6 +32,7 @@ class Edge {
     Line_2 to_line() const;
 
     void translate(Vector_2 offset);
+    Line_2 translated(Vector_2 offset) const;
 };
 
 struct EdgeSeqIdTag {};
@@ -158,6 +160,10 @@ class AllOutlines {
     EdgeSeqGroupId edge_seq_group_count() const;
     OutlineId outline_count() const;
     OptimizationUnitId optim_unit_count() const;
+
+    void optimize_unit(const PtsStructs::StoragePtr las_points,
+                       const OptimizationUnitId &optim_unit_id);
+    void optimize_all_units(const PtsStructs::StoragePtr las_points);
 };
 
 AllOutlines
