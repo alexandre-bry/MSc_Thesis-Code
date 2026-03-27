@@ -12,88 +12,9 @@ from typing import Annotated, List
 
 import typer
 from bd_topo_intersections import compute_export_intersections, crop_intersections_files
+from custom_logging import LoggingContext
 from download import download_lidar_hd_data
 from las_manipulations import get_las_bounds, identity_convert, merge_files, split_file
-from tqdm.contrib.logging import logging_redirect_tqdm
-
-
-class Verbose(Enum):
-    Error = logging.ERROR
-    Warning = logging.WARNING
-    Info = logging.INFO
-    Debug = logging.DEBUG
-
-    @classmethod
-    def from_int(cls, verbose_int: int):
-        match verbose_int:
-            case 0:
-                return cls.Error
-            case 1:
-                return cls.Warning
-            case 2:
-                return cls.Info
-            case 3:
-                return cls.Debug
-            case _:
-                raise RuntimeError("Verbose has only 4 possible values.")
-
-
-class LevelColorFormatter(logging.Formatter):
-    RESET = "\033[0m"
-    COLORS = {
-        logging.DEBUG: "\033[36m",  # cyan
-        logging.INFO: "\033[32m",  # green
-        logging.WARNING: "\033[33m",  # yellow
-        logging.ERROR: "\033[31m",  # red
-        logging.CRITICAL: "\033[35m",  # magenta
-    }
-
-    def __init__(self, use_color: bool = True, datefmt: str | None = None):
-        super().__init__(datefmt=datefmt)
-        self.use_color = use_color
-        self._prefix_formatter = logging.Formatter(
-            fmt="%(asctime)s - %(levelname)s - ",
-            datefmt=datefmt,
-        )
-
-    def format(self, record: logging.LogRecord) -> str:
-        record.message = record.getMessage()
-        prefix = self._prefix_formatter.format(record)
-        message = f"{prefix}{record.message}"
-
-        if record.exc_info:
-            message = f"{message}\n{self.formatException(record.exc_info)}"
-        if record.stack_info:
-            message = f"{message}\n{self.formatStack(record.stack_info)}"
-
-        if not self.use_color:
-            return message
-        color = self.COLORS.get(record.levelno)
-        if color is None:
-            return message
-        return f"{color}{prefix}{self.RESET}{record.message}"
-
-
-def setup_logging(verbose: Verbose):
-    formatter = LevelColorFormatter(
-        use_color=sys.stdout.isatty(),
-    )
-
-    handler = logging.StreamHandler(stream=sys.stdout)
-    handler.setFormatter(formatter)
-
-    root_logger = logging.getLogger()
-    root_logger.handlers.clear()
-    root_logger.addHandler(handler)
-    root_logger.setLevel(verbose.value)
-
-    if verbose.value == logging.DEBUG:
-        logging.getLogger("httpx").setLevel(logging.INFO)
-    else:
-        logging.getLogger("httpx").setLevel(logging.WARNING)
-
-    return verbose != Verbose.Error
-
 
 app = typer.Typer()
 
@@ -233,9 +154,7 @@ def split_las(
     ] = False,
     verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
 ):
-    setup_logging(verbose=Verbose.from_int(verbose_int))
-
-    with logging_redirect_tqdm():
+    with LoggingContext(verbose=verbose_int):
         output_file_template.parent.mkdir(parents=True, exist_ok=True)
 
         all_output_files = split_file(
@@ -287,9 +206,7 @@ def merge_las(
     ] = False,
     verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
 ):
-    setup_logging(verbose=Verbose.from_int(verbose_int))
-
-    with logging_redirect_tqdm():
+    with LoggingContext(verbose=verbose_int):
         output_file.parent.mkdir(parents=True, exist_ok=True)
 
         merge_files(
@@ -330,9 +247,7 @@ def download_lidar_hd(
     ] = False,
     verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
 ):
-    setup_logging(verbose=Verbose.from_int(verbose_int))
-
-    with logging_redirect_tqdm():
+    with LoggingContext(verbose=verbose_int):
         bbox_values = bbox.split(",")
         if len(bbox_values) != 4:
             raise ValueError(
@@ -409,9 +324,7 @@ def run_pipeline(
     ] = False,
     verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
 ):
-    setup_logging(verbose=Verbose.from_int(verbose_int))
-
-    with logging_redirect_tqdm():
+    with LoggingContext(verbose=verbose_int):
         source_laz_file = tile_dir / "lidarhd.copc.laz"
 
         # Split the source .laz file into multiple files based on the "PointSourceId" attribute
@@ -677,8 +590,7 @@ def bd_topo_intersections(
     ] = False,
     verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
 ):
-    setup_logging(verbose=Verbose.from_int(verbose_int))
-    with logging_redirect_tqdm():
+    with LoggingContext(verbose=verbose_int):
         compute_export_intersections(
             bd_topo_file=bd_topo_file,
             output_edges_file=output_edges_file,
@@ -781,8 +693,7 @@ def bd_topo_crop(
     ] = False,
     verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
 ):
-    setup_logging(verbose=Verbose.from_int(verbose_int))
-    with logging_redirect_tqdm():
+    with LoggingContext(verbose=verbose_int):
         bounding_box = get_las_bounds(las_file)
         crop_intersections_files(
             input_edges_file=edges_file,
@@ -831,9 +742,7 @@ def identity(
     ] = False,
     verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
 ):
-    setup_logging(verbose=Verbose.from_int(verbose_int))
-
-    with logging_redirect_tqdm():
+    with LoggingContext(verbose=verbose_int):
         identity_convert(
             input_file=input_file, output_file=output_file, overwrite=overwrite
         )
@@ -844,9 +753,7 @@ def identity(
     help="A simple command to test the logging setup with different verbosity levels.",
 )
 def test(verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0):
-    setup_logging(verbose=Verbose.from_int(verbose_int))
-
-    with logging_redirect_tqdm():
+    with LoggingContext(verbose=verbose_int):
         logging.debug("This is a debug message.")
         logging.info("This is an info message.")
         logging.warning("This is a warning message.")

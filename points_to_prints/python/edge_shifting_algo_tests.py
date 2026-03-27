@@ -1,9 +1,12 @@
+import copy
+import logging
 import math
 import random
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import (
+    Annotated,
     Callable,
     Dict,
     Generic,
@@ -19,6 +22,8 @@ from typing import (
 
 import matplotlib.pyplot as plt
 import tqdm
+import typer
+from custom_logging import LoggingContext, Verbose, setup_logging
 from matplotlib.axes import Axes
 from matplotlib.patches import ArrowStyle
 
@@ -164,6 +169,9 @@ class Point(Geometry):
     def to(self, other: "Point") -> "Vector":
         return Vector(other.x - self.x, other.y - self.y)
 
+    def on_line_to(self, other: "Point", t: float) -> "Point":
+        return self + self.to(other) * t
+
     def distance_to(self, other: "Point") -> float:
         return self.to(other).length()
 
@@ -245,12 +253,13 @@ class NormalizedVector(Vector):
 
 
 class Segment:
-    def __init__(self, start: Point, end: Point) -> None:
+    def __init__(self, start: Point, end: Point, name: Optional[str] = None) -> None:
         self.start = start
         self.end = end
+        self.name = name
 
     def __str__(self) -> str:
-        return f"Segment({self.start}, {self.end})"
+        return f"Segment({self.start}, {self.end}, {self.name})"
 
     @property
     def min_x(self) -> float:
@@ -281,7 +290,16 @@ class Segment:
             self.min_x <= point.x <= self.max_x and self.min_y <= point.y <= self.max_y
         )
 
-    def projection_of_point(self, point: Point) -> tuple[Point, bool]:
+    def projection_on_segment(self, point: Point) -> Point:
+        point_on_line, is_on_segment = self.projection_on_line(point)
+        if is_on_segment:
+            return point_on_line
+        else:
+            dist_to_start = point_on_line.distance_to(self.start)
+            dist_to_end = point_on_line.distance_to(self.end)
+            return self.start if dist_to_start < dist_to_end else self.end
+
+    def projection_on_line(self, point: Point) -> tuple[Point, bool]:
         """Projects a point onto the line defined by the segment and checks if the projection lies on the segment.
 
         Args:
@@ -291,7 +309,7 @@ class Segment:
             tuple[Point, bool]: The projected point and a boolean indicating if it lies on the segment.
         """
         line = Line.from_points(self.start, self.end)
-        point_on_line = line.projection_of_point(point)
+        point_on_line = line.projection_on_line(point)
         if self.min_x > point_on_line.x:
             return self.start, False
         elif self.max_x < point_on_line.x:
@@ -315,7 +333,7 @@ class Segment:
             [float, float]: The distance in the direction of the normal vector and the distance in the direction of the segment.
         """
         line = self.get_line()
-        point_on_line = line.projection_of_point(point)
+        point_on_line = line.projection_on_line(point)
         normal_distance = point.distance_to(point_on_line)
 
         if self.min_x > point_on_line.x:
@@ -365,6 +383,13 @@ class Segment:
             markersize=point_size if point_color and point_size else None,
             markerfacecolor=point_color if point_color and point_size else None,
         )
+        if self.name is not None:
+            text_point = self.start.on_line_to(self.end, 0.5)
+            ax.annotate(
+                self.name,
+                xy=(text_point.x, text_point.y),
+                xytext=(text_point.x, text_point.y),
+            )
 
 
 class Line:
@@ -374,7 +399,7 @@ class Line:
         self.value = value
 
     def __str__(self) -> str:
-        return f"Line(dir_vector={self.dir_vector}, value={self.value:.2f})"
+        return f"Line(dir_vector={self.dir_vector}, base_point={self.base_point})"
 
     @property
     def base_point(self) -> Point:
@@ -402,7 +427,7 @@ class Line:
         value = self.normal_vector.x * point.x + self.normal_vector.y * point.y
         return Line(dir_vector=self.dir_vector, value=value)
 
-    def projection_of_point(self, point: Point) -> Point:
+    def projection_on_line(self, point: Point) -> Point:
         # Project a point onto the line
         distance = (
             self.normal_vector.x * point.x + self.normal_vector.y * point.y - self.value
@@ -527,7 +552,7 @@ def handle_self_intersection(
     next_movable: bool,
 ) -> Tuple[Tuple[Optional[Point], bool], Tuple[Optional[Point], bool]]:
     # TODO: Fix this function
-    # Maybe an idea would be to think about al possible cases
+    # Maybe an idea would be to think about all possible cases
     # I think that handling everything in one function would make it easier, as it would allow to go all the way to the end of the chain in one go
 
     if not prev_movable and not next_movable:
@@ -545,7 +570,7 @@ def handle_self_intersection(
     if point_prev.to(point_next).dot(line.dir_vector) < 0:
         if prev_movable and next_movable:
             intersection_point = prev_line.intersection_with_line(next_line).unwrap()
-            intersection_point_projected = line.projection_of_point(intersection_point)
+            intersection_point_projected = line.projection_on_line(intersection_point)
             return (intersection_point_projected, True), (
                 intersection_point_projected,
                 True,
@@ -571,10 +596,10 @@ def handle_self_intersection(
             intersection_prev = prev_prev_line.intersection_with_line(line).unwrap()
             continue_prev = True
         else:
-            tqdm.tqdm.write(
+            logging.debug(
                 "Previous neighbour is not movable, cannot resolve self-intersection"
             )
-            tqdm.tqdm.write(f"{point_prev_prev.to(point_prev)=}")
+            logging.debug(f"{point_prev_prev.to(point_prev)=}")
             # fig, ax = plt.subplots()
             # lines = {
             #     "black": (
@@ -610,10 +635,10 @@ def handle_self_intersection(
             intersection_next = next_next_line.intersection_with_line(line).unwrap()
             continue_next = True
         else:
-            tqdm.tqdm.write(
+            logging.debug(
                 "Next neighbour is not movable, cannot resolve self-intersection"
             )
-            tqdm.tqdm.write(f"{point_next.to(point_next_next)=}")
+            logging.debug(f"{point_next.to(point_next_next)=}")
             # fig, ax = plt.subplots()
             # lines = {
             #     "black": line_init,
@@ -639,6 +664,18 @@ def handle_self_intersection(
             # )
 
     return (intersection_prev, continue_prev), (intersection_next, continue_next)
+
+
+def is_reduced_to_point(line: Line, prev_line: Line, next_line: Line) -> bool:
+    point_prev = prev_line.intersection_with_line(line).unwrap()
+    point_next = next_line.intersection_with_line(line).unwrap()
+    return point_prev.distance_to(point_next) < 1e-8
+
+
+def is_flipped(line: Line, prev_line: Line, next_line: Line) -> bool:
+    point_prev = prev_line.intersection_with_line(line).unwrap()
+    point_next = next_line.intersection_with_line(line).unwrap()
+    return point_prev.to(point_next).dot(line.dir_vector) < 0
 
 
 class AllLines:
@@ -681,12 +718,20 @@ class AllLines:
         segment_result = line.segment(
             prev_line, self.get_line(self.get_next_line_idx(idx))
         )
+        if segment_result.is_ok():
+            segment_result = Result.ok(
+                Segment(
+                    segment_result.unwrap().start,
+                    segment_result.unwrap().end,
+                    name=str(idx),
+                )
+            )
         return segment_result
 
     def get_segments(self) -> list[Segment]:
         return [self.get_segment(i).unwrap() for i in range(len(self.lines))]
 
-    def lines_to_move_if_line_is_shifted(
+    def _old_lines_to_move_if_line_is_shifted(
         self, idx: int, shift: Vector
     ) -> Dict[int, Line]:
         shifted_lines = {idx: self.get_line(idx).shifted(shift)}
@@ -725,7 +770,7 @@ class AllLines:
             )
 
         while len(next_lines_to_process) > 0:
-            # tqdm.tqdm.write(f"Processing line index {not_processed_lines[0]}")
+            # logging.debug(f"Processing line index {not_processed_lines[0]}")
             current_idx, prev_movable, next_movable = next_lines_to_process.pop(0)
             # Check self-intersection of the current line
             (intersection_prev, continue_prev), (intersection_next, continue_next) = (
@@ -774,16 +819,551 @@ class AllLines:
 
         return shifted_lines
 
-    # def plot(self, ax: Optional[Axes] = None, mode: str = "lines"):
-    #     if mode == "lines":
-    #         for line in self.lines:
-    #             line.plot(ax=ax)
-    #     elif mode == "segments":
-    #         for i in range(len(self.lines)):
-    #             segment_result = self.get_segment(i)
-    #             segment_result.unwrap().plot(ax=ax)
-    #     else:
-    #         raise ValueError(f"Unknown plot mode: {mode}")
+    def any_self_intersection(self):
+        for idx in range(len(self.lines)):
+            line = self.get_line(idx)
+            prev_line = self.get_line(self.get_prev_line_idx(idx))
+            next_line = self.get_line(self.get_next_line_idx(idx))
+            if not is_reduced_to_point(line, prev_line, next_line) and is_flipped(
+                line, prev_line, next_line
+            ):
+                return True, idx
+        return False, None
+
+    def _old_2_lines_to_move_if_line_is_shifted(
+        self,
+        idx: int,
+        shift: Vector,
+        callback: Callable[[int, Dict[int, Line]], None] = lambda i, s: None,
+    ) -> Dict[int, Line]:
+        shifted_lines = {idx: self.get_line(idx).shifted(shift)}
+
+        def get_line_local(line_idx: int) -> Line:
+            if line_idx in shifted_lines:
+                return shifted_lines[line_idx]
+            return self.get_line(line_idx)
+
+        # Check for issues in the moved line
+        line = get_line_local(idx)
+        prev_idx = self.get_prev_line_idx(idx)
+        prev_line = get_line_local(prev_idx)
+        next_idx = self.get_next_line_idx(idx)
+        next_line = get_line_local(next_idx)
+        intersection_prev_point = prev_line.intersection_with_line(line).unwrap()
+        intersection_next_point = line.intersection_with_line(next_line).unwrap()
+        through_point = intersection_prev_point.on_line_to(intersection_next_point, 0.5)
+        if is_reduced_to_point(line, prev_line, next_line):
+            prev_through_point = through_point
+            next_through_point = through_point
+        else:
+            if is_flipped(line, prev_line, next_line):
+                prev_through_point = through_point
+                next_through_point = through_point
+                shifted_lines[prev_idx] = prev_line.through(prev_through_point)
+                shifted_lines[next_idx] = next_line.through(next_through_point)
+            else:
+                prev_through_point = intersection_prev_point
+                next_through_point = intersection_next_point
+
+        # We want to process the prev and next lines in an interleaved manner,
+        # always starting with the side that has the smallest angle with the main line
+        prev_to_process_idx: Optional[int] = prev_idx
+        next_to_process_idx: Optional[int] = next_idx
+        prev_to_process_dot = get_line_local(prev_to_process_idx).dir_vector.dot(
+            line.dir_vector
+        )
+        next_to_process_dot = get_line_local(next_to_process_idx).dir_vector.dot(
+            line.dir_vector
+        )
+        num_indices = len(self.lines)
+        last_index = idx
+        processed_indices = set([idx])
+
+        callback(idx, shifted_lines)
+
+        while True:
+            if prev_to_process_idx is None and next_to_process_idx is None:
+                break
+
+            # Bigger dot product means smaller angle
+            do_next = prev_to_process_idx is None or (
+                prev_to_process_dot < next_to_process_dot
+            )
+
+            if do_next:
+                logging.debug(f"Processing next line index {next_to_process_idx}")
+                assert next_to_process_idx is not None
+                # Process the next line
+                current_idx = next_to_process_idx
+                current_prev_idx = self.get_prev_line_idx(current_idx)
+                current_next_idx = self.get_next_line_idx(current_idx)
+                current_line = get_line_local(current_idx)
+                current_prev_line = get_line_local(current_prev_idx)
+                current_next_line = get_line_local(current_next_idx)
+                if not is_reduced_to_point(
+                    current_line, current_prev_line, current_next_line
+                ):
+                    solved_issue = not is_flipped(
+                        current_line, current_prev_line, current_next_line
+                    )
+
+                    if solved_issue:
+                        logging.debug(
+                            f"Line index {current_idx} is not flipped, no need to shift."
+                        )
+
+                    # Try to shift the current line through the intersection of the neighbours
+                    if not solved_issue:
+                        logging.debug(
+                            f"Trying to shift line index {current_idx} through intersection of neighbours"
+                        )
+                        # TODO: Handle parallel case
+                        next_prev_intersection = (
+                            current_next_line.intersection_with_line(
+                                current_prev_line
+                            ).unwrap()
+                        )
+                        # Put the point on the segment
+                        next_prev_intersection = (
+                            current_prev_line.segment(
+                                get_line_local(
+                                    self.get_prev_line_idx(current_prev_idx)
+                                ),
+                                get_line_local(
+                                    self.get_next_line_idx(current_prev_idx)
+                                ),
+                            )
+                            .unwrap()
+                            .projection_on_segment(next_prev_intersection)
+                        )
+                        new_current_line = current_line.through(next_prev_intersection)
+
+                        reduced_to_point = is_reduced_to_point(
+                            new_current_line, current_prev_line, current_next_line
+                        )
+                        flipped = is_flipped(
+                            new_current_line, current_prev_line, current_next_line
+                        )
+                        if reduced_to_point or not flipped:
+                            reason = (
+                                "reduced to point"
+                                if reduced_to_point
+                                else "not flipped"
+                            )
+                            logging.debug(
+                                f"Shifting line index {current_idx} through intersection of neighbours because it is {reason}"
+                            )
+                            logging.debug(
+                                f"Current line: {current_line}, new current line: {new_current_line}, prev line: {current_prev_line}, next line: {current_next_line}"
+                            )
+                            shifted_lines[current_idx] = new_current_line
+                            solved_issue = True
+                            current_line = shifted_lines[current_idx]
+                            next_through_point = next_prev_intersection
+
+                    # # Try to shift the current line through the through point
+                    # if not solved_issue:
+                    #     new_current_line = current_line.through(next_through_point)
+                    #     if not is_flipped(
+                    #         new_current_line, current_prev_line, current_next_line
+                    #     ):
+                    #         shifted_lines[current_idx] = new_current_line
+                    #         solved_issue = True
+                    #         current_line = shifted_lines[current_idx]
+
+                    # Try to shift the next line through the intersection of the previous and current lines
+                    if not solved_issue:
+                        logging.debug(
+                            f"Trying to shift line index {current_next_idx} through intersection of previous and current line"
+                        )
+                        curr_prev_intersection = (
+                            current_prev_line.intersection_with_line(
+                                current_line
+                            ).unwrap()
+                        )
+                        new_current_next_line = current_next_line.through(
+                            curr_prev_intersection
+                        )
+                        if is_reduced_to_point(
+                            current_line, current_prev_line, new_current_next_line
+                        ) or not is_flipped(
+                            current_line, current_prev_line, new_current_next_line
+                        ):
+                            logging.debug(
+                                f"Shifting line index {current_next_idx} through intersection of previous and current line"
+                            )
+                            shifted_lines[current_next_idx] = new_current_next_line
+                            solved_issue = True
+                            current_next_line = shifted_lines[current_next_idx]
+                            next_through_point = curr_prev_intersection
+
+                    if not solved_issue:
+                        logging.warning(
+                            f"Could not resolve self-intersection for line index {current_idx}"
+                        )
+                else:
+                    logging.debug(f"Line index {current_idx} is reduced to a point.")
+                    next_through_point = current_line.intersection_with_line(
+                        current_next_line
+                    ).unwrap()
+
+                processed_indices.add(current_idx)
+
+                if current_next_idx in processed_indices:
+                    next_to_process_idx = None
+                    next_to_process_dot = -float("inf")
+                else:
+                    next_to_process_idx = current_next_idx
+                    last_index = next_to_process_idx
+                    next_to_process_dot = get_line_local(
+                        next_to_process_idx
+                    ).dir_vector.dot(line.dir_vector)
+
+            else:
+                logging.debug(f"Processing prev line index {prev_to_process_idx}")
+                # Process the prev line
+                assert prev_to_process_idx is not None
+                current_idx = prev_to_process_idx
+                current_prev_idx = self.get_prev_line_idx(current_idx)
+                current_next_idx = self.get_next_line_idx(current_idx)
+                current_line = get_line_local(current_idx)
+                current_prev_line = get_line_local(current_prev_idx)
+                current_next_line = get_line_local(current_next_idx)
+                if not is_reduced_to_point(
+                    current_line, current_prev_line, current_next_line
+                ):
+                    solved_issue = not is_flipped(
+                        current_line, current_prev_line, current_next_line
+                    )
+
+                    if solved_issue:
+                        logging.debug(
+                            f"Line index {current_idx} is not flipped, no need to shift."
+                        )
+
+                    # Try to shift the current line through the intersection of the neighbours
+                    if not solved_issue:
+                        logging.debug(
+                            f"Trying to shift line index {current_idx} through intersection of neighbours"
+                        )
+                        # TODO: Handle parallel case
+                        next_prev_intersection = (
+                            current_next_line.intersection_with_line(
+                                current_prev_line
+                            ).unwrap()
+                        )
+                        # Put the point on the segment
+                        next_prev_intersection = (
+                            current_next_line.segment(
+                                get_line_local(
+                                    self.get_prev_line_idx(current_next_idx)
+                                ),
+                                get_line_local(
+                                    self.get_next_line_idx(current_next_idx)
+                                ),
+                            )
+                            .unwrap()
+                            .projection_on_segment(next_prev_intersection)
+                        )
+                        new_current_line = current_line.through(next_prev_intersection)
+
+                        reduced_to_point = is_reduced_to_point(
+                            new_current_line, current_prev_line, current_next_line
+                        )
+                        flipped = is_flipped(
+                            new_current_line, current_prev_line, current_next_line
+                        )
+                        if reduced_to_point or not flipped:
+                            reason = (
+                                "reduced to point"
+                                if reduced_to_point
+                                else "not flipped"
+                            )
+                            logging.debug(
+                                f"Shifting line index {current_idx} through intersection of neighbours because it is {reason}"
+                            )
+                            logging.debug(
+                                f"Current line: {current_line}, new current line: {new_current_line}, prev line: {current_prev_line}, next line: {current_next_line}"
+                            )
+                            shifted_lines[current_idx] = new_current_line
+                            solved_issue = True
+                            current_line = shifted_lines[current_idx]
+                            prev_through_point = next_prev_intersection
+
+                    # # Try to shift the current line through the through point
+                    # if not solved_issue:
+                    #     new_current_line = current_line.through(prev_through_point)
+                    #     if not is_flipped(
+                    #         new_current_line, current_prev_line, current_next_line
+                    #     ):
+                    #         shifted_lines[current_idx] = new_current_line
+                    #         solved_issue = True
+                    #         current_line = shifted_lines[current_idx]
+
+                    # Try to shift the previous line through the intersection of the next and current lines
+                    if not solved_issue:
+                        logging.debug(
+                            f"Trying to shift line index {current_prev_idx} through intersection of next and current line"
+                        )
+                        curr_next_intersection = (
+                            current_next_line.intersection_with_line(
+                                current_line
+                            ).unwrap()
+                        )
+                        new_current_prev_line = current_prev_line.through(
+                            curr_next_intersection
+                        )
+                        if is_reduced_to_point(
+                            current_line, new_current_prev_line, current_next_line
+                        ) or not is_flipped(
+                            current_line, new_current_prev_line, current_next_line
+                        ):
+                            logging.debug(
+                                f"Shifting line index {current_prev_idx} through intersection of next and current line"
+                            )
+                            shifted_lines[current_prev_idx] = new_current_prev_line
+                            solved_issue = True
+                            current_prev_line = shifted_lines[current_prev_idx]
+                            prev_through_point = curr_next_intersection
+
+                    # if not solved_issue:
+                    #     logging.warning(
+                    #         f"Could not resolve self-intersection for line index {current_idx}"
+                    #     )
+
+                else:
+                    logging.debug(f"Line index {current_idx} is reduced to a point.")
+                    prev_through_point = current_line.intersection_with_line(
+                        current_prev_line
+                    ).unwrap()
+
+                processed_indices.add(current_idx)
+
+                if current_prev_idx in processed_indices:
+                    prev_to_process_idx = None
+                    prev_to_process_dot = -float("inf")
+                else:
+                    prev_to_process_idx = current_prev_idx
+                    last_index = prev_to_process_idx
+                    prev_to_process_dot = get_line_local(
+                        prev_to_process_idx
+                    ).dir_vector.dot(line.dir_vector)
+
+            callback(current_idx, shifted_lines)
+            logging.debug(f"Shifted lines so far: {list(shifted_lines.keys())}")
+
+        return shifted_lines
+
+    def lines_to_move_if_line_is_shifted(
+        self,
+        idx: int,
+        shift: Vector,
+        callback: Callable[[int, Dict[int, Line]], None] = lambda i, s: None,
+    ) -> Dict[int, Line]:
+        shifted_lines = {idx: self.get_line(idx).shifted(shift)}
+
+        def get_line_local(line_idx: int) -> Line:
+            if line_idx in shifted_lines:
+                return shifted_lines[line_idx]
+            return self.get_line(line_idx)
+
+        # For this version, all the lines that are moved will be moved by the same shift as the main line.
+        # We will incrementally check for self-intersections and add new lines when there are self-intersections to fix.
+
+        current_prev_idx = self.get_prev_line_idx(idx)
+        current_prev_prev_idx = self.get_prev_line_idx(current_prev_idx)
+        current_next_idx = self.get_next_line_idx(idx)
+        current_next_next_idx = self.get_next_line_idx(current_next_idx)
+
+        current_line = get_line_local(idx)
+        current_prev_line = get_line_local(current_prev_idx)
+        current_prev_prev_line = get_line_local(current_prev_prev_idx)
+        current_next_line = get_line_local(current_next_idx)
+        current_next_next_line = get_line_local(current_next_next_idx)
+
+        current_prev_line_flipped = is_flipped(
+            current_prev_line, current_prev_prev_line, current_line
+        )
+        current_line_flipped = is_flipped(
+            current_line, current_prev_line, current_next_line
+        )
+        current_next_line_flipped = is_flipped(
+            current_next_line, current_line, current_next_next_line
+        )
+
+        if current_line_flipped:
+            shifted_lines[current_prev_idx] = self.get_line(current_prev_idx).shifted(
+                shift
+            )
+            shifted_lines[current_next_idx] = self.get_line(current_next_idx).shifted(
+                shift
+            )
+        if current_prev_line_flipped:
+            shifted_lines[current_prev_idx] = self.get_line(current_prev_idx).shifted(
+                shift
+            )
+        if current_next_line_flipped:
+            shifted_lines[current_next_idx] = self.get_line(current_next_idx).shifted(
+                shift
+            )
+
+        for _idx, shifted_line in shifted_lines.items():
+            logging.debug(
+                f"Shifted {_idx:>4}: {self.get_line(_idx)} to {shifted_line}\n"
+            )
+        callback(idx, shifted_lines)
+
+        last_index = idx
+        while True:
+            current_index = self.get_prev_line_idx(last_index)
+            logging.debug(
+                f"Processing line index {current_index} in backward direction."
+            )
+            current_next_idx = last_index
+            current_next_next_idx = self.get_next_line_idx(current_next_idx)
+            current_prev_idx = self.get_prev_line_idx(current_index)
+            current_prev_prev_idx = self.get_prev_line_idx(current_prev_idx)
+
+            current_line = get_line_local(current_index)
+            current_next_line = get_line_local(current_next_idx)
+            current_next_next_line = get_line_local(current_next_next_idx)
+            current_prev_line = get_line_local(current_prev_idx)
+            current_prev_prev_line = get_line_local(current_prev_prev_idx)
+
+            current_next_line_flipped = is_flipped(
+                current_next_line, current_line, current_next_next_line
+            )
+            current_line_flipped = is_flipped(
+                current_line, current_prev_line, current_next_line
+            )
+            current_prev_line_flipped = is_flipped(
+                current_prev_line, current_prev_prev_line, current_line
+            )
+
+            if (
+                not current_line_flipped
+                and not current_prev_line_flipped
+                and not current_next_line_flipped
+            ):
+                logging.debug(f"Stopping at line index {current_index}.")
+                break
+
+            factors = [0.1 * i for i in range(1, 11)]
+            for factor in factors:
+                if (
+                    current_line_flipped
+                    or current_prev_line_flipped
+                    or current_next_line_flipped
+                ):
+                    shifted_lines[current_index] = self.get_line(current_index).shifted(
+                        shift * factor
+                    )
+                    current_line = shifted_lines[current_index]
+
+                    current_next_line_flipped = is_flipped(
+                        current_next_line, current_line, current_next_next_line
+                    )
+                    current_line_flipped = is_flipped(
+                        current_line, current_prev_line, current_next_line
+                    )
+                    current_prev_line_flipped = is_flipped(
+                        current_prev_line, current_prev_prev_line, current_line
+                    )
+                else:
+                    break
+
+            last_index = current_index
+            callback(current_index, shifted_lines)
+
+        last_index = idx
+        while True:
+            current_index = self.get_next_line_idx(last_index)
+            logging.debug(
+                f"Processing line index {current_index} in forward direction."
+            )
+            current_prev_idx = last_index
+            current_prev_prev_idx = self.get_prev_line_idx(current_prev_idx)
+            current_next_idx = self.get_next_line_idx(current_index)
+            current_next_next_idx = self.get_next_line_idx(current_next_idx)
+
+            current_prev_line = get_line_local(current_prev_idx)
+            current_prev_prev_line = get_line_local(current_prev_prev_idx)
+            current_line = get_line_local(current_index)
+            current_next_line = get_line_local(current_next_idx)
+            current_next_next_line = get_line_local(current_next_next_idx)
+
+            current_prev_line_flipped = is_flipped(
+                current_prev_line, current_prev_prev_line, current_line
+            )
+            current_line_flipped = is_flipped(
+                current_line, current_prev_line, current_next_line
+            )
+            current_next_line_flipped = is_flipped(
+                current_next_line, current_line, current_next_next_line
+            )
+            # if (
+            #     current_line_flipped
+            #     or current_prev_line_flipped
+            #     or current_next_line_flipped
+            # ):
+            #     shifted_lines[current_index] = self.get_line(current_index).shifted(
+            #         shift
+            #     )
+            #     current_line = shifted_lines[current_index]
+            #     last_index = current_index
+            #     callback(current_index, shifted_lines)
+            # else:
+            #     logging.debug(f"Stopping at line index {current_index}.")
+            #     break
+
+            if (
+                not current_line_flipped
+                and not current_prev_line_flipped
+                and not current_next_line_flipped
+            ):
+                logging.debug(f"Stopping at line index {current_index}.")
+                break
+
+            factors = [0.1 * i for i in range(1, 11)]
+            for factor in factors:
+                if (
+                    current_line_flipped
+                    or current_prev_line_flipped
+                    or current_next_line_flipped
+                ):
+                    shifted_lines[current_index] = self.get_line(current_index).shifted(
+                        shift * factor
+                    )
+                    current_line = shifted_lines[current_index]
+
+                    current_next_line_flipped = is_flipped(
+                        current_next_line, current_line, current_next_next_line
+                    )
+                    current_line_flipped = is_flipped(
+                        current_line, current_prev_line, current_next_line
+                    )
+                    current_prev_line_flipped = is_flipped(
+                        current_prev_line, current_prev_prev_line, current_line
+                    )
+                else:
+                    break
+
+            last_index = current_index
+            callback(current_index, shifted_lines)
+
+        return shifted_lines
+
+
+# def plot(self, ax: Optional[Axes] = None, mode: str = "lines"):
+#     if mode == "lines":
+#         for line in self.lines:
+#             line.plot(ax=ax)
+#     elif mode == "segments":
+#         for i in range(len(self.lines)):
+#             segment_result = self.get_segment(i)
+#             segment_result.unwrap().plot(ax=ax)
+#     else:
+#         raise ValueError(f"Unknown plot mode: {mode}")
 
 
 class Criterion(ABC):
@@ -891,15 +1471,22 @@ class EdgeShiftingAlgorithm:
             self.all_lines.get_segment(i).unwrap().length()
             for i in range(len(self.all_lines.lines))
         ]
-        sorted_indices = sorted(
-            range(len(lengths)), key=lambda i: lengths[i], reverse=True
-        )
+        # sorted_indices = sorted(
+        #     range(len(lengths)), key=lambda i: lengths[i], reverse=True
+        # )
+        sorted_indices = list(range(len(self.all_lines.lines)))
+        random.shuffle(sorted_indices)
 
         # Optimize lines in order of their lengths
         for idx in tqdm.tqdm(sorted_indices, desc="Optimizing lines"):
             best_shifts = self.optimize_one_line(idx)
             for line_idx, new_line in best_shifts.items():
                 self.all_lines.update_line(line_idx, new_line)
+            any_flipped, flipped_index = self.all_lines.any_self_intersection()
+            if any_flipped:
+                logging.warning(
+                    f"Warning: Self-intersection detected at line index {flipped_index} after optimization of line index {idx}"
+                )
             callback_after_optimization(idx)
 
 
@@ -926,6 +1513,7 @@ class Snapshot:
     segments: list[Segment] = field(default_factory=list)
     polygons: list[Polygon] = field(default_factory=list)
     title: Optional[str] = None
+    bounds: Optional[Tuple[Tuple[float, float], Tuple[float, float]]] = None
 
 
 class PlotRecorder:
@@ -945,6 +1533,7 @@ class PlotRecorder:
         segments: Optional[Sequence[Segment]] = None,
         polygons: Optional[Sequence[Polygon]] = None,
         title: Optional[str] = None,
+        bounds: Optional[Tuple[Tuple[float, float], Tuple[float, float]]] = None,
     ) -> None:
         self._snapshots[name] = Snapshot(
             name=name,
@@ -952,6 +1541,7 @@ class PlotRecorder:
             segments=list(segments or []),
             polygons=list(polygons or []),
             title=title,
+            bounds=bounds,
         )
 
     def snapshot_names(self) -> list[str]:
@@ -1054,7 +1644,7 @@ class PlotRecorder:
 
         # Plot each snapshot
         for idx, name in enumerate(names):
-            ax = axes[idx]
+            ax: Axes = axes[idx]
             snap = self._snapshots[name]
 
             # Plot on this axis
@@ -1080,6 +1670,8 @@ class PlotRecorder:
                 )
 
             ax.set_title(snap.title or snap.name)
+            ax.set_xlim(snap.bounds[0][0], snap.bounds[1][0]) if snap.bounds else None
+            ax.set_ylim(snap.bounds[0][1], snap.bounds[1][1]) if snap.bounds else None
             ax.set_xlabel("X-axis")
             ax.set_ylabel("Y-axis")
             ax.set_aspect("equal")
@@ -1104,8 +1696,8 @@ def generate_points_circle(
     points = []
     for i in range(num_points):
         angle = (2 * math.pi * i) / num_points
-        x = center.x + radius * math.cos(angle) + random.uniform(-noise, noise)
-        y = center.y + radius * math.sin(angle) + random.uniform(-noise, noise)
+        x = center.x + (radius + random.gauss(0, noise)) * math.cos(angle)
+        y = center.y + (radius + random.gauss(0, noise)) * math.sin(angle)
         points.append(Point(x, y))
     return points
 
@@ -1116,26 +1708,200 @@ def generate_polygon_circle(
     points = []
     for i in range(num_vertices):
         angle = (2 * math.pi * i) / num_vertices
-        x = center.x + radius * math.cos(angle) + random.uniform(-noise, noise)
-        y = center.y + radius * math.sin(angle) + random.uniform(-noise, noise)
+        x = center.x + (radius + random.gauss(0, noise)) * math.cos(angle)
+        y = center.y + (radius + random.gauss(0, noise)) * math.sin(angle)
         points.append(Point(x, y))
     return Polygon.from_points(points)
 
 
-def main():
+def example_circle(
+    num_points: int,
+    num_vertices: int,
+    noise_points: float,
+    noise_polygon: float,
+    radius_points: float,
+    radius_polygon: float,
+    shift_polygon_center: Vector,
+    random_seed: Optional[int] = None,
+) -> Tuple[list[Point], Polygon]:
+    if random_seed is not None:
+        random.seed(random_seed)
+
+    center_points = Point(0, 0)
+    center_polygon = center_points + shift_polygon_center
+
+    points = generate_points_circle(
+        center=center_points,
+        radius=radius_points,
+        num_points=num_points,
+        noise=noise_points,
+    )
+    polygon = generate_polygon_circle(
+        center=center_polygon,
+        radius=radius_polygon,
+        num_vertices=num_vertices,
+        noise=noise_polygon,
+    )
+
+    return points, polygon
+
+
+app = typer.Typer()
+
+
+@app.command(
+    "test_circle",
+    help="Test the edge shifting algorithm on a circle example.",
+)
+def test_circle(
+    optimization_iterations: Annotated[
+        int,
+        typer.Option(
+            "--optimization-iterations",
+            "-i",
+            help="Number of optimization iterations to perform",
+        ),
+    ] = 1,
+    record_steps: Annotated[
+        bool,
+        typer.Option(
+            "--record-steps",
+            "-s",
+            help="Whether to record intermediate steps of the optimization (more images will be generated)",
+        ),
+    ] = False,
+    num_points: Annotated[int, typer.Option("--num-points", "-p")] = 100,
+    num_vertices: Annotated[int, typer.Option("--num-vertices", "-P")] = 20,
+    noise_points: Annotated[float, typer.Option("--noise-points", "-n")] = 0.5,
+    noise_polygon: Annotated[float, typer.Option("--noise-polygon", "-N")] = 1.0,
+    radius_points: Annotated[float, typer.Option("--radius-points", "-r")] = 10.0,
+    radius_polygon: Annotated[float, typer.Option("--radius-polygon", "-R")] = 10.0,
+    shift_polygon_center_x: Annotated[
+        float, typer.Option("--shift-polygon-center-x", "-x")
+    ] = 0.0,
+    shift_polygon_center_y: Annotated[
+        float, typer.Option("--shift-polygon-center-y", "-y")
+    ] = 0.0,
+    random_seed: Annotated[Optional[int], typer.Option("--random-seed", "-S")] = None,
+    verbose_int: Annotated[
+        int,
+        typer.Option(
+            "--verbose",
+            "-v",
+            count=True,
+            help="Verbosity level (0=Error, 1=Warning, 2=Info, 3=Debug)",
+        ),
+    ] = 0,
+) -> None:
+    with LoggingContext(verbose=verbose_int):
+        shift_polygon_center = Vector(shift_polygon_center_x, shift_polygon_center_y)
+        points, polygon = example_circle(
+            num_points=num_points,
+            num_vertices=num_vertices,
+            noise_points=noise_points,
+            noise_polygon=noise_polygon,
+            radius_points=radius_points,
+            radius_polygon=radius_polygon,
+            shift_polygon_center=shift_polygon_center,
+            random_seed=random_seed,
+        )
+
+        # Recorders
+        bounds_recorders = None
+
+        all_lines = AllLines(
+            lines=polygon.lines,
+            prev_lines=[
+                (i - 1) % len(polygon.lines) for i in range(len(polygon.lines))
+            ],
+            next_lines=[
+                (i + 1) % len(polygon.lines) for i in range(len(polygon.lines))
+            ],
+            touching_lines=[[] for _ in polygon.lines],
+        )
+
+        recorder_iterations = PlotRecorder()
+        recorder_iterations.capture(
+            "initial",
+            points=points,
+            segments=all_lines.get_segments(),
+            title="Initial state",
+            bounds=bounds_recorders,
+        )
+
+        if record_steps:
+            recorder_steps = PlotRecorder()
+        else:
+            recorder_steps = None
+        if recorder_steps is not None:
+            recorder_steps.capture(
+                "initial",
+                points=points,
+                segments=all_lines.get_segments(),
+                title="Initial state",
+                bounds=bounds_recorders,
+            )
+
+        algo = EdgeShiftingAlgorithm(
+            all_lines,
+            LinearCriterion(
+                points,
+                [1.0] * len(points),
+                max_distance=LINEAR_CRITERION_MAX_DISTANCE,
+            ),
+        )
+
+        for step in tqdm.trange(
+            1, optimization_iterations + 1, desc="Optimization steps"
+        ):
+
+            if recorder_steps is not None:
+                optimization_callback = lambda i: recorder_steps.capture(
+                    f"optimization_step_{step:{f'0{len(str(optimization_iterations))}d'}}_line_{i}",
+                    points=points,
+                    segments=all_lines.get_segments(),
+                    title=f"After optimization step {step} (line {i})",
+                    bounds=bounds_recorders,
+                )
+            else:
+                optimization_callback = lambda i: None
+
+            algo.optimize_all_lines(callback_after_optimization=optimization_callback)
+
+            recorder_iterations.capture(
+                f"optimization_step_{step:{f'0{len(str(optimization_iterations))}d'}}",
+                points=points,
+                segments=all_lines.get_segments(),
+                title=f"After optimization step {step}",
+                bounds=bounds_recorders,
+            )
+
+        recorder_iterations.save_all_combined(
+            Path("images/optimization_iterations.png")
+        )
+        if recorder_steps is not None:
+            recorder_steps.save_all_combined(Path("images/optimization_steps.png"))
+
+
+def experiment_one_move(line_idx: int, shift: Vector) -> None:
     # Points
     center_points = Point(0, 0)
     radius_points = 10
     num_points = 100
-    noise_points = 0.5
+    noise_points = 0.0
 
     # Polygon
     center_polygon = center_points + Vector(0, 1)
     radius_polygon = radius_points - 1
     num_vertices_polygon = 20
-    noise_polygon = 0.5
+    noise_polygon = 0.0
 
-    optimization_steps = 1
+    # Recorders
+    bounds_recorders = (
+        (center_points.x - radius_points - 2, center_points.y - radius_points - 2),
+        (center_points.x + radius_points + 2, center_points.y + radius_points + 2),
+    )
+    bounds_recorders = None
 
     random.seed(1)
 
@@ -1158,53 +1924,90 @@ def main():
         next_lines=[(i + 1) % len(polygon.lines) for i in range(len(polygon.lines))],
         touching_lines=[[] for _ in polygon.lines],
     )
+    all_lines_copy = copy.deepcopy(all_lines)
 
-    recorder_iterations = PlotRecorder()
-    recorder_steps = PlotRecorder()
-
-    recorder_iterations.capture(
+    recorder = PlotRecorder()
+    recorder.capture(
         "initial",
         points=points,
         segments=all_lines.get_segments(),
         title="Initial state",
-    )
-    recorder_steps.capture(
-        "initial",
-        points=points,
-        segments=all_lines.get_segments(),
-        title="Initial state",
+        bounds=bounds_recorders,
     )
 
-    algo = EdgeShiftingAlgorithm(
-        all_lines,
-        LinearCriterion(
-            points,
-            [1.0] * len(points),
-            max_distance=LINEAR_CRITERION_MAX_DISTANCE,
+    def callback(line_idx: int, shifted_lines: dict[int, Line]) -> None:
+        for i, line in shifted_lines.items():
+            all_lines_copy.update_line(i, line)
+        recorder.capture(
+            f"line_{line_idx}_shifted",
+            points=points,
+            segments=all_lines_copy.get_segments(),
+            title=f"After shifting line {line_idx}",
+            bounds=bounds_recorders,
+        )
+
+    shifted_lines = all_lines.lines_to_move_if_line_is_shifted(
+        idx=line_idx, shift=shift, callback=callback
+    )
+    for line_idx, new_line in shifted_lines.items():
+        all_lines.update_line(line_idx, new_line)
+
+    recorder.capture(
+        f"final",
+        points=points,
+        segments=all_lines.get_segments(),
+        title=f"After optimization",
+        bounds=bounds_recorders,
+    )
+
+    recorder.save_all_combined(Path("images/experiment_one_move.png"))
+
+
+@app.command(
+    "one_move",
+    help="Run a single edge shifting experiment with specified parameters.",
+)
+def one_move(
+    line_idx: Annotated[
+        int,
+        typer.Option(
+            "--line-idx",
+            "-l",
+            help="Index of the line to shift",
         ),
-    )
-
-    for step in tqdm.trange(1, optimization_steps + 1, desc="Optimization steps"):
-
-        optimization_callback = lambda i: recorder_steps.capture(
-            f"optimization_step_{step:{f'0{len(str(optimization_steps))}d'}}_line_{i}",
-            points=points,
-            segments=all_lines.get_segments(),
-            title=f"After optimization step {step} (line {i})",
-        )
-
-        algo.optimize_all_lines(callback_after_optimization=optimization_callback)
-
-        recorder_iterations.capture(
-            f"optimization_step_{step:{f'0{len(str(optimization_steps))}d'}}",
-            points=points,
-            segments=all_lines.get_segments(),
-            title=f"After optimization step {step}",
-        )
-
-    recorder_iterations.save_all_combined(Path("images/optimization_iterations.png"))
-    recorder_steps.save_all_combined(Path("images/optimization_steps.png"))
+    ],
+    shift_x: Annotated[
+        float,
+        typer.Option(
+            "--shift-x",
+            "-x",
+            help="X component of the shift vector",
+        ),
+    ],
+    shift_y: Annotated[
+        float,
+        typer.Option(
+            "--shift-y",
+            "-y",
+            help="Y component of the shift vector",
+        ),
+    ],
+    verbose_int: Annotated[
+        int,
+        typer.Option(
+            "--verbose",
+            "-v",
+            count=True,
+            help="Verbosity level (0=Error, 1=Warning, 2=Info, 3=Debug)",
+        ),
+    ] = 0,
+):
+    with LoggingContext(verbose=verbose_int):
+        plt.set_loglevel(level="warning")
+        shift = Vector(shift_x, shift_y)
+        experiment_one_move(line_idx=line_idx, shift=shift)
 
 
 if __name__ == "__main__":
-    main()
+
+    app()
