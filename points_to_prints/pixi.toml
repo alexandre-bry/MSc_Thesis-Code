@@ -44,3 +44,6 @@ cpp-run-debug = { cmd = "cd \"$INIT_CWD\" && just run debug" }
 # python = ["python"]
 # cpp = ["cpp"]
 default = ["cpp", "python"]
+
+[pypi-dependencies]
+fastquadtree = ">=2.1.1, <3"
