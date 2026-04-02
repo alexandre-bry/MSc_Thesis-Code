@@ -1,9 +1,22 @@
 #include "line_mover.hpp"
 
+#include <CGAL/Distance_3/Point_3_Point_3.h>
 #include <cstddef>
 
 #include "../utils/cgal.hpp"
 #include "topology.hpp"
+
+const double MIN_EDGE_LENGTH = 1e-6;
+
+bool is_reduced_to_point(const AllLines::Edge &focus_line,
+                         const AllLines::Edge &prev_line,
+                         const AllLines::Edge &next_line) {
+    Point_2 focus_start =
+        CustomCGAL::intersection(focus_line.to_line(), prev_line.to_line());
+    Point_2 focus_end =
+        CustomCGAL::intersection(focus_line.to_line(), next_line.to_line());
+    return CGAL::squared_distance(focus_start, focus_end)
+}
 
 LineMoverSimple::LineMoverSimple(AllLines::AllOutlinesPtr _all_outlines,
                                  AllLines::EdgeId _moving_line_id,
@@ -59,8 +72,33 @@ LineMoverSimple::get_current_line(AllLines::EdgeId line_id) const {
         return this->all_outlines->get_edge(line_id).translated(shift_vector);
     }
 }
-bool LineMoverSimple::has_problem_main() const {}
+bool LineMoverSimple::has_problem_main() const {
+    AllLines::EdgeId focus_line_id = this->moving_line_id;
+    AllLines::EdgeId prev_1_line_id =
+        this->all_outlines->get_prev_edge_id(focus_line_id);
+    AllLines::EdgeId next_1_line_id =
+        this->all_outlines->get_next_edge_id(focus_line_id);
+    AllLines::EdgeId prev_2_line_id =
+        this->all_outlines->get_prev_edge_id(prev_1_line_id);
+    AllLines::EdgeId next_2_line_id =
+        this->all_outlines->get_next_edge_id(next_1_line_id);
+
+    AllLines::Edge focus_line = get_current_line(focus_line_id);
+    AllLines::Edge prev_1_line = get_current_line(prev_1_line_id);
+    AllLines::Edge next_1_line = get_current_line(next_1_line_id);
+    AllLines::Edge prev_2_line = get_current_line(prev_2_line_id);
+    AllLines::Edge next_2_line = get_current_line(next_2_line_id);
+}
+
 bool LineMoverSimple::has_problem_prev() const {}
+
 bool LineMoverSimple::has_problem_next() const {}
+
 bool LineMoverSimple::step() const {}
-void LineMoverSimple::compute_all() {}
+
+void LineMoverSimple::compute_all() {
+    while (this->current_shift_index < this->shift_amounts.size()) {
+        step();
+        ++this->current_shift_index;
+    }
+}
