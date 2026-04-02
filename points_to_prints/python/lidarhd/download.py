@@ -7,7 +7,8 @@ from typing import Dict, List, Optional, Tuple
 
 import httpx
 from tqdm import tqdm
-from utils import Box2154, Point2154
+
+from ..utils.utils import Box2154, Point2154
 
 BASE_URL = "https://api.stac.teledetection.fr"
 COLLECTION_ID = "lidarhd"
@@ -428,5 +429,8 @@ async def download_lidar_hd_data(
     if invalid_files:
         logging.error(f"{len(invalid_files)} invalid files:")
         for file_name, error in invalid_files:
+            logging.error(f"  - {file_name}: {error}")
+            logging.error(f"  - {file_name}: {error}")
+            logging.error(f"  - {file_name}: {error}")
             logging.error(f"  - {file_name}: {error}")
             logging.error(f"  - {file_name}: {error}")

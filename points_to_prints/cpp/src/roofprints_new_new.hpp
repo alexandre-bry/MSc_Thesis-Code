@@ -8,7 +8,7 @@
 #include "utils/cgal.hpp"
 #include "utils/strong_types.hpp"
 
-namespace NewRoofprints {
+namespace OldNewRoofprints {
 struct EdgeIdTag {};
 using EdgeId = StrongType<EdgeIdTag, std::size_t>;
 template <typename T> using EdgeVector = StrongTypedVector<EdgeId, T>;
@@ -185,4 +185,4 @@ void compute_roofprints(const std::string &input_las_file,
                         const std::string &output_roofprints_file,
                         bool overwrite);
 
-} // namespace NewRoofprints
+} // namespace OldNewRoofprints

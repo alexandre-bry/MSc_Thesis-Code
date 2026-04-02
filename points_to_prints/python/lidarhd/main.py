@@ -11,10 +11,14 @@ from pathlib import Path
 from typing import Annotated, List
 
 import typer
-from bd_topo_intersections import compute_export_intersections, crop_intersections_files
-from custom_logging import LoggingContext
-from download import download_lidar_hd_data
-from las_manipulations import get_las_bounds, identity_convert, merge_files, split_file
+
+from ..utils.custom_logging import LoggingContext
+from .bd_topo_intersections import (
+    compute_export_intersections,
+    crop_intersections_files,
+)
+from .download import download_lidar_hd_data
+from .las_manipulations import get_las_bounds, identity_convert, merge_files, split_file
 
 app = typer.Typer()
 
@@ -761,4 +765,7 @@ def test(verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)
 
 
 if __name__ == "__main__":
+    app()
+    app()
+    app()
     app()

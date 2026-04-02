@@ -10,7 +10,8 @@ from typing import Dict, List
 
 from pdal import Filter, Pipeline, Reader, Writer
 from tqdm import tqdm
-from utils import Box2154, Point2154
+
+from ..utils.utils import Box2154, Point2154
 
 
 def get_las_bounds(las_file: Path) -> Box2154:
@@ -261,4 +262,7 @@ def identity_convert(input_file: Path, output_file: Path, overwrite: bool) -> No
     writer = Writer(str(output_file), extra_dims="all")
 
     pipeline = Pipeline([reader, writer])
+    pipeline.execute()
+    pipeline.execute()
+    pipeline.execute()
     pipeline.execute()

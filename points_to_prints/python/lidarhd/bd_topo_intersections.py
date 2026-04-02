@@ -2,15 +2,16 @@ import logging
 from pathlib import Path
 
 import duckdb
-from duckdb_helpers import (
+from pdal import Filter, Pipeline, Reader, Writer
+
+from ..utils.duckdb_helpers import (
     DuckDBConnectionManager,
     DuckDBConnector,
     connect_to_duckdb,
     create_schema,
     export_parquet,
 )
-from pdal import Filter, Pipeline, Reader, Writer
-from utils import Box2154, Point2154
+from ..utils.utils import Box2154, Point2154
 
 SCHEMA_NAME = "intersections"
 
@@ -477,4 +478,5 @@ def crop_intersections_files(
             table_name=CROPPED_BUILDING_GROUPS_TABLE_NAME,
             geom_col_name=EXTENT_COLUMN_NAME,
             output_file=output_building_groups_file,
+        )
         )

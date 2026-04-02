@@ -1,9 +1,9 @@
 import logging
 from pathlib import Path
 
-from duckdb_helpers import connect_to_duckdb, create_schema, export_parquet
-from las_manipulations import get_las_bounds
-from utils import Box2154
+from ..utils.duckdb_helpers import connect_to_duckdb, create_schema, export_parquet
+from ..utils.utils import Box2154
+from .las_manipulations import get_las_bounds
 
 SCHEMA_NAME = "crop"
 
@@ -173,4 +173,7 @@ def crop_bd_topo_files(
     con.close()
     if db_path.exists():
         db_path.unlink()
+    logging.info(f"Done.")
+    logging.info(f"Done.")
+    logging.info(f"Done.")
     logging.info(f"Done.")
