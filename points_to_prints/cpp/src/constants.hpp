@@ -1,3 +1,4 @@
+#pragma once
 
 // Roofprint matching algorithm constants
 const double METRIC_DISTANCE_0 = 0.3;

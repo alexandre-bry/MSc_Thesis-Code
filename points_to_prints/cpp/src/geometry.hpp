@@ -132,6 +132,24 @@ struct PolygonZ : public virtual Geometry {
         this->polygon.reset(polygon);
     }
 
+    PolygonZ(const std::vector<std::vector<Point_3>> &rings,
+             bool first_is_repeated) {
+        OGRPolygon *polygon = new OGRPolygon();
+        for (const auto &ring_points : rings) {
+            OGRLinearRing *ring = new OGRLinearRing();
+            for (const auto &p : ring_points) {
+                ring->addPoint(p.x(), p.y(), p.z());
+            }
+            // Close the ring by adding the first point at the end
+            if (!first_is_repeated) {
+                ring->addPoint(ring_points[0].x(), ring_points[0].y(),
+                               ring_points[0].z());
+            }
+            polygon->addRing(ring);
+        }
+        this->polygon.reset(polygon);
+    }
+
     // Copy constructor
     PolygonZ(const PolygonZ &other) {
         OGRPolygon *polygon_copy =
@@ -260,6 +278,11 @@ struct MultiPolygonZWithAttributes : MultiPolygonZ, GeometryWithAttributes {
     OutlineSource::Id outline_source;
 
     MultiPolygonZWithAttributes() = default;
+    MultiPolygonZWithAttributes(MultiPolygonZ multi_polygon_,
+                                const std::string &id_,
+                                const OutlineSource::Id outline_source_)
+        : MultiPolygonZ(std::move(multi_polygon_)), id(id_),
+          outline_source(outline_source_) {};
     MultiPolygonZWithAttributes(OGRMultiPolygonPtr multi_polygon_,
                                 const std::string &id_,
                                 const OutlineSource::Id outline_source_)

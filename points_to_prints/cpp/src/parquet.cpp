@@ -812,6 +812,20 @@ arrow::Status read_bd_topo_as_grouped_edges(
              edges_output.value<double>("end_y", i),
              edges_output.value<double>("end_z", i)},
         });
+        // std::cout << "Read row " << i << ": cleabs=" <<
+        // edges.back().building_id
+        //           << ", idx_polygon="
+        //           << static_cast<int>(edges.back().polygon_idx)
+        //           << ", idx_ring=" << static_cast<int>(edges.back().ring_idx)
+        //           << ", idx_edge=" << edges.back().edge_idx
+        //           << ", edge_key=" << edges.back().edge_key << ",
+        //           start_point=("
+        //           << edges.back().start.x() << ", " << edges.back().start.y()
+        //           << ", " << edges.back().start.z() << ")"
+        //           << ", end_point=(" << edges.back().end.x() << ", "
+        //           << edges.back().end.y() << ", " << edges.back().end.z() <<
+        //           ")"
+        //           << std::endl;
         edge_key_to_index[edges.back().edge_key] = i;
     }
 

@@ -479,4 +479,3 @@ def crop_intersections_files(
             geom_col_name=EXTENT_COLUMN_NAME,
             output_file=output_building_groups_file,
         )
-        )

@@ -357,7 +357,7 @@ def run_pipeline(
             )
             command_trajectory_file_1 = strip_file.parent / f"{strip_file.stem}_1.txt"
             command_trajectory_file_2 = strip_file.parent / f"{strip_file.stem}_2.txt"
-            command = ["./LiDARHD_Traj_Estimation/build/SensorLiDARHD", str(strip_file)]
+            command = ["pixi", "run", "traj-estimation", str(strip_file)]
             logging.debug(
                 f"Computing trajectory for {strip_file.name} with command:\n{' '.join(command)}"
             )

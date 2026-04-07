@@ -1,0 +1,6 @@
+#pragma once
+
+const double EDGE_CRITERION_MAX_DISTANCE = 0.3;
+const double EDGE_CRITERION_ALPHA_RATIO = 0.1;
+const double EDGE_CRITERION_ALPHA_ABSOLUTE = 0.1;
+const double EDGE_CRITERION_OFFSET_STEP = 0.02;

@@ -2,10 +2,11 @@
 
 #include <cstdint>
 #include <iostream>
+#include <memory>
 #include <optional>
 
-#include "kd_tree.hpp"
 #include "utils/cgal.hpp"
+#include "utils/kd_tree.hpp"
 
 using namespace PtsStructs;
 
@@ -93,15 +94,25 @@ Bbox_2 Storage::bounding_box_cgal() const {
     return Bbox_2(bounds.minx, bounds.miny, bounds.maxx, bounds.maxy);
 }
 
-KdTree_2 Storage::build_kd_tree_2d() const {
-    std::vector<Point_2> cgal_points;
-    cgal_points.reserve(view->size());
+void Storage::build_kd_tree_2d() {
+    if (las_kd_tree) {
+        return; // Kd-tree already built
+    }
+    std::vector<Point_2> point_2d;
+    point_2d.reserve(view->size());
     for (pdal::PointId i = 0; i < view->size(); ++i) {
         double x = view->getFieldAs<double>(pdal::Dimension::Id::X, i);
         double y = view->getFieldAs<double>(pdal::Dimension::Id::Y, i);
-        cgal_points.emplace_back(x, y);
+        point_2d.emplace_back(x, y);
     }
-    return KdTree_2(cgal_points);
+    las_kd_tree = std::make_shared<KdTree_2>(point_2d);
+}
+
+std::shared_ptr<KdTree_2> Storage::get_kd_tree_2d() const {
+    if (las_kd_tree) {
+        return las_kd_tree;
+    }
+    throw std::runtime_error("Kd-tree not built");
 }
 
 Ray3D::Ray3D(const Point_3 &origin_, double gps_time_,

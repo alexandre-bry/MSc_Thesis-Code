@@ -4,25 +4,26 @@
 class LineMoverSimple {
   private:
     AllLines::AllOutlinesPtr all_outlines;
-    AllLines::EdgeId moving_line_id;
-    AllLines::OptimizationUnitId optim_unit_id;
-    Vector_2 shift_direction;
+    AllLines::EdgeGroupId moving_group_id;
+    UnitVector_2 shift_direction;
     std::vector<double> shift_amounts;
     std::vector<std::map<AllLines::EdgeId, double>> computed_shifts;
-    AllLines::EdgeId prev_further_line_id;
-    AllLines::EdgeId next_further_line_id;
     std::size_t current_shift_index;
+    std::vector<std::tuple<AllLines::EdgeId, bool, bool>> edge_ids_to_check;
 
     AllLines::Edge get_current_line(AllLines::EdgeId line_id) const;
-    bool has_problem_main() const;
-    bool has_problem_prev() const;
-    bool has_problem_next() const;
-    bool step() const;
+    void set_current_shift(AllLines::EdgeId line_id, double shift_amount);
+    void set_current_shift(AllLines::EdgeGroupId group_id, double shift_amount);
+    bool has_problem(AllLines::EdgeId focus_line_id) const;
+    bool step();
 
   public:
     LineMoverSimple(AllLines::AllOutlinesPtr _all_outlines,
-                    AllLines::EdgeId _moving_line_id, Vector_2 _shift_direction,
+                    AllLines::EdgeGroupId _moving_group_id,
+                    UnitVector_2 _shift_direction,
                     std::vector<double> _shift_amounts);
 
     void compute_all();
+    void get_computed_shifts(
+        std::vector<std::map<AllLines::EdgeId, double>> &output) const;
 };

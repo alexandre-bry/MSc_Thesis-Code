@@ -13,6 +13,13 @@ typedef K::Line_2 Line_2;
 typedef K::Segment_2 Segment_2;
 typedef CGAL::Bbox_2 Bbox_2;
 
+class UnitVector_2 : public Vector_2 {
+  public:
+    UnitVector_2() : Vector_2(0, 0) {}
+    UnitVector_2(const Vector_2 &v)
+        : Vector_2(v / std::sqrt(v.squared_length())) {}
+};
+
 class Point_2_property_map {
     const std::vector<Point_2> &points;
 

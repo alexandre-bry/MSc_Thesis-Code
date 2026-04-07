@@ -9,8 +9,8 @@
 #include <CGAL/Search_traits_2.h>
 #include <CGAL/Search_traits_3.h>
 
-#include "geometry.hpp"
-#include "utils/cgal.hpp"
+#include "../geometry.hpp"
+#include "cgal.hpp"
 
 typedef CGAL::Search_traits_2<K> Traits_2_base;
 typedef CGAL::Search_traits_adapter<std::size_t, Point_2_property_map,
@@ -25,6 +25,10 @@ struct KdTree_2 {
     std::vector<Point_2> points;
     Point_2_property_map point_map;
     Tree_2 tree;
+
+    KdTree_2()
+        : points(), point_map(points), tree(Splitter_2(), Traits_2(point_map)) {
+    }
 
     KdTree_2(const std::vector<Point_2> &pts)
         : points(pts), point_map(points),

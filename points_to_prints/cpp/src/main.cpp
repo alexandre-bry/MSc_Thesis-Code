@@ -4,10 +4,10 @@
 #include <CLI11/CLI11.hpp>
 
 #include "distances.hpp"
+#include "edge_matching/topology.hpp"
 #include "las_filter.hpp"
 #include "parquet.hpp"
 #include "pca.hpp"
-#include "roofprints_new_new.hpp"
 
 void setup_sort_by_gps_time(CLI::App &app) {
     auto opt = std::make_shared<SortByGpsTimeOptions>();
@@ -146,7 +146,7 @@ void setup_read_write_bd_topo(CLI::App &app) {
 }
 
 void setup_compute_roofprints(CLI::App &app) {
-    auto opt = std::make_shared<NewRoofprints::ComputeRoofprintsOptions>();
+    auto opt = std::make_shared<AllLines::ComputeRoofprintsOptions>();
 
     CLI::App *sub =
         app.add_subcommand("compute_roofprints", "Compute roofprints");
@@ -171,7 +171,7 @@ void setup_compute_roofprints(CLI::App &app) {
                   "Overwrite the output file if it exists");
 
     sub->callback([opt]() {
-        NewRoofprints::compute_roofprints(
+        AllLines::compute_roofprints(
             opt->input_las_file, opt->input_bd_topo_edges_file,
             opt->input_bd_topo_intersections_file, opt->output_roofprints_file,
             opt->overwrite);

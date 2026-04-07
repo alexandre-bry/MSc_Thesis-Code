@@ -80,5 +80,3 @@ class LinearCriterion(Criterion):
         perimeter_abs_value = self.alpha_abs * perimeter
 
         return proximity_value + perimeter_ratio_value + perimeter_abs_value
-        return proximity_value + perimeter_ratio_value + perimeter_abs_value
-        return proximity_value + perimeter_ratio_value + perimeter_abs_value

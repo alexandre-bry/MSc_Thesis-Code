@@ -13,10 +13,10 @@
 #include <pdal/PointView.hpp>
 
 #include "geometry.hpp"
-#include "kd_tree.hpp"
 #include "las/enums.hpp"
 #include "las/trajectory.hpp"
 #include "utils/cgal.hpp"
+#include "utils/kd_tree.hpp"
 #include "utils/strong_types.hpp"
 
 const double NEIGHBOUR_MAX_GPS_TIME = 1e-5;
@@ -412,6 +412,7 @@ struct Storage {
     std::vector<CustomDimensions::Id> custom_dims;
     pdal::PointViewPtr view;
     std::shared_ptr<pdal::PointTable> table;
+    std::shared_ptr<KdTree_2> las_kd_tree;
 
   private:
     void init(std::vector<pdal::Dimension::Id> predefined_dims,
@@ -559,7 +560,8 @@ struct Storage {
         return Point_3(x, y, z);
     }
 
-    KdTree_2 build_kd_tree_2d() const;
+    void build_kd_tree_2d();
+    std::shared_ptr<KdTree_2> get_kd_tree_2d() const;
 };
 
 typedef std::shared_ptr<Storage> StoragePtr;
