@@ -430,7 +430,3 @@ async def download_lidar_hd_data(
         logging.error(f"{len(invalid_files)} invalid files:")
         for file_name, error in invalid_files:
             logging.error(f"  - {file_name}: {error}")
-            logging.error(f"  - {file_name}: {error}")
-            logging.error(f"  - {file_name}: {error}")
-            logging.error(f"  - {file_name}: {error}")
-            logging.error(f"  - {file_name}: {error}")

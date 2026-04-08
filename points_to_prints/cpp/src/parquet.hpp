@@ -23,8 +23,8 @@
 #include <ogr_spatialref.h>
 
 #include "geometry.hpp"
-#include "pbar.hpp"
 #include "utils/cgal.hpp"
+#include "utils/pbar.hpp"
 
 struct TestParquetOptions {
     std::string input_file;

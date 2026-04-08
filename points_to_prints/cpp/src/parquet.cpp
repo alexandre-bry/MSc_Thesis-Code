@@ -28,7 +28,7 @@
 
 #include "geometry.hpp"
 #include "parquet/reader.hpp"
-#include "pbar.hpp"
+#include "utils/pbar.hpp"
 
 using json = nlohmann::json;
 
@@ -847,6 +847,7 @@ arrow::Status read_bd_topo_as_grouped_edges(
     }
 
     // Convert the input data into the desired format
+    intersections.clear();
     intersections.reserve(intersections_output.row_count);
     for (std::size_t i = 0; i < intersections_output.row_count; ++i) {
         uint32_t edge_key_a =
@@ -865,8 +866,8 @@ arrow::Status read_bd_topo_as_grouped_edges(
                       << std::endl;
             continue;
         }
-        intersections.emplace_back(edge_key_to_index[edge_key_a],
-                                   edge_key_to_index[edge_key_b]);
+        intersections.emplace_back(edge_key_to_index.at(edge_key_a),
+                                   edge_key_to_index.at(edge_key_b));
     }
 
     return status;

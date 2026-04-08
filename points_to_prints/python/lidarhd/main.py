@@ -13,6 +13,7 @@ from typing import Annotated, List
 import typer
 
 from ..utils.custom_logging import LoggingContext
+from .bd_topo_crop import crop_parquet_from_las
 from .bd_topo_intersections import (
     compute_export_intersections,
     crop_intersections_files,
@@ -608,7 +609,7 @@ def bd_topo_intersections(
     "bd_topo_crop_intersections",
     help="Crop the BD TOPO data to the bounds of a given LAS file and export the cropped data to a parquet file.",
 )
-def bd_topo_crop(
+def bd_topo_crop_intersections(
     las_file: Annotated[
         Path,
         typer.Option(
@@ -753,6 +754,69 @@ def identity(
 
 
 @app.command(
+    "bd_topo_crop_from_las",
+    help="Crop the BD TOPO data to the bounds of a given LAS file and export the cropped data to a parquet file.",
+)
+def bd_topo_crop_from_las(
+    las_file: Annotated[
+        Path,
+        typer.Option(
+            "-l",
+            "--las_file",
+            help="Path to the input LAS file.",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ],
+    input_parquet_file: Annotated[
+        Path,
+        typer.Option(
+            "-i",
+            "--input_parquet_file",
+            help="Path to the input parquet file.",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ],
+    output_parquet_file: Annotated[
+        Path,
+        typer.Option(
+            "-o",
+            "--output_parquet_file",
+            help="Path to the output cropped parquet file.",
+        ),
+    ],
+    overwrite: Annotated[
+        bool,
+        typer.Option(
+            "--overwrite",
+            help="Whether to overwrite the output file if it already exists.",
+        ),
+    ] = False,
+    skip_existing: Annotated[
+        bool,
+        typer.Option(
+            "--skip_existing",
+            help="Whether to skip processing files that already exist.",
+        ),
+    ] = False,
+    verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
+):
+    with LoggingContext(verbose=verbose_int):
+        crop_parquet_from_las(
+            input_las_file=las_file,
+            input_parquet_file=input_parquet_file,
+            output_parquet_file=output_parquet_file,
+            overwrite=overwrite,
+            skip_existing=skip_existing,
+        )
+
+
+@app.command(
     "test_logging",
     help="A simple command to test the logging setup with different verbosity levels.",
 )
@@ -765,7 +829,4 @@ def test(verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)
 
 
 if __name__ == "__main__":
-    app()
-    app()
-    app()
     app()

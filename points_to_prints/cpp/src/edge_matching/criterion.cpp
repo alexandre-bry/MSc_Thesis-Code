@@ -6,11 +6,17 @@
 double LinearCriterion::evaluate_segments(
     const std::vector<Segment_2> &segments,
     const std::vector<double> &segments_initial_length) const {
+    // Check that the input vectors have the same size
+    if (segments.size() != segments_initial_length.size()) {
+        throw std::invalid_argument(
+            "Segments and segments_initial_length must have the same size");
+    }
+
     // Compute the proximity value
     double proximity_value = 0.0;
     for (size_t i = 0; i < segments.size(); ++i) {
-        const auto &segment = segments[i];
-        double initial_length = segments_initial_length[i];
+        const auto &segment = segments.at(i);
+        double initial_length = segments_initial_length.at(i);
 
         // Query the points that may be close enough
         std::vector<std::size_t> nearby_point_indices =
@@ -18,8 +24,8 @@ double LinearCriterion::evaluate_segments(
                                               EDGE_CRITERION_MAX_DISTANCE);
 
         for (std::size_t point_index : nearby_point_indices) {
-            const Point_2 &point = points[point_index];
-            double weight = weights[point_index];
+            const Point_2 &point = points.at(point_index);
+            double weight = weights.at(point_index);
 
             // Check if the projection of the point on the segment is within the
             // segment
@@ -47,8 +53,8 @@ double LinearCriterion::evaluate_segments(
     double current_perimeter = 1e-6;
     double initial_perimeter = 1e-6;
     for (size_t i = 0; i < segments.size(); ++i) {
-        current_perimeter += std::sqrt(segments[i].squared_length());
-        initial_perimeter += segments_initial_length[i];
+        current_perimeter += std::sqrt(segments.at(i).squared_length());
+        initial_perimeter += segments_initial_length.at(i);
     }
     double perimeter_ratio_value;
     if (current_perimeter > initial_perimeter) {

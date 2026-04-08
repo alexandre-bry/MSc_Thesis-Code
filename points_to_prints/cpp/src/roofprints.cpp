@@ -15,7 +15,7 @@
 // #include "kd_tree.hpp"
 // #include "las/reader.hpp"
 // #include "parquet.hpp"
-// #include "pbar.hpp"
+// #include "utils/pbar.hpp"
 // #include "pca.hpp"
 // #include "points.hpp"
 // #include "ransac.hpp"

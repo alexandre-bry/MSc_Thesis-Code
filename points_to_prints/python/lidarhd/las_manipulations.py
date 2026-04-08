@@ -263,6 +263,3 @@ def identity_convert(input_file: Path, output_file: Path, overwrite: bool) -> No
 
     pipeline = Pipeline([reader, writer])
     pipeline.execute()
-    pipeline.execute()
-    pipeline.execute()
-    pipeline.execute()

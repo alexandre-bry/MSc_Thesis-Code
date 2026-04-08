@@ -21,10 +21,10 @@
 #include "las/reader.hpp"
 #include "las/trajectory.hpp"
 #include "las/writer.hpp"
-#include "pbar.hpp"
 #include "pca.hpp"
 #include "points.hpp"
 #include "utils/cgal.hpp"
+#include "utils/pbar.hpp"
 
 const double MIN_VERT_GAIN_ROOF = 2.0;
 const double DEFAULT_GPS_TIME_DELTA = 1e-6;

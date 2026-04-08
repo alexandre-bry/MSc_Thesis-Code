@@ -155,10 +155,10 @@ bool LineMoverSimple::has_problem(AllLines::EdgeId focus_line_id) const {
     AllLines::EdgeId next_2_line_id =
         this->all_outlines->get_next_edge_id(next_1_line_id);
 
-    std::cout << "Checking the following 5 lines in this order: "
-              << prev_2_line_id << ", " << prev_1_line_id << ", "
-              << focus_line_id << ", " << next_1_line_id << ", "
-              << next_2_line_id << std::endl;
+    // std::cout << "Checking the following 5 lines in this order: "
+    //           << prev_2_line_id << ", " << prev_1_line_id << ", "
+    //           << focus_line_id << ", " << next_1_line_id << ", "
+    //           << next_2_line_id << std::endl;
 
     AllLines::Edge focus_line = get_current_line(focus_line_id);
     AllLines::Edge prev_1_line = get_current_line(prev_1_line_id);
@@ -176,6 +176,9 @@ bool LineMoverSimple::step() {
     if (this->current_shift_index >= this->shift_amounts.size()) {
         return true;
     }
+
+    // std::cout << "New step with shift amount: "
+    //           << this->shift_amounts[this->current_shift_index] << std::endl;
 
     auto previous_shift_index = this->current_shift_index - 1;
     double current_shift_amount =
@@ -198,14 +201,13 @@ bool LineMoverSimple::step() {
     std::set<std::tuple<AllLines::EdgeId, bool, bool>> new_edge_ids_to_check;
     std::set<AllLines::EdgeId> checked_and_moved_edge_ids;
 
-    while (!edge_ids_to_check.empty()) {
-        auto [focus_line_id, check_prev, check_next] = edge_ids_to_check.back();
-        edge_ids_to_check.pop_back();
+    while (!this->edge_ids_to_check.empty()) {
+        auto [focus_line_id, check_prev, check_next] =
+            this->edge_ids_to_check.back();
+        this->edge_ids_to_check.pop_back();
 
-        if (checked_and_moved_edge_ids.find(focus_line_id) ==
+        if (checked_and_moved_edge_ids.find(focus_line_id) !=
             checked_and_moved_edge_ids.end()) {
-            checked_and_moved_edge_ids.insert(focus_line_id);
-        } else {
             continue;
         }
 
@@ -219,7 +221,7 @@ bool LineMoverSimple::step() {
                 this->all_outlines->get_edge_group(focus_line_group_id);
             for (const auto &edge_id : focus_line_group.edge_ids) {
                 if (edge_id != focus_line_id) {
-                    edge_ids_to_check.push_back(
+                    this->edge_ids_to_check.push_back(
                         std::make_tuple(edge_id, true, true));
                 }
             }
@@ -228,7 +230,7 @@ bool LineMoverSimple::step() {
             if (check_prev) {
                 AllLines::EdgeId prev_line_id =
                     this->all_outlines->get_prev_edge_id(focus_line_id);
-                edge_ids_to_check.push_back(
+                this->edge_ids_to_check.push_back(
                     std::make_tuple(prev_line_id, true, false));
             }
 
@@ -236,9 +238,10 @@ bool LineMoverSimple::step() {
             if (check_next) {
                 AllLines::EdgeId next_line_id =
                     this->all_outlines->get_next_edge_id(focus_line_id);
-                edge_ids_to_check.push_back(
+                this->edge_ids_to_check.push_back(
                     std::make_tuple(next_line_id, false, true));
             }
+            checked_and_moved_edge_ids.insert(focus_line_id);
         } else {
             new_edge_ids_to_check.insert(
                 std::make_tuple(focus_line_id, check_prev, check_next));
@@ -251,6 +254,9 @@ bool LineMoverSimple::step() {
 
     this->current_shift_index++;
 
+    // std::cout << "End of step, number of edges to check for the next step: "
+    //           << this->edge_ids_to_check.size() << std::endl;
+
     return this->current_shift_index >= this->shift_amounts.size();
 }
 
@@ -262,5 +268,8 @@ void LineMoverSimple::compute_all() {
 
 void LineMoverSimple::get_computed_shifts(
     std::vector<std::map<AllLines::EdgeId, double>> &output) const {
-    output = this->computed_shifts;
+    // Remove the first entry which corresponds to the initial configuration
+    // with zero shift
+    output = std::vector<std::map<AllLines::EdgeId, double>>(
+        this->computed_shifts.begin() + 1, this->computed_shifts.end());
 }

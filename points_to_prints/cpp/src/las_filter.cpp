@@ -14,8 +14,8 @@
 
 #include "las/reader.hpp"
 #include "las/writer.hpp"
-#include "pbar.hpp"
 #include "points.hpp"
+#include "utils/pbar.hpp"
 
 void extract_random_scanner_lines(const std::string &input_file,
                                   const std::string &output_folder,

@@ -1,17 +1,8 @@
 import logging
 from pathlib import Path
 
-import duckdb
-from pdal import Filter, Pipeline, Reader, Writer
-
-from ..utils.duckdb_helpers import (
-    DuckDBConnectionManager,
-    DuckDBConnector,
-    connect_to_duckdb,
-    create_schema,
-    export_parquet,
-)
-from ..utils.utils import Box2154, Point2154
+from ..utils.duckdb_helpers import DuckDBConnectionManager, DuckDBConnector
+from ..utils.utils import Box2154
 
 SCHEMA_NAME = "intersections"
 
@@ -26,6 +17,7 @@ GRAPH_NODE_TO_ROOT_TABLE_NAME = "graph_node_to_root"
 GRAPH_COMPONENTS_TABLE_NAME = "graph_components"
 
 BUILDING_ID_COLUMN_NAME = "cleabs"
+INITIAL_GEOMETRY_COLUMN_NAME = "geometry"
 GEOMETRY_COLUMN_NAME = "geometry"
 EXTENT_COLUMN_NAME = "extent"
 START_POINT_COLUMN_NAME = "start_point"
@@ -48,13 +40,19 @@ EDGE_KEY = {
     "type": "UINT32",
 }
 
+GEOMETRY_SIMPLIFICATION_TOLERANCE = 1e-6
+
 
 def load_bd_topo_to_duckdb(con: DuckDBConnector, bd_topo_file: Path):
     logging.info(f"Loading BD TOPO file '{bd_topo_file}' into DuckDB...")
     con.execute(
         f"""
         CREATE OR REPLACE TABLE {SCHEMA_NAME}.{MULTIPOLY_TABLE_NAME} AS
-        SELECT * FROM read_parquet($bd_topo_file);
+        SELECT 
+            * EXCLUDE ({INITIAL_GEOMETRY_COLUMN_NAME}),
+            ST_SimplifyPreserveTopology({INITIAL_GEOMETRY_COLUMN_NAME}, {GEOMETRY_SIMPLIFICATION_TOLERANCE}) AS {GEOMETRY_COLUMN_NAME}
+            -- {INITIAL_GEOMETRY_COLUMN_NAME} AS {GEOMETRY_COLUMN_NAME}
+        FROM read_parquet($bd_topo_file);
         """,
         {"bd_topo_file": str(bd_topo_file)},
     )
@@ -75,7 +73,7 @@ def unnest_multipoly_to_poly(con: DuckDBConnector):
         CREATE OR REPLACE TABLE {SCHEMA_NAME}.{POLY_TABLE_NAME} AS
         SELECT
             cleabs,
-            (path[1] - 1)::{IDX_POLYGON['type']} AS {IDX_POLYGON['name']},
+            COALESCE(path[1] - 1, 0)::{IDX_POLYGON['type']} AS {IDX_POLYGON['name']},
             geom AS {GEOMETRY_COLUMN_NAME}
         FROM (
             SELECT cleabs, UNNEST(ST_Dump({GEOMETRY_COLUMN_NAME}), recursive := true)

@@ -58,9 +58,15 @@ def crop_parquet_from_las(
     input_parquet_file: Path,
     output_parquet_file: Path,
     overwrite: bool,
+    skip_existing: bool,
 ):
     # Check if output file already exists
     if output_parquet_file.exists():
+        if skip_existing:
+            logging.info(
+                f"Output file '{output_parquet_file}' already exists. Skipping."
+            )
+            return
         if overwrite:
             logging.warning(
                 f"Output file '{output_parquet_file}' already exists. Overwriting."
@@ -173,7 +179,4 @@ def crop_bd_topo_files(
     con.close()
     if db_path.exists():
         db_path.unlink()
-    logging.info(f"Done.")
-    logging.info(f"Done.")
-    logging.info(f"Done.")
     logging.info(f"Done.")

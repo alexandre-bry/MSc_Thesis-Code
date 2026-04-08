@@ -134,9 +134,6 @@ class AllOutlines {
     Point_2 get_edge_start(EdgeId edge_id) const;
     Point_2 get_edge_end(EdgeId edge_id) const;
 
-    Bbox_2 edge_bbox_buffered(EdgeId edge_id, double buffer_normal,
-                              double buffer_tangent) const;
-
     EdgeId edge_count() const;
     EdgeGroupId edge_group_count() const;
     OutlineId outline_count() const;
