@@ -44,6 +44,13 @@ typedef K::Line_3 Line_3;
 typedef K::Plane_3 Plane_3;
 typedef K::Segment_3 Segment_3;
 
+class UnitVector_3 : public Vector_3 {
+  public:
+    UnitVector_3() : Vector_3(0, 0, 0) {}
+    UnitVector_3(const Vector_3 &v)
+        : Vector_3(v / std::sqrt(v.squared_length())) {}
+};
+
 // Property map for Point_3
 class Point_3_property_map {
     const std::vector<Point_3> *points;
@@ -122,4 +129,6 @@ bool are_almost_collinear(const Point_3 &p1, const Point_3 &p2,
                           const Point_3 &p3, Angle tolerance);
 
 Point_2 intersection(const Line_2 &line1, const Line_2 &line2);
+
+double area(const std::vector<Point_2> &points);
 } // namespace CustomCGAL

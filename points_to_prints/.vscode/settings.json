@@ -21,5 +21,8 @@
   "cmake.cmakePath": "${workspaceFolder}/.pixi/envs/default/bin/cmake",
   "cmake.buildOnSave": false,
   "cmake.configureOnEdit": false,
-  "clangd.fallbackFlags": ["-I${workspaceFolder}/include"]
+  "clangd.fallbackFlags": ["-I${workspaceFolder}/include"],
+
+  "comment-divider.length": 80,
+  "comment-divider.shouldLengthIncludeIndent": true
 }

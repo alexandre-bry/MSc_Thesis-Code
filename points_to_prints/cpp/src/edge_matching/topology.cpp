@@ -22,9 +22,12 @@ namespace {
 
 void compute_weights(PtsStructs::StoragePtr las_points,
                      const std::vector<PtsStructs::PointId> &point_ids,
-                     std::vector<double> &weights) {
+                     std::vector<double> &weights,
+                     std::vector<UnitVector_2> &point_normals) {
     weights.clear();
     weights.resize(point_ids.size());
+    point_normals.clear();
+    point_normals.resize(point_ids.size());
 
     // Compute the minimum and maximum Z values
     double min_z = std::numeric_limits<double>::infinity();
@@ -48,25 +51,34 @@ void compute_weights(PtsStructs::StoragePtr las_points,
         double z =
             las_points->get_field_as<double>(pdal::Dimension::Id::Z, point_id);
         double height_norm = (z - min_z + 1e-6) / (max_z - min_z + 1e-6);
-        double height_factor = 1.0 + 5.0 * height_norm;
+        // double height_factor = height_norm;
+        double height_factor = 1.0;
 
         // Give more weight to non-generated points
         uint8_t is_generated = las_points->get_field_as<uint8_t>(
             CustomDimensions::Id::IsGenerated, point_id);
-        double generated_factor = 3 - is_generated;
+        double generated_factor = (2.0 - is_generated) / 2.0;
 
         // Give more weight to points classified as building
         const auto cls_raw = las_points->get_field_as<
             std::underlying_type_t<LASclassification::Value>>(
             pdal::Dimension::Id::Classification, point_id);
         const auto cls = static_cast<LASclassification::Value>(cls_raw);
-        double class_factor = 1.0;
+        double class_factor = 0.3;
         if (cls == LASclassification::Value::Building) {
-            class_factor = 2.0;
+            class_factor = 1.0;
         }
 
         // Combine the factors to get the final weight
         weights.at(i) = height_factor * generated_factor * class_factor;
+
+        // Extracts the normal vector for the point
+        double normal_x = las_points->get_field_as<double>(
+            CustomDimensions::Id::EdgeNormalX, point_id);
+        double normal_y = las_points->get_field_as<double>(
+            CustomDimensions::Id::EdgeNormalY, point_id);
+        UnitVector_2 point_normal(Vector_2(normal_x, normal_y));
+        point_normals.at(i) = point_normal;
     }
 }
 
@@ -81,14 +93,16 @@ Bbox_2 edge_bbox_buffered(AllLines::Edge focus_edge, AllLines::Edge prev_edge,
     Bbox_2 bbox = segment.bbox();
     Vector_2 normal = focus_edge.get_normal() * buffer_normal;
     Vector_2 tangent = focus_edge.get_direction() * buffer_tangent;
-    return Bbox_2(bbox.xmin() - normal.x(), bbox.ymin() - normal.y(),
-                  bbox.xmax() + normal.x(), bbox.ymax() + normal.y());
+    double x_buffer = std::abs(normal.x()) + std::abs(tangent.x());
+    double y_buffer = std::abs(normal.y()) + std::abs(tangent.y());
+    return Bbox_2(bbox.xmin() - x_buffer, bbox.ymin() - y_buffer,
+                  bbox.xmax() + x_buffer, bbox.ymax() + y_buffer);
 }
 
 } // namespace
 
-AllLines::Edge::Edge(Point_3 initial_start, Point_3 initial_end)
-    : initial_start(initial_start), initial_end(initial_end) {
+AllLines::Edge::Edge(Point_3 initial_start, Point_3 initial_end, uint32_t key)
+    : initial_start(initial_start), initial_end(initial_end), key(key) {
     Point_2 start_2d(initial_start.x(), initial_start.y());
     Point_2 end_2d(initial_end.x(), initial_end.y());
     line = Line_2(start_2d, end_2d);
@@ -109,7 +123,7 @@ AllLines::Edge AllLines::Edge::translated(Vector_2 offset) const {
     Point_2 new_start = line.point(0) + offset;
     Point_2 new_end = line.point(1) + offset;
     return Edge(Point_3(new_start.x(), new_start.y(), initial_start.z()),
-                Point_3(new_end.x(), new_end.y(), initial_end.z()));
+                Point_3(new_end.x(), new_end.y(), initial_end.z()), key);
 }
 
 AllLines::OutlineAsEdges::OutlineAsEdges(
@@ -344,7 +358,7 @@ AllLines::AllOutlines AllLines::make_all_outlines(
     /* ------------------------- Optimization units
      * ------------------------- */
 
-    // Compute the optimization units based on edge sequence groups
+    // Compute the optimization units based on edge groups
     OptimizationUnitVector<OptimizationUnit> optim_units;
     EdgeGroupVector<OptimizationUnitId> edge_group_id_to_optim_unit_id(
         edge_groups.size());
@@ -359,46 +373,46 @@ AllLines::AllOutlines AllLines::make_all_outlines(
         // Get a new index for the optimization unit
         OptimizationUnitId optim_unit_id = optim_units.size_as_strong_index();
 
-        // Find all edge sequence groups that are connected to the current
-        // edge sequence group through shared outlines
-        std::vector<EdgeGroupId> edge_group_ids({edge_group_id});
+        // Find all edge groups that are connected to the current edge group
+        // through shared outlines
+        std::set<EdgeGroupId> edge_group_ids({edge_group_id});
         std::vector<EdgeGroupId> edge_group_ids_to_visit({edge_group_id});
         while (!edge_group_ids_to_visit.empty()) {
             EdgeGroupId current_edge_group_id = edge_group_ids_to_visit.back();
             edge_group_ids_to_visit.pop_back();
             edge_group_visited[current_edge_group_id] = true;
 
-            // Get the edge sequences in the current edge sequence group
+            // Get the edges in the current edge group
             const auto &current_edge_group = edge_groups[current_edge_group_id];
             for (const auto &edge_seq_id : current_edge_group.edge_ids) {
-                // Get the next and previous edge sequence id
+                // Get the next and previous edge id
                 EdgeId next_edge_seq_id = next_edge_ids[edge_seq_id];
                 EdgeId prev_edge_seq_id = prev_edge_ids[edge_seq_id];
 
-                // Get the edge sequence group id of the next and previous
-                // edge sequence
+                // Get the edge group id of the next and previous edge
                 EdgeGroupId next_edge_seq_group_id =
                     edge_id_to_edge_group_id[next_edge_seq_id];
                 EdgeGroupId prev_edge_seq_group_id =
                     edge_id_to_edge_group_id[prev_edge_seq_id];
 
-                // If the next edge sequence group is not visited, add it to
-                // the optimization unit
+                // If the next edge group is not visited, add it to the
+                // optimization unit
                 if (!edge_group_visited[next_edge_seq_group_id]) {
                     edge_group_ids_to_visit.push_back(next_edge_seq_group_id);
-                    edge_group_ids.push_back(next_edge_seq_group_id);
+                    edge_group_ids.insert(next_edge_seq_group_id);
                 }
-                // If the previous edge sequence group is not visited, add
-                // it to the optimization unit
+                // If the previous edge group is not visited, add it to the
+                // optimization unit
                 if (!edge_group_visited[prev_edge_seq_group_id]) {
                     edge_group_ids_to_visit.push_back(prev_edge_seq_group_id);
-                    edge_group_ids.push_back(prev_edge_seq_group_id);
+                    edge_group_ids.insert(prev_edge_seq_group_id);
                 }
             }
         }
 
-        // Build the optimization unit based on the edge sequence groups
-        optim_units.push_back(OptimizationUnit(edge_group_ids));
+        // Build the optimization unit based on the edge groups
+        optim_units.push_back(OptimizationUnit(std::vector<EdgeGroupId>(
+            edge_group_ids.begin(), edge_group_ids.end())));
         for (const auto &edge_seq_group_id : edge_group_ids) {
             edge_group_id_to_optim_unit_id[edge_seq_group_id] = optim_unit_id;
         }
@@ -503,7 +517,8 @@ void AllLines::AllOutlines::compute_metrics(
     }
 
     // Make sure all the neighbours of the encountered edges are also included
-    // std::cout << "Making sure all the neighbours of the encountered edges are
+    // std::cout << "Making sure all the neighbours of the
+    // encnormals_dotountered edges are
     // "
     //              "also included"
     //           << std::endl;
@@ -512,6 +527,14 @@ void AllLines::AllOutlines::compute_metrics(
         criterion_edge_ids.insert(get_prev_edge_id(edge_id));
         criterion_edge_ids.insert(get_next_edge_id(edge_id));
     }
+
+    // std::cout << "Number of edges in the edge group: "
+    //           << edge_group.edge_ids.size() << std::endl;
+    // std::cout << "Number of edges that are shifted in any configuration: "
+    //           << _encountered_edge_ids.size() << std::endl;
+    // std::cout << "Number of edges that are shifted or are neighbours of "
+    //           << "shifted edges in any configuration: "
+    //           << criterion_edge_ids.size() << std::endl;
 
     // Compute the bounding box of all cases
     // std::cout << "Computing bounding box of all cases" << std::endl;
@@ -545,7 +568,8 @@ void AllLines::AllOutlines::compute_metrics(
             all_cases_bbox += edge_bbox;
         }
     }
-    // std::cout << "all_cases_bbox: " << all_cases_bbox << std::endl;
+    // std::cout << "Bounding box of all cases: " << all_cases_bbox <<
+    // std::endl;
 
     // Select all the necessary LAS points for the metric computation
     // std::cout << "Selecting all the necessary LAS points for the metric "
@@ -554,6 +578,9 @@ void AllLines::AllOutlines::compute_metrics(
     const std::vector<std::size_t> current_las_indices =
         las_points->get_kd_tree_2d()->search_indices_in_box(all_cases_bbox,
                                                             0.0);
+
+    // std::cout << "Number of LAS points in the bounding box: "
+    //           << current_las_indices.size() << std::endl;
 
     std::vector<PtsStructs::PointId> current_las_point_ids;
     current_las_point_ids.reserve(current_las_indices.size());
@@ -564,7 +591,8 @@ void AllLines::AllOutlines::compute_metrics(
     // Compute the weights for the LAS points
     // std::cout << "Computing weights for the LAS points" << std::endl;
     std::vector<double> weights;
-    compute_weights(las_points, current_las_point_ids, weights);
+    std::vector<UnitVector_2> point_normals;
+    compute_weights(las_points, current_las_point_ids, weights, point_normals);
     // std::cout << "current_las_point_ids.size(): "
     //           << current_las_point_ids.size() << std::endl;
     // std::cout << "weights.size(): " << weights.size() << std::endl;
@@ -575,7 +603,7 @@ void AllLines::AllOutlines::compute_metrics(
         const auto &point_id = current_las_point_ids[i];
         selected_las_points[i] = las_points->get_point_2d(point_id);
     }
-    LinearCriterion criterion(selected_las_points, weights);
+    LinearCriterion criterion(selected_las_points, weights, point_normals);
 
     // Compute the metric for each offset
     // std::cout << "Computing metric for each offset" << std::endl;
@@ -663,6 +691,14 @@ void AllLines::AllOutlines::compute_optimal_offset(
     compute_metrics(edge_group_id, offsets, offset_direction, las_points,
                     metrics, configs);
 
+    // std::cout << "Offsets and their metrics: " << std::endl;
+    // for (size_t i = 0; i < offsets.size(); ++i) {
+    //     if (metrics[i] != 0.0) {
+    //         std::cout << "  Offset: " << offsets[i]
+    //                   << ", Metric: " << metrics[i] << std::endl;
+    //     }
+    // }
+
     // Find the best offset
     size_t best_offset_index = -1;
     double best_metric = std::numeric_limits<double>::infinity();
@@ -684,9 +720,9 @@ void AllLines::AllOutlines::optimize_unit(
     const PtsStructs::StoragePtr las_points,
     const OptimizationUnitId &optim_unit_id) {
     const auto &optim_unit = optim_units[optim_unit_id];
-    std::cout << "Optimizing unit " << optim_unit_id << " with edge "
-              << optim_unit.edge_group_ids.size() << " edge groups"
-              << std::endl;
+    // std::cout << "Optimizing unit " << optim_unit_id << " with "
+    //           << optim_unit.edge_group_ids.size() << " edge groups"
+    //           << std::endl;
 
     for (const auto &edge_group_id : optim_unit.edge_group_ids) {
         // Compute the offset direction based on the edge group
@@ -697,6 +733,16 @@ void AllLines::AllOutlines::optimize_unit(
         EdgeId edge_id = edge_group.edge_ids[0];
         Edge edge = get_edge(edge_id);
         UnitVector_2 offset_direction = edge.get_normal();
+
+        // std::cout << "Optimizing edge group " << edge_group_id << " with "
+        //           << edge_group.edge_ids.size()
+        //           << " edges and offset direction " << offset_direction
+        //           << std::endl;
+        // std::cout << "  Keys of edges in the group: ";
+        // for (const auto &edge_id : edge_group.edge_ids) {
+        //     std::cout << get_edge(edge_id).get_key() << " ";
+        // }
+        // std::cout << std::endl;
 
         double best_offset;
         std::map<AllLines::EdgeId, double> best_config;
@@ -803,7 +849,7 @@ void AllLines::compute_roofprints(
     EdgeVector<Edge> edges;
     std::map<uint32_t, EdgeId> edge_key_map;
     for (const auto &edge : initial_edges) {
-        edges.push_back(Edge(edge.start, edge.end));
+        edges.push_back(Edge(edge.start, edge.end, edge.edge_key));
         edge_key_map[edge.edge_key] = EdgeId(edges.size() - 1);
         // std::cout << "Mapped edge key " << edge.edge_key << " to edge id "
         //           << edge_key_map[edge.edge_key] << std::endl;

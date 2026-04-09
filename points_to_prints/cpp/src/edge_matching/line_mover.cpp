@@ -73,7 +73,7 @@ bool is_flipped(const AllLines::Edge &focus_line,
 bool is_problematic(const AllLines::Edge &focus_line,
                     const AllLines::Edge &prev_line,
                     const AllLines::Edge &next_line) {
-    return not is_reduced_to_point(focus_line, prev_line, next_line) &&
+    return !is_reduced_to_point(focus_line, prev_line, next_line) &&
            is_flipped(focus_line, prev_line, next_line);
 }
 
@@ -114,7 +114,15 @@ LineMoverSimple::LineMoverSimple(AllLines::AllOutlinesPtr _all_outlines,
     AllLines::EdgeGroup edge_group =
         this->all_outlines->get_edge_group(this->moving_group_id);
     for (const auto &edge_id : edge_group.edge_ids) {
-        edge_ids_to_check.push_back(std::make_tuple(edge_id, true, true));
+        // edge_ids_to_check.push_back(std::make_tuple(edge_id, true, true));
+        AllLines::EdgeId prev_edge_id =
+            this->all_outlines->get_prev_edge_id(edge_id);
+        AllLines::EdgeId next_edge_id =
+            this->all_outlines->get_next_edge_id(edge_id);
+        this->edge_ids_to_check.push_back(
+            std::make_tuple(prev_edge_id, true, false));
+        this->edge_ids_to_check.push_back(
+            std::make_tuple(next_edge_id, false, true));
     }
 
     this->current_shift_index = 1;
@@ -134,6 +142,10 @@ LineMoverSimple::get_current_line(AllLines::EdgeId line_id) const {
 
 void LineMoverSimple::set_current_shift(AllLines::EdgeId line_id,
                                         double shift_amount) {
+    // std::cout << "Setting shift amount " << shift_amount << " for edge "
+    //           << this->all_outlines->get_edge(line_id).get_key() <<
+    //           std::endl;
+
     this->computed_shifts[this->current_shift_index][line_id] = shift_amount;
 }
 
@@ -143,6 +155,10 @@ void LineMoverSimple::set_current_shift(AllLines::EdgeGroupId group_id,
     for (const auto &edge_id : edge_group.edge_ids) {
         set_current_shift(edge_id, shift_amount);
     }
+}
+
+bool LineMoverSimple::is_currently_shifted(AllLines::EdgeId line_id) const {
+    return this->computed_shifts[this->current_shift_index].count(line_id) > 0;
 }
 
 bool LineMoverSimple::has_problem(AllLines::EdgeId focus_line_id) const {
@@ -177,6 +193,8 @@ bool LineMoverSimple::step() {
         return true;
     }
 
+    // std::cout << std::endl;
+
     // std::cout << "New step with shift amount: "
     //           << this->shift_amounts[this->current_shift_index] << std::endl;
 
@@ -201,45 +219,121 @@ bool LineMoverSimple::step() {
     std::set<std::tuple<AllLines::EdgeId, bool, bool>> new_edge_ids_to_check;
     std::set<AllLines::EdgeId> checked_and_moved_edge_ids;
 
+    this->edge_ids_to_check = {};
+    auto &current_shifts = this->computed_shifts[this->current_shift_index];
+    for (const auto &entry : current_shifts) {
+        AllLines::EdgeId edge_id = entry.first;
+        AllLines::EdgeId prev_edge_id =
+            this->all_outlines->get_prev_edge_id(edge_id);
+        AllLines::EdgeId next_edge_id =
+            this->all_outlines->get_next_edge_id(edge_id);
+        if (!is_currently_shifted(prev_edge_id)) {
+            this->edge_ids_to_check.push_back(
+                std::make_tuple(prev_edge_id, true, false));
+        }
+        if (!is_currently_shifted(next_edge_id)) {
+            this->edge_ids_to_check.push_back(
+                std::make_tuple(next_edge_id, false, true));
+        }
+    }
+
+    // std::cout << "Keys of the edges to check at the beginning of the step: ";
+    // for (const auto &[edge_id, check_prev, check_next] :
+    //      this->edge_ids_to_check) {
+    //     std::cout << this->all_outlines->get_edge(edge_id).get_key()
+    //               << " (check_prev=" << check_prev
+    //               << ", check_next=" << check_next << "), ";
+    // }
+    // std::cout << std::endl;
+
     while (!this->edge_ids_to_check.empty()) {
         auto [focus_line_id, check_prev, check_next] =
             this->edge_ids_to_check.back();
         this->edge_ids_to_check.pop_back();
+        // std::cout << "Checking edge "
+        //           << this->all_outlines->get_edge(focus_line_id).get_key()
+        //           << " (check_prev=" << check_prev
+        //           << ", check_next=" << check_next << ")" << std::endl;
 
-        if (checked_and_moved_edge_ids.find(focus_line_id) !=
-            checked_and_moved_edge_ids.end()) {
-            continue;
-        }
+        // if (checked_and_moved_edge_ids.find(focus_line_id) !=
+        //     checked_and_moved_edge_ids.end()) {
+        //     continue;
+        // }
 
         if (has_problem(focus_line_id)) {
+            // std::cout << "Found a problem" << std::endl;
             AllLines::EdgeGroupId focus_line_group_id =
                 this->all_outlines->get_edge_group_id(focus_line_id);
+            // std::cout << "Shifting group " << focus_line_group_id
+            //           << " by amount " << current_shift_amount << std::endl;
             set_current_shift(focus_line_group_id, current_shift_amount);
 
             // Add all the edges in the same group to the list of edges to check
             const auto &focus_line_group =
                 this->all_outlines->get_edge_group(focus_line_group_id);
+            // std::cout << "This group contains the following edges: ";
             for (const auto &edge_id : focus_line_group.edge_ids) {
+                // std::cout << this->all_outlines->get_edge(edge_id).get_key()
+                //           << ", ";
                 if (edge_id != focus_line_id) {
-                    this->edge_ids_to_check.push_back(
-                        std::make_tuple(edge_id, true, true));
+                    AllLines::EdgeId prev_edge_id =
+                        this->all_outlines->get_prev_edge_id(edge_id);
+                    AllLines::EdgeId next_edge_id =
+                        this->all_outlines->get_next_edge_id(edge_id);
+                    if (!is_currently_shifted(prev_edge_id)) {
+                        this->edge_ids_to_check.push_back(
+                            std::make_tuple(prev_edge_id, true, false));
+                    }
+                    if (!is_currently_shifted(next_edge_id)) {
+                        this->edge_ids_to_check.push_back(
+                            std::make_tuple(next_edge_id, false, true));
+                    }
                 }
             }
+            // std::cout << std::endl;
 
             // Add previous line if it needs to be checked
             if (check_prev) {
                 AllLines::EdgeId prev_line_id =
                     this->all_outlines->get_prev_edge_id(focus_line_id);
-                this->edge_ids_to_check.push_back(
-                    std::make_tuple(prev_line_id, true, false));
+                if (!is_currently_shifted(prev_line_id)) {
+                    this->edge_ids_to_check.push_back(
+                        std::make_tuple(prev_line_id, true, false));
+                }
+                AllLines::EdgeId next_1_line_id =
+                    this->all_outlines->get_next_edge_id(focus_line_id);
+                if (!is_currently_shifted(next_1_line_id)) {
+                    this->edge_ids_to_check.push_back(
+                        std::make_tuple(next_1_line_id, false, true));
+                }
+                AllLines::EdgeId next_2_line_id =
+                    this->all_outlines->get_next_edge_id(next_1_line_id);
+                if (!is_currently_shifted(next_2_line_id)) {
+                    this->edge_ids_to_check.push_back(
+                        std::make_tuple(next_2_line_id, false, true));
+                }
             }
 
             // Add next line if it needs to be checked
             if (check_next) {
                 AllLines::EdgeId next_line_id =
                     this->all_outlines->get_next_edge_id(focus_line_id);
-                this->edge_ids_to_check.push_back(
-                    std::make_tuple(next_line_id, false, true));
+                if (!is_currently_shifted(next_line_id)) {
+                    this->edge_ids_to_check.push_back(
+                        std::make_tuple(next_line_id, false, true));
+                }
+                AllLines::EdgeId prev_1_line_id =
+                    this->all_outlines->get_prev_edge_id(focus_line_id);
+                if (!is_currently_shifted(prev_1_line_id)) {
+                    this->edge_ids_to_check.push_back(
+                        std::make_tuple(prev_1_line_id, true, false));
+                }
+                AllLines::EdgeId prev_2_line_id =
+                    this->all_outlines->get_prev_edge_id(prev_1_line_id);
+                if (!is_currently_shifted(prev_2_line_id)) {
+                    this->edge_ids_to_check.push_back(
+                        std::make_tuple(prev_2_line_id, true, false));
+                }
             }
             checked_and_moved_edge_ids.insert(focus_line_id);
         } else {

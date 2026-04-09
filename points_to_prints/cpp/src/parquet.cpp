@@ -799,6 +799,12 @@ arrow::Status read_bd_topo_as_grouped_edges(
     edges.reserve(edges_output.row_count);
     std::map<uint32_t, std::size_t> edge_key_to_index;
     for (std::size_t i = 0; i < edges_output.row_count; ++i) {
+        std::string cleabs = edges_output.value<std::string>("cleabs", i);
+        // if (cleabs != "BATIMENT0000000337020714" &&
+        //     cleabs != "BATIMENT0000000337020713") {
+        //     continue;
+        // }
+
         edges.push_back({
             edges_output.value<std::string>("cleabs", i),
             edges_output.value<uint8_t>("idx_polygon", i),
@@ -826,7 +832,7 @@ arrow::Status read_bd_topo_as_grouped_edges(
         //           << edges.back().end.y() << ", " << edges.back().end.z() <<
         //           ")"
         //           << std::endl;
-        edge_key_to_index[edges.back().edge_key] = i;
+        edge_key_to_index[edges.back().edge_key] = edges.size() - 1;
     }
 
     // Prepare the columns to read from the intersections Parquet file
@@ -855,15 +861,17 @@ arrow::Status read_bd_topo_as_grouped_edges(
         uint32_t edge_key_b =
             intersections_output.value<uint32_t>("edge_key_b", i);
         if (edge_key_to_index.count(edge_key_a) == 0) {
-            std::cerr << "Warning: edge_key_a " << edge_key_a
-                      << " not found in edges data, skipping this intersection."
-                      << std::endl;
+            // std::cerr << "Warning: edge_key_a " << edge_key_a
+            //           << " not found in edges data, skipping this
+            //           intersection."
+            //           << std::endl;
             continue;
         }
         if (edge_key_to_index.count(edge_key_b) == 0) {
-            std::cerr << "Warning: edge_key_b " << edge_key_b
-                      << " not found in edges data, skipping this intersection."
-                      << std::endl;
+            // std::cerr << "Warning: edge_key_b " << edge_key_b
+            //           << " not found in edges data, skipping this
+            //           intersection."
+            //           << std::endl;
             continue;
         }
         intersections.emplace_back(edge_key_to_index.at(edge_key_a),

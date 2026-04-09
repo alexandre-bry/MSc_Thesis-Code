@@ -8,6 +8,7 @@ class LinearCriterion {
   private:
     std::vector<Point_2> points;
     std::vector<double> weights;
+    std::vector<UnitVector_2> point_normals;
     double max_distance;
     double alpha_ratio;
     double alpha_absolute;
@@ -15,12 +16,13 @@ class LinearCriterion {
 
   public:
     LinearCriterion(std::vector<Point_2> points, std::vector<double> weights,
+                    std::vector<UnitVector_2> point_normals,
                     double max_distance = EDGE_CRITERION_MAX_DISTANCE,
                     double alpha_ratio = EDGE_CRITERION_ALPHA_RATIO,
                     double alpha_absolute = EDGE_CRITERION_ALPHA_ABSOLUTE)
-        : points(points), weights(weights), max_distance(max_distance),
-          alpha_ratio(alpha_ratio), alpha_absolute(alpha_absolute),
-          las_kd_tree(points) {}
+        : points(points), weights(weights), point_normals(point_normals),
+          max_distance(max_distance), alpha_ratio(alpha_ratio),
+          alpha_absolute(alpha_absolute), las_kd_tree(points) {}
 
     double
     evaluate_segments(const std::vector<Segment_2> &segments,

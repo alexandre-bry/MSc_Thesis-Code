@@ -136,3 +136,20 @@ Point_2 CustomCGAL::intersection(const Line_2 &line1, const Line_2 &line2) {
         throw std::runtime_error("Lines do not intersect");
     }
 }
+
+double CustomCGAL::area(const std::vector<Point_2> &points) {
+    Point_2 centroid(0, 0);
+    for (const auto &point : points) {
+        centroid = centroid + (point - CGAL::ORIGIN);
+    }
+    centroid = CGAL::ORIGIN + (centroid - CGAL::ORIGIN) / points.size();
+
+    double area = 0.0;
+    for (size_t i = 0; i < points.size(); ++i) {
+        const Point_2 &p1 = points[i];
+        const Point_2 &p2 = points[(i + 1) % points.size()];
+        area += (p1.x() - centroid.x()) * (p2.y() - centroid.y()) -
+                (p1.y() - centroid.y()) * (p2.x() - centroid.x());
+    }
+    return std::abs(area) / 2.0;
+}

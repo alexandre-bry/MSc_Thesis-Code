@@ -14,6 +14,7 @@ class LineMoverSimple {
     AllLines::Edge get_current_line(AllLines::EdgeId line_id) const;
     void set_current_shift(AllLines::EdgeId line_id, double shift_amount);
     void set_current_shift(AllLines::EdgeGroupId group_id, double shift_amount);
+    bool is_currently_shifted(AllLines::EdgeId line_id) const;
     bool has_problem(AllLines::EdgeId focus_line_id) const;
     bool step();
 

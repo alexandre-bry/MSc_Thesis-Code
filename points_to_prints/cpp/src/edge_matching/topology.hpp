@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <vector>
 
@@ -18,14 +19,16 @@ using AllOutlinesPtr = std::shared_ptr<AllOutlines>;
 
 class Edge {
   private:
+    uint32_t key;
     Point_3 initial_start;
     Point_3 initial_end;
     Line_2 line;
     UnitVector_2 direction;
 
   public:
-    Edge(Point_3 initial_start, Point_3 initial_end);
+    Edge(Point_3 initial_start, Point_3 initial_end, uint32_t key);
 
+    uint32_t get_key() const { return key; }
     Point_3 get_initial_start() const;
     Point_3 get_initial_end() const;
     UnitVector_2 get_direction() const;
