@@ -74,9 +74,9 @@ void compute_weights(PtsStructs::StoragePtr las_points,
 
         // Extracts the normal vector for the point
         double normal_x = las_points->get_field_as<double>(
-            CustomDimensions::Id::EdgeNormalX, point_id);
+            CustomDimensions::Id::PCANormalX, point_id);
         double normal_y = las_points->get_field_as<double>(
-            CustomDimensions::Id::EdgeNormalY, point_id);
+            CustomDimensions::Id::PCANormalY, point_id);
         UnitVector_2 point_normal(Vector_2(normal_x, normal_y));
         point_normals.at(i) = point_normal;
     }
@@ -517,11 +517,6 @@ void AllLines::AllOutlines::compute_metrics(
     }
 
     // Make sure all the neighbours of the encountered edges are also included
-    // std::cout << "Making sure all the neighbours of the
-    // encnormals_dotountered edges are
-    // "
-    //              "also included"
-    //           << std::endl;
     std::set<AllLines::EdgeId> criterion_edge_ids(_encountered_edge_ids);
     for (const auto &edge_id : _encountered_edge_ids) {
         criterion_edge_ids.insert(get_prev_edge_id(edge_id));
@@ -663,25 +658,28 @@ void AllLines::AllOutlines::compute_metrics(
 }
 
 void AllLines::AllOutlines::compute_optimal_offset(
-    EdgeGroupId edge_group_id, double max_absolute_offset, double offset_step,
-    UnitVector_2 offset_direction, PtsStructs::StoragePtr las_points,
-    double &best_offset,
+    EdgeGroupId edge_group_id, double max_absolute_offset,
+    uint initial_samples_one_side, UnitVector_2 offset_direction,
+    PtsStructs::StoragePtr las_points, double &best_offset,
     std::map<AllLines::EdgeId, double> &best_config) const {
 
     // std::cout << "Computing optimal offset for edge group " << edge_group_id
     //           << std::endl;
 
+    /* ---------------------------------------------------------------------- */
+    /*                              Initial step                              */
+    /* ---------------------------------------------------------------------- */
+
     double min_offset = -max_absolute_offset;
     double max_offset = max_absolute_offset;
 
+    double current_precision =
+        (max_offset - min_offset) / (2 * initial_samples_one_side);
+
     // Build the list of offsets to evaluate
-    std::vector<double> offsets({0.0});
-    for (double offset = offset_step; offset <= max_offset;
-         offset += offset_step) {
-        offsets.push_back(offset);
-    }
-    for (double offset = -offset_step; offset >= min_offset;
-         offset -= offset_step) {
+    std::vector<double> offsets;
+    for (uint sample = 0; sample <= 2 * initial_samples_one_side; ++sample) {
+        double offset = min_offset + sample * current_precision;
         offsets.push_back(offset);
     }
 
@@ -691,14 +689,6 @@ void AllLines::AllOutlines::compute_optimal_offset(
     compute_metrics(edge_group_id, offsets, offset_direction, las_points,
                     metrics, configs);
 
-    // std::cout << "Offsets and their metrics: " << std::endl;
-    // for (size_t i = 0; i < offsets.size(); ++i) {
-    //     if (metrics[i] != 0.0) {
-    //         std::cout << "  Offset: " << offsets[i]
-    //                   << ", Metric: " << metrics[i] << std::endl;
-    //     }
-    // }
-
     // Find the best offset
     size_t best_offset_index = -1;
     double best_metric = std::numeric_limits<double>::infinity();
@@ -707,6 +697,101 @@ void AllLines::AllOutlines::compute_optimal_offset(
             best_metric = metrics[i];
             best_offset_index = i;
         }
+    }
+
+    /* ---------------------------------------------------------------------- */
+    /*                            Refinement steps                            */
+    /* ---------------------------------------------------------------------- */
+
+    while (current_precision > EDGE_CRITERION_FINAL_PRECISION) {
+        // std::cout << "Refining optimal offset with precision "
+        //           << current_precision << " and best offset index "
+        //           << best_offset_index << std::endl;
+
+        double new_precision =
+            current_precision / (EDGE_CRITERION_REFINEMENT_SAMPLES + 1);
+
+        std::vector<double> new_offsets;
+        std::vector<double> new_metrics;
+        std::vector<std::map<AllLines::EdgeId, double>> new_configs;
+
+        // Build the lists of offsets to evaluate around the best offset
+        std::vector<double> prev_offsets;
+        if (best_offset_index > 0) {
+            new_offsets.push_back(offsets[best_offset_index - 1]);
+            new_metrics.push_back(metrics[best_offset_index - 1]);
+            new_configs.push_back(configs[best_offset_index - 1]);
+
+            double prev_offset = offsets[best_offset_index - 1];
+            for (uint sample = 1; sample <= EDGE_CRITERION_REFINEMENT_SAMPLES;
+                 ++sample) {
+                double offset = prev_offset + sample * new_precision;
+                prev_offsets.push_back(offset);
+            }
+
+            std::vector<double> prev_metrics;
+            std::vector<std::map<AllLines::EdgeId, double>> prev_configs;
+
+            compute_metrics(edge_group_id, prev_offsets, offset_direction,
+                            las_points, prev_metrics, prev_configs);
+
+            new_offsets.insert(new_offsets.end(), prev_offsets.begin(),
+                               prev_offsets.end());
+            new_metrics.insert(new_metrics.end(), prev_metrics.begin(),
+                               prev_metrics.end());
+            new_configs.insert(new_configs.end(), prev_configs.begin(),
+                               prev_configs.end());
+        }
+
+        new_offsets.push_back(offsets[best_offset_index]);
+        new_metrics.push_back(metrics[best_offset_index]);
+        new_configs.push_back(configs[best_offset_index]);
+
+        std::vector<double> next_offsets;
+        if (best_offset_index < offsets.size() - 1) {
+            double next_offset = offsets[best_offset_index + 1];
+            for (uint sample = EDGE_CRITERION_REFINEMENT_SAMPLES; sample >= 1;
+                 --sample) {
+                double offset = next_offset - sample * new_precision;
+                next_offsets.push_back(offset);
+            }
+
+            std::vector<double> next_metrics;
+            std::vector<std::map<AllLines::EdgeId, double>> next_configs;
+
+            compute_metrics(edge_group_id, next_offsets, offset_direction,
+                            las_points, next_metrics, next_configs);
+
+            new_offsets.insert(new_offsets.end(), next_offsets.begin(),
+                               next_offsets.end());
+            new_metrics.insert(new_metrics.end(), next_metrics.begin(),
+                               next_metrics.end());
+            new_configs.insert(new_configs.end(), next_configs.begin(),
+                               next_configs.end());
+
+            new_offsets.push_back(offsets[best_offset_index + 1]);
+            new_metrics.push_back(metrics[best_offset_index + 1]);
+            new_configs.push_back(configs[best_offset_index + 1]);
+        }
+
+        // Select the best offset among the new offsets and the current best
+        // offset
+        size_t new_best_offset_index = -1;
+        double new_best_metric = std::numeric_limits<double>::infinity();
+        for (size_t i = 0; i < new_metrics.size(); ++i) {
+            if (new_metrics[i] < new_best_metric) {
+                new_best_metric = new_metrics[i];
+                new_best_offset_index = i;
+            }
+        }
+
+        // Update everything
+        offsets = new_offsets;
+        metrics = new_metrics;
+        configs = new_configs;
+        best_offset_index = new_best_offset_index;
+        best_metric = new_best_metric;
+        current_precision = new_precision;
     }
 
     best_offset = offsets[best_offset_index];
@@ -724,7 +809,28 @@ void AllLines::AllOutlines::optimize_unit(
     //           << optim_unit.edge_group_ids.size() << " edge groups"
     //           << std::endl;
 
+    // Order the edge groups in the optimization unit based on the length of
+    // their edges, starting with the longest
+    std::vector<std::pair<EdgeGroupId, double>> edge_groups_with_length;
     for (const auto &edge_group_id : optim_unit.edge_group_ids) {
+        const auto &edge_group = get_edge_group(edge_group_id);
+        double total_length = 0.0;
+        for (const auto &edge_id : edge_group.edge_ids) {
+            total_length +=
+                std::sqrt((get_edge_end(edge_id) - get_edge_start(edge_id))
+                              .squared_length());
+        }
+        edge_groups_with_length.emplace_back(edge_group_id, total_length);
+    }
+
+    // Sort edge groups by length in descending order
+    std::sort(edge_groups_with_length.begin(), edge_groups_with_length.end(),
+              [](const std::pair<EdgeGroupId, double> &a,
+                 const std::pair<EdgeGroupId, double> &b) {
+                  return a.second > b.second;
+              });
+
+    for (const auto &[edge_group_id, length] : edge_groups_with_length) {
         // Compute the offset direction based on the edge group
         EdgeGroup edge_group = get_edge_group(edge_group_id);
         if (edge_group.edge_ids.empty()) {
@@ -747,8 +853,9 @@ void AllLines::AllOutlines::optimize_unit(
         double best_offset;
         std::map<AllLines::EdgeId, double> best_config;
         compute_optimal_offset(edge_group_id, EDGE_CRITERION_OFFSET_MAX,
-                               EDGE_CRITERION_OFFSET_STEP, offset_direction,
-                               las_points, best_offset, best_config);
+                               EDGE_CRITERION_INITIAL_SAMPLES_ONE_SIDE,
+                               offset_direction, las_points, best_offset,
+                               best_config);
 
         // Apply the best configuration to the edges in the optimization unit
         for (const auto &[edge_id, offset] : best_config) {
@@ -802,7 +909,8 @@ void AllLines::compute_roofprints(
     const std::string &input_las_file,
     const std::string &input_bd_topo_edges_file,
     const std::string &input_bd_topo_intersections_file,
-    const std::string &output_roofprints_file, bool overwrite) {
+    const std::string &output_roofprints_file, uint iterations,
+    bool overwrite) {
 
     if (std::filesystem::exists(output_roofprints_file) && !overwrite) {
         throw std::runtime_error("Output file already exists: " +
@@ -977,7 +1085,11 @@ void AllLines::compute_roofprints(
         make_all_outlines(edges, outlines, intersections);
 
     // Optimize the outlines
-    all_outlines.optimize_all_units(las_reader.points);
+    for (uint i = 0; i < iterations; ++i) {
+        std::cout << "Optimization iteration " << (i + 1) << " / " << iterations
+                  << std::endl;
+        all_outlines.optimize_all_units(las_reader.points);
+    }
 
     // Write the roofprints to a Parquet file
     std::cout << "Writing roofprints to Parquet file..." << std::endl;

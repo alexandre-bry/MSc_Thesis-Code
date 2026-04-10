@@ -70,12 +70,13 @@ double LinearCriterion::evaluate_segments(
                 continue;
             }
 
-            // // Check the angle between the point normal and the segment
-            // normal UnitVector_2 point_normal = point_normals.at(point_index);
-            // double dot_product = point_normal * segment_normal;
-            // if (dot_product < 0) {
-            //     continue;
-            // }
+            // Check the angle between the point normal and the segment normal
+            UnitVector_2 point_normal = point_normals.at(point_index);
+            double dot_product = point_normal * segment_normal;
+            if (dot_product < 0.5) {
+                continue;
+            }
+            weight *= dot_product;
 
             // Compute the proximity score
             double proximity_score =

@@ -6,6 +6,7 @@
 #include <CGAL/Fuzzy_iso_box.h>
 #include <CGAL/Fuzzy_sphere.h>
 #include <CGAL/Kd_tree.h>
+#include <CGAL/Orthogonal_k_neighbor_search.h>
 #include <CGAL/Search_traits_2.h>
 #include <CGAL/Search_traits_3.h>
 
@@ -133,5 +134,61 @@ struct KdTree_3 {
             result.push_back(points[idx]);
         }
         return result;
+    }
+
+    void search_indices_in_sphere(const Point_3 &center, double radius,
+                                  std::vector<std::size_t> &result) {
+        CGAL::Fuzzy_sphere<Traits_3> sphere(center, radius, 0.0,
+                                            Traits_3(point_map));
+        tree.search(std::back_inserter(result), sphere);
+    }
+
+    void search_points_in_sphere(const Point_3 &center, double radius,
+                                 std::vector<Point_3> &result) {
+        std::vector<std::size_t> indices;
+        search_indices_in_sphere(center, radius, indices);
+        result.reserve(indices.size());
+        for (std::size_t idx : indices) {
+            result.push_back(points[idx]);
+        }
+    }
+};
+
+typedef CGAL::Orthogonal_k_neighbor_search<Traits_3> Neighbor_search;
+typedef Neighbor_search::Tree Tree_NN_3;
+
+struct Search_NN_3 {
+    std::vector<Point_3> points;
+    Point_3_property_map point_map;
+    Tree_NN_3 tree;
+
+    Search_NN_3(const std::vector<Point_3> &pts)
+        : points(pts), point_map(points),
+          tree(Splitter_3(), Traits_3(point_map)) {
+        std::vector<std::size_t> indices;
+        indices.reserve(points.size());
+        for (std::size_t i = 0; i < points.size(); ++i) {
+            indices.push_back(i);
+        }
+        tree.insert(indices.begin(), indices.end());
+        tree.build();
+    }
+
+    void search_indices_knn(const Point_3 &query, int k,
+                            std::vector<std::size_t> &result) {
+        Neighbor_search search(tree, query, k);
+        for (auto it = search.begin(); it != search.end(); ++it) {
+            result.push_back(it->first);
+        }
+    }
+
+    void search_points_knn(const Point_3 &query, int k,
+                           std::vector<Point_3> &result) {
+        std::vector<std::size_t> indices;
+        search_indices_knn(query, k, indices);
+        result.reserve(indices.size());
+        for (std::size_t idx : indices) {
+            result.push_back(points[idx]);
+        }
     }
 };

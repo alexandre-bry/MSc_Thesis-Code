@@ -1,10 +1,14 @@
 #pragma once
 
+#include <sys/types.h>
+
 const double EDGE_CRITERION_MAX_DISTANCE = 0.3;
-const double EDGE_CRITERION_OFFSET_STEP = 0.1;
-const double EDGE_CRITERION_OFFSET_MAX = 2.01;
+const uint EDGE_CRITERION_INITIAL_SAMPLES_ONE_SIDE = 10;
+const double EDGE_CRITERION_OFFSET_MAX = 2.0;
+const uint EDGE_CRITERION_REFINEMENT_SAMPLES = 2;
+const double EDGE_CRITERION_FINAL_PRECISION = 0.5;
 
 const double EDGE_CRITERION_POINT_DENSITY = 10; // Points per meter
 const double EDGE_CRITERION_ALPHA_RATIO = 5.0;
 const double EDGE_CRITERION_ALPHA_RATIO_AREA = 5.0;
-const double EDGE_CRITERION_ALPHA_ABSOLUTE = 0.05;
+const double EDGE_CRITERION_ALPHA_ABSOLUTE = 0.5;

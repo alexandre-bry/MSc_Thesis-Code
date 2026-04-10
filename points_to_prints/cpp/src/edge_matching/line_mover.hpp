@@ -28,3 +28,29 @@ class LineMoverSimple {
     void get_computed_shifts(
         std::vector<std::map<AllLines::EdgeId, double>> &output) const;
 };
+
+class LineMoverSimpleImproved {
+  private:
+    AllLines::AllOutlinesPtr all_outlines;
+    AllLines::EdgeGroupId moving_group_id;
+    UnitVector_2 shift_direction;
+    std::vector<std::pair<double, AllLines::EdgeId>>
+        sorted_shift_thresholds_and_edges;
+    std::map<AllLines::EdgeId, double> shift_thresholds;
+
+  public:
+    LineMoverSimpleImproved(AllLines::AllOutlinesPtr _all_outlines,
+                            AllLines::EdgeGroupId _moving_group_id,
+                            UnitVector_2 _shift_direction);
+
+    AllLines::Edge get_line(AllLines::EdgeId line_id,
+                            double shift_amount) const;
+    void set_threshold(AllLines::EdgeId line_id, double shift_amount);
+    void set_threshold(AllLines::EdgeGroupId group_id, double shift_amount);
+    void update_sorted_thresholds_and_edges();
+    bool has_problem(AllLines::EdgeId focus_line_id) const;
+
+    void compute_steps(double max_shift_amount);
+    void get_computed_shifts(double shift_amount,
+                             std::map<AllLines::EdgeId, double> &output) const;
+};

@@ -168,7 +168,8 @@ class AllOutlines {
      * corresponding to the best offset found
      */
     void compute_optimal_offset(EdgeGroupId edge_group_id,
-                                double max_absolute_offset, double offset_step,
+                                double max_absolute_offset,
+                                uint initial_samples_one_side,
                                 UnitVector_2 offset_direction,
                                 PtsStructs::StoragePtr las_points,
                                 double &best_offset,
@@ -192,6 +193,7 @@ struct ComputeRoofprintsOptions {
     std::string input_bd_topo_edges_file;
     std::string input_bd_topo_intersections_file;
     std::string output_roofprints_file;
+    uint iterations;
     bool overwrite;
 };
 
@@ -199,6 +201,6 @@ void compute_roofprints(const std::string &input_las_file,
                         const std::string &input_bd_topo_edges_file,
                         const std::string &input_bd_topo_intersections_file,
                         const std::string &output_roofprints_file,
-                        bool overwrite);
+                        uint iterations, bool overwrite);
 
 } // namespace AllLines

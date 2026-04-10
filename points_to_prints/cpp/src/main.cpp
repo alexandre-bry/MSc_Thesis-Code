@@ -2,6 +2,7 @@
 #include <string>
 
 #include <CLI11/CLI11.hpp>
+#include <sys/types.h>
 
 #include "distances.hpp"
 #include "edge_matching/topology.hpp"
@@ -166,6 +167,10 @@ void setup_compute_roofprints(CLI::App &app) {
     sub->add_option("-o,--output-roofprints", opt->output_roofprints_file,
                     "Output Parquet file for roofprints")
         ->required();
+    uint iterations;
+    sub->add_option("-n,--iterations", opt->iterations,
+                    "Number of optimization iterations to perform")
+        ->required();
     bool overwrite = false;
     sub->add_flag("-f,--overwrite", opt->overwrite,
                   "Overwrite the output file if it exists");
@@ -174,7 +179,7 @@ void setup_compute_roofprints(CLI::App &app) {
         AllLines::compute_roofprints(
             opt->input_las_file, opt->input_bd_topo_edges_file,
             opt->input_bd_topo_intersections_file, opt->output_roofprints_file,
-            opt->overwrite);
+            opt->iterations, opt->overwrite);
     });
 }
 

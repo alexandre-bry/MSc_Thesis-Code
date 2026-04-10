@@ -412,7 +412,8 @@ struct Storage {
     std::vector<CustomDimensions::Id> custom_dims;
     pdal::PointViewPtr view;
     std::shared_ptr<pdal::PointTable> table;
-    std::shared_ptr<KdTree_2> las_kd_tree;
+    std::shared_ptr<KdTree_2> las_kd_tree_2;
+    std::shared_ptr<KdTree_3> las_kd_tree_3;
 
   private:
     void init(std::vector<pdal::Dimension::Id> predefined_dims,
@@ -562,6 +563,8 @@ struct Storage {
 
     void build_kd_tree_2d();
     std::shared_ptr<KdTree_2> get_kd_tree_2d() const;
+    void build_kd_tree_3d();
+    std::shared_ptr<KdTree_3> get_kd_tree_3d() const;
 };
 
 typedef std::shared_ptr<Storage> StoragePtr;

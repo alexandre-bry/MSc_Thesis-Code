@@ -95,7 +95,7 @@ Bbox_2 Storage::bounding_box_cgal() const {
 }
 
 void Storage::build_kd_tree_2d() {
-    if (las_kd_tree) {
+    if (las_kd_tree_2) {
         return; // Kd-tree already built
     }
     std::vector<Point_2> point_2d;
@@ -105,12 +105,34 @@ void Storage::build_kd_tree_2d() {
         double y = view->getFieldAs<double>(pdal::Dimension::Id::Y, i);
         point_2d.emplace_back(x, y);
     }
-    las_kd_tree = std::make_shared<KdTree_2>(point_2d);
+    las_kd_tree_2 = std::make_shared<KdTree_2>(point_2d);
 }
 
 std::shared_ptr<KdTree_2> Storage::get_kd_tree_2d() const {
-    if (las_kd_tree) {
-        return las_kd_tree;
+    if (las_kd_tree_2) {
+        return las_kd_tree_2;
+    }
+    throw std::runtime_error("Kd-tree not built");
+}
+
+void Storage::build_kd_tree_3d() {
+    if (las_kd_tree_3) {
+        return; // Kd-tree already built
+    }
+    std::vector<Point_3> point_3d;
+    point_3d.reserve(view->size());
+    for (pdal::PointId i = 0; i < view->size(); ++i) {
+        double x = view->getFieldAs<double>(pdal::Dimension::Id::X, i);
+        double y = view->getFieldAs<double>(pdal::Dimension::Id::Y, i);
+        double z = view->getFieldAs<double>(pdal::Dimension::Id::Z, i);
+        point_3d.emplace_back(x, y, z);
+    }
+    las_kd_tree_3 = std::make_shared<KdTree_3>(point_3d);
+}
+
+std::shared_ptr<KdTree_3> Storage::get_kd_tree_3d() const {
+    if (las_kd_tree_3) {
+        return las_kd_tree_3;
     }
     throw std::runtime_error("Kd-tree not built");
 }

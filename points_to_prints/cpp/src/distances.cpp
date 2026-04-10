@@ -185,6 +185,46 @@ std::optional<std::tuple<double, double>> compute_planarity_and_horizontality(
                                                topo);
 }
 
+void compute_normal(PtsStructs::PointId point_id, PtsStructs::Topology3D &topo,
+                    UnitVector_3 &normal) {
+    const double NEIGHBOURS_RADIUS = 1.0;
+
+    const Point_3 p = topo.points->get_point(point_id);
+    std::vector<Point_3> points;
+    topo.points->get_kd_tree_3d()->search_points_in_sphere(p, NEIGHBOURS_RADIUS,
+                                                           points);
+
+    auto [normal_vector, tangent_plane, eigenvalues] = compute_pca_once(points);
+    normal = UnitVector_3(normal_vector);
+    Vector_3 direction_to_scanner =
+        topo.get_ray(topo.get_ray_id(point_id)).get_origin() - p;
+    if (normal * direction_to_scanner < 0) {
+        normal = -normal;
+    }
+}
+
+void compute_outside_direction(PtsStructs::PointId point_id,
+                               PtsStructs::Topology3D &topo,
+                               UnitVector_3 &outside_direction) {
+    const double NEIGHBOURS_RADIUS = 1.0;
+
+    const Point_3 p = topo.points->get_point(point_id);
+    std::vector<Point_3> points;
+    topo.points->get_kd_tree_3d()->search_points_in_sphere(p, NEIGHBOURS_RADIUS,
+                                                           points);
+
+    std::vector<double> xs, ys;
+    for (const auto &point : points) {
+        xs.push_back(point.x());
+        ys.push_back(point.y());
+    }
+    double x_median = xs[xs.size() / 2];
+    double y_median = ys[ys.size() / 2];
+
+    outside_direction =
+        UnitVector_3(Vector_3(x_median - p.x(), y_median - p.y(), 0.0));
+}
+
 void compute_distances_in_order(const std::string &input_points_file,
                                 const std::string &input_trajectory_file,
                                 const std::string &output_distances_file,
@@ -213,6 +253,7 @@ void compute_distances_in_order(const std::string &input_points_file,
 
     // Prepare the points with attributes
     PtsStructs::Topology3D topo(las_reader.points, trajectory);
+    topo.points->build_kd_tree_3d();
 
     // Prepare the output writers
     std::cout << "Preparing output objects..." << std::endl;
@@ -223,6 +264,9 @@ void compute_distances_in_order(const std::string &input_points_file,
         CustomDimensions::Id::NumberOfReturnsComputed,
         CustomDimensions::Id::VerticalGain,
         CustomDimensions::Id::IsRoofEdge,
+        CustomDimensions::Id::PCANormalX,
+        CustomDimensions::Id::PCANormalY,
+        CustomDimensions::Id::PCANormalZ,
     };
     distances_custom_dims.insert(distances_custom_dims.end(),
                                  new_distances_custom_dims.begin(),
@@ -237,10 +281,13 @@ void compute_distances_in_order(const std::string &input_points_file,
         pdal::Dimension::Id::Classification,
     };
     std::vector<ProprietaryDimension> edge_custom_dims = {
-        CustomDimensions::Id::IsGenerated, CustomDimensions::Id::VerticalGain,
-        CustomDimensions::Id::Planarity,   CustomDimensions::Id::Horizontality,
-        CustomDimensions::Id::EdgeNormalX, CustomDimensions::Id::EdgeNormalY,
-        CustomDimensions::Id::EdgeNormalZ,
+        CustomDimensions::Id::IsGenerated,
+        CustomDimensions::Id::VerticalGain,
+        // CustomDimensions::Id::Planarity,
+        // CustomDimensions::Id::Horizontality,
+        CustomDimensions::Id::PCANormalX,
+        CustomDimensions::Id::PCANormalY,
+        CustomDimensions::Id::PCANormalZ,
     };
     NewLasWriter las_edge_writer(edge_dims, edge_custom_dims,
                                  las_reader.points->spatial_reference());
@@ -296,7 +343,7 @@ void compute_distances_in_order(const std::string &input_points_file,
     auto time_pca = std::chrono::microseconds(0);
 
     /* ---------------------------------------------------------------------- */
-    /*                        Process multi-echo raysX                        */
+    /*                        Process multi-echo rays                         */
     /* ---------------------------------------------------------------------- */
 
     // We do multi-echo first to mark them as roof edges and avoid using them
@@ -317,90 +364,103 @@ void compute_distances_in_order(const std::string &input_points_file,
 
         for (PtsStructs::PointId p_0_0_id : ray_0_0.get_point_ids()) {
             double vertical_gain;
-
             auto p_0_0 = topo.points->get_point(p_0_0_id);
 
             vertical_gain = p_0_0.z() - p_high.z();
             bool is_roof_edge = vertical_gain > MIN_VERT_GAIN_ROOF;
 
+            UnitVector_3 normal;
+            compute_outside_direction(p_0_0_id, topo, normal);
+
             las_distances_writer.points->set_field(
                 CustomDimensions::Id::VerticalGain, p_0_0_id, vertical_gain);
             las_distances_writer.points->set_field(
                 CustomDimensions::Id::IsRoofEdge, p_0_0_id, is_roof_edge);
+            las_distances_writer.points->set_field(
+                CustomDimensions::Id::PCANormalX, p_0_0_id, normal.x());
+            las_distances_writer.points->set_field(
+                CustomDimensions::Id::PCANormalY, p_0_0_id, normal.y());
+            las_distances_writer.points->set_field(
+                CustomDimensions::Id::PCANormalZ, p_0_0_id, normal.z());
 
             // Add the points that are roof edges
             if (is_roof_edge) {
                 const PtsStructs::ScanLineId scan_line_0_id =
                     topo.get_scan_line_id(ray_0_0_id);
-                const std::optional<PtsStructs::ScanLineId> scan_line_p1_id =
-                    topo.get_prev_scan_line_id(scan_line_0_id);
-                const std::optional<PtsStructs::ScanLineId> scan_line_n1_id =
-                    topo.get_next_scan_line_id(scan_line_0_id);
-                const std::optional<PtsStructs::ScanLineId> scan_line_p2_id =
-                    topo.get_prev_scan_line_id(scan_line_p1_id);
-                const std::optional<PtsStructs::ScanLineId> scan_line_n2_id =
-                    topo.get_next_scan_line_id(scan_line_n1_id);
+                // const std::optional<PtsStructs::ScanLineId> scan_line_p1_id =
+                //     topo.get_prev_scan_line_id(scan_line_0_id);
+                // const std::optional<PtsStructs::ScanLineId> scan_line_n1_id =
+                //     topo.get_next_scan_line_id(scan_line_0_id);
+                // const std::optional<PtsStructs::ScanLineId> scan_line_p2_id =
+                //     topo.get_prev_scan_line_id(scan_line_p1_id);
+                // const std::optional<PtsStructs::ScanLineId> scan_line_n2_id =
+                //     topo.get_next_scan_line_id(scan_line_n1_id);
 
-                // Try to compute the planarity and horizontality using the
-                // neighbours in the previous and next scan lines, in both
-                // directions, and keep the best planarity among the four
-                // combinations
-                double best_planarity = 0.0;
-                double best_horizontality = 0.0;
+                // // Try to compute the planarity and horizontality using the
+                // // neighbours in the previous and next scan lines, in both
+                // // directions, and keep the best planarity among the four
+                // // combinations
+                // double best_planarity = 0.0;
+                // double best_horizontality = 0.0;
 
-                const Direction directions[2] = {Direction::Previous,
-                                                 Direction::Next};
-                const std::optional<PtsStructs::ScanLineId> scan_line_1_ids[2] =
-                    {scan_line_p1_id, scan_line_n1_id};
-                const std::optional<PtsStructs::ScanLineId> scan_line_2_ids[2] =
-                    {scan_line_p2_id, scan_line_n2_id};
-                for (const auto &direction : directions) {
-                    for (int i = 0; i < 2; ++i) {
-                        auto planarity_and_horizontality =
-                            compute_planarity_and_horizontality(
-                                p_0_0_id, scan_line_1_ids[i],
-                                scan_line_2_ids[i], direction, topo);
-                        if (!planarity_and_horizontality) {
-                            continue;
-                        }
-                        auto [planarity, horizontality] =
-                            *planarity_and_horizontality;
-                        if (planarity > best_planarity) {
-                            best_planarity = planarity;
-                            best_horizontality = horizontality;
-                        }
-                    }
-                }
+                // const Direction directions[2] = {Direction::Previous,
+                //                                  Direction::Next};
+                // const std::optional<PtsStructs::ScanLineId>
+                // scan_line_1_ids[2] =
+                //     {scan_line_p1_id, scan_line_n1_id};
+                // const std::optional<PtsStructs::ScanLineId>
+                // scan_line_2_ids[2] =
+                //     {scan_line_p2_id, scan_line_n2_id};
+                // for (const auto &direction : directions) {
+                //     for (int i = 0; i < 2; ++i) {
+                //         auto planarity_and_horizontality =
+                //             compute_planarity_and_horizontality(
+                //                 p_0_0_id, scan_line_1_ids[i],
+                //                 scan_line_2_ids[i], direction, topo);
+                //         if (!planarity_and_horizontality) {
+                //             continue;
+                //         }
+                //         auto [planarity, horizontality] =
+                //             *planarity_and_horizontality;
+                //         if (planarity > best_planarity) {
+                //             best_planarity = planarity;
+                //             best_horizontality = horizontality;
+                //         }
+                //     }
+                // }
 
-                // Select among the two neighbours in the same scan line the one
-                // that is the closest to the point to get an idea of where the
-                // exterior of the roof should be
-                auto scan_line = topo.get_scan_line(scan_line_0_id);
-                auto prev_ray_id = scan_line.get_prev_ray_id(ray_0_0_id);
-                auto next_ray_id = scan_line.get_next_ray_id(ray_0_0_id);
-                UnitVector_3 edge_normal;
-                if (prev_ray_id || next_ray_id) {
-                    double best_sq_distance =
-                        std::numeric_limits<double>::infinity();
-                    Point_3 closest_point;
-                    for (const auto &ray_id : {prev_ray_id, next_ray_id}) {
-                        if (ray_id) {
-                            auto ray = topo.get_ray(*ray_id);
-                            for (PtsStructs::PointId neighbour_point_id :
-                                 ray.get_point_ids()) {
-                                Point_3 neighbour_p =
-                                    topo.points->get_point(neighbour_point_id);
-                                double sq_distance =
-                                    CGAL::squared_distance(p_0_0, neighbour_p);
-                                if (sq_distance < best_sq_distance) {
-                                    best_sq_distance = sq_distance;
-                                    closest_point = neighbour_p;
-                                }
-                            }
-                        }
-                    }
-                    edge_normal = UnitVector_3(p_0_0 - closest_point);
-                }
+                // // Select among the two neighbours in the same scan line the
+                // one
+                // // that is the closest to the point to get an idea of where
+                // the
+                // // exterior of the roof should be
+                // auto scan_line = topo.get_scan_line(scan_line_0_id);
+                // auto prev_ray_id = scan_line.get_prev_ray_id(ray_0_0_id);
+                // auto next_ray_id = scan_line.get_next_ray_id(ray_0_0_id);
+                // UnitVector_3 edge_normal;
+                // if (prev_ray_id || next_ray_id) {
+                //     double best_sq_distance =
+                //         std::numeric_limits<double>::infinity();
+                //     Point_3 closest_point;
+                //     for (const auto &ray_id : {prev_ray_id, next_ray_id}) {
+                //         if (ray_id) {
+                //             auto ray = topo.get_ray(*ray_id);
+                //             for (PtsStructs::PointId neighbour_point_id :
+                //                  ray.get_point_ids()) {
+                //                 Point_3 neighbour_p =
+                //                     topo.points->get_point(neighbour_point_id);
+                //                 double sq_distance =
+                //                     CGAL::squared_distance(p_0_0,
+                //                     neighbour_p);
+                //                 if (sq_distance < best_sq_distance) {
+                //                     best_sq_distance = sq_distance;
+                //                     closest_point = neighbour_p;
+                //                 }
+                //             }
+                //         }
+                //     }
+                //     edge_normal = UnitVector_3(p_0_0 - closest_point);
+                // }
 
                 PtsStructs::PointId edge_idx(
                     las_edge_writer.points->point_count());
@@ -414,20 +474,18 @@ void compute_distances_in_order(const std::string &input_points_file,
                 las_edge_writer.points->set_field(
                     CustomDimensions::Id::VerticalGain, edge_idx,
                     vertical_gain);
+                // las_edge_writer.points->set_field(
+                //     CustomDimensions::Id::Planarity, edge_idx,
+                //     best_planarity);
+                // las_edge_writer.points->set_field(
+                //     CustomDimensions::Id::Horizontality, edge_idx,
+                //     best_horizontality);
                 las_edge_writer.points->set_field(
-                    CustomDimensions::Id::Planarity, edge_idx, best_planarity);
+                    CustomDimensions::Id::PCANormalX, edge_idx, normal.x());
                 las_edge_writer.points->set_field(
-                    CustomDimensions::Id::Horizontality, edge_idx,
-                    best_horizontality);
+                    CustomDimensions::Id::PCANormalY, edge_idx, normal.y());
                 las_edge_writer.points->set_field(
-                    CustomDimensions::Id::EdgeNormalX, edge_idx,
-                    edge_normal.x());
-                las_edge_writer.points->set_field(
-                    CustomDimensions::Id::EdgeNormalY, edge_idx,
-                    edge_normal.y());
-                las_edge_writer.points->set_field(
-                    CustomDimensions::Id::EdgeNormalZ, edge_idx,
-                    edge_normal.z());
+                    CustomDimensions::Id::PCANormalZ, edge_idx, normal.z());
 
                 is_multi_echo_with_roof_edge[ray_0_0_id] = true;
             }
@@ -529,10 +587,19 @@ void compute_distances_in_order(const std::string &input_points_file,
         bool is_roof_edge = vertical_gain / gps_time_delta >
                             MIN_VERT_GAIN_ROOF / DEFAULT_GPS_TIME_DELTA;
 
+        UnitVector_3 normal;
+        compute_outside_direction(p_0_0_id, topo, normal);
+
         las_distances_writer.points->set_field(
             CustomDimensions::Id::VerticalGain, p_0_0_id, vertical_gain);
         las_distances_writer.points->set_field(CustomDimensions::Id::IsRoofEdge,
                                                p_0_0_id, is_roof_edge);
+        las_distances_writer.points->set_field(CustomDimensions::Id::PCANormalX,
+                                               p_0_0_id, normal.x());
+        las_distances_writer.points->set_field(CustomDimensions::Id::PCANormalY,
+                                               p_0_0_id, normal.y());
+        las_distances_writer.points->set_field(CustomDimensions::Id::PCANormalZ,
+                                               p_0_0_id, normal.z());
 
         if (is_roof_edge) {
             // Add the points that are roof edges
@@ -540,11 +607,11 @@ void compute_distances_in_order(const std::string &input_points_file,
             Point_3 p_edge;
             uint8_t is_generated;
 
-            UnitVector_3 edge_normal;
-            if (p_0_roof_1_id) {
-                Point_3 p_roof_1 = topo.points->get_point(*p_0_roof_1_id);
-                edge_normal = UnitVector_3(p_0_0 - p_roof_1);
-            }
+            // UnitVector_3 edge_normal;
+            // if (p_0_roof_1_id) {
+            //     Point_3 p_roof_1 = topo.points->get_point(*p_0_roof_1_id);
+            //     edge_normal = UnitVector_3(p_0_0 - p_roof_1);
+            // }
 
             // Check whether we can extend the roof edge using the neighbours in
             // the same scan line
@@ -615,54 +682,58 @@ void compute_distances_in_order(const std::string &input_points_file,
             las_edge_writer.points->set_field(
                 CustomDimensions::Id::VerticalGain, edge_idx, vertical_gain);
 
-            // Compute the roof likelihood as two measures: the planarity and
-            // the horizontality
-            auto pca_start = std::chrono::high_resolution_clock::now();
-            const auto scan_line_p1_id =
-                topo.get_prev_scan_line_id(scan_line_id);
-            const auto scan_line_n1_id =
-                topo.get_next_scan_line_id(scan_line_id);
-            const auto scan_line_p2_id =
-                topo.get_prev_scan_line_id(scan_line_p1_id);
-            const auto scan_line_n2_id =
-                topo.get_next_scan_line_id(scan_line_n1_id);
+            // // Compute the roof likelihood as two measures: the planarity and
+            // // the horizontality
+            // auto pca_start = std::chrono::high_resolution_clock::now();
+            // const auto scan_line_p1_id =
+            //     topo.get_prev_scan_line_id(scan_line_id);
+            // const auto scan_line_n1_id =
+            //     topo.get_next_scan_line_id(scan_line_id);
+            // const auto scan_line_p2_id =
+            //     topo.get_prev_scan_line_id(scan_line_p1_id);
+            // const auto scan_line_n2_id =
+            //     topo.get_next_scan_line_id(scan_line_n1_id);
 
-            const std::optional<PtsStructs::ScanLineId> scan_line_1_ids[2] = {
-                scan_line_p1_id, scan_line_n1_id};
-            const std::optional<PtsStructs::ScanLineId> scan_line_2_ids[2] = {
-                scan_line_p2_id, scan_line_n2_id};
+            // const std::optional<PtsStructs::ScanLineId> scan_line_1_ids[2] =
+            // {
+            //     scan_line_p1_id, scan_line_n1_id};
+            // const std::optional<PtsStructs::ScanLineId> scan_line_2_ids[2] =
+            // {
+            //     scan_line_p2_id, scan_line_n2_id};
 
-            double best_planarity = 0.0;
-            double best_horizontality = 0.0;
-            for (int i = 0; i < 2; ++i) {
-                auto planarity_and_horizontality =
-                    compute_planarity_and_horizontality(
-                        p_0_0_id, scan_line_1_ids[i], scan_line_2_ids[i],
-                        direction_with_max_gain, topo);
-                if (!planarity_and_horizontality) {
-                    continue;
-                }
-                auto [planarity, horizontality] = *planarity_and_horizontality;
-                if (planarity > best_planarity) {
-                    best_planarity = planarity;
-                    best_horizontality = horizontality;
-                }
-            }
-            auto pca_end = std::chrono::high_resolution_clock::now();
-            time_pca += std::chrono::duration_cast<std::chrono::microseconds>(
-                pca_end - pca_start);
+            // double best_planarity = 0.0;
+            // double best_horizontality = 0.0;
+            // for (int i = 0; i < 2; ++i) {
+            //     auto planarity_and_horizontality =
+            //         compute_planarity_and_horizontality(
+            //             p_0_0_id, scan_line_1_ids[i], scan_line_2_ids[i],
+            //             direction_with_max_gain, topo);
+            //     if (!planarity_and_horizontality) {
+            //         continue;
+            //     }
+            //     auto [planarity, horizontality] =
+            //     *planarity_and_horizontality; if (planarity > best_planarity)
+            //     {
+            //         best_planarity = planarity;
+            //         best_horizontality = horizontality;
+            //     }
+            // }
+            // auto pca_end = std::chrono::high_resolution_clock::now();
+            // time_pca +=
+            // std::chrono::duration_cast<std::chrono::microseconds>(
+            //     pca_end - pca_start);
 
-            las_edge_writer.points->set_field(CustomDimensions::Id::Planarity,
-                                              edge_idx, best_planarity);
-            las_edge_writer.points->set_field(
-                CustomDimensions::Id::Horizontality, edge_idx,
-                best_horizontality);
-            las_edge_writer.points->set_field(CustomDimensions::Id::EdgeNormalX,
-                                              edge_idx, edge_normal.x());
-            las_edge_writer.points->set_field(CustomDimensions::Id::EdgeNormalY,
-                                              edge_idx, edge_normal.y());
-            las_edge_writer.points->set_field(CustomDimensions::Id::EdgeNormalZ,
-                                              edge_idx, edge_normal.z());
+            // las_edge_writer.points->set_field(CustomDimensions::Id::Planarity,
+            //                                   edge_idx, best_planarity);
+            // las_edge_writer.points->set_field(
+            //     CustomDimensions::Id::Horizontality, edge_idx,
+            //     best_horizontality);
+            las_edge_writer.points->set_field(CustomDimensions::Id::PCANormalX,
+                                              edge_idx, normal.x());
+            las_edge_writer.points->set_field(CustomDimensions::Id::PCANormalY,
+                                              edge_idx, normal.y());
+            las_edge_writer.points->set_field(CustomDimensions::Id::PCANormalZ,
+                                              edge_idx, normal.z());
         }
         bar_single.increment(1);
 
