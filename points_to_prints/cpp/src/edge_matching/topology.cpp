@@ -23,11 +23,11 @@ namespace {
 void compute_weights(PtsStructs::StoragePtr las_points,
                      const std::vector<PtsStructs::PointId> &point_ids,
                      std::vector<double> &weights,
-                     std::vector<UnitVector_2> &point_normals) {
+                     std::vector<Vector_2> &point_inner_dirs) {
     weights.clear();
     weights.resize(point_ids.size());
-    point_normals.clear();
-    point_normals.resize(point_ids.size());
+    point_inner_dirs.clear();
+    point_inner_dirs.resize(point_ids.size());
 
     // Compute the minimum and maximum Z values
     double min_z = std::numeric_limits<double>::infinity();
@@ -73,12 +73,11 @@ void compute_weights(PtsStructs::StoragePtr las_points,
         weights.at(i) = height_factor * generated_factor * class_factor;
 
         // Extracts the normal vector for the point
-        double normal_x = las_points->get_field_as<double>(
-            CustomDimensions::Id::PCANormalX, point_id);
-        double normal_y = las_points->get_field_as<double>(
-            CustomDimensions::Id::PCANormalY, point_id);
-        UnitVector_2 point_normal(Vector_2(normal_x, normal_y));
-        point_normals.at(i) = point_normal;
+        double inner_x = las_points->get_field_as<double>(
+            CustomDimensions::Id::InnerVectorX, point_id);
+        double inner_y = las_points->get_field_as<double>(
+            CustomDimensions::Id::InnerVectorY, point_id);
+        point_inner_dirs.at(i) = Vector_2(inner_x, inner_y);
     }
 }
 
@@ -120,10 +119,10 @@ Line_2 AllLines::Edge::to_line() const { return line; }
 void AllLines::Edge::translate(Vector_2 offset) { *this = translated(offset); }
 
 AllLines::Edge AllLines::Edge::translated(Vector_2 offset) const {
-    Point_2 new_start = line.point(0) + offset;
-    Point_2 new_end = line.point(1) + offset;
-    return Edge(Point_3(new_start.x(), new_start.y(), initial_start.z()),
-                Point_3(new_end.x(), new_end.y(), initial_end.z()), key);
+    Vector_3 offset_3(offset.x(), offset.y(), 0.00);
+    Point_3 new_start = initial_start + offset_3;
+    Point_3 new_end = initial_end + offset_3;
+    return Edge(new_start, new_end, key);
 }
 
 AllLines::OutlineAsEdges::OutlineAsEdges(
@@ -586,8 +585,9 @@ void AllLines::AllOutlines::compute_metrics(
     // Compute the weights for the LAS points
     // std::cout << "Computing weights for the LAS points" << std::endl;
     std::vector<double> weights;
-    std::vector<UnitVector_2> point_normals;
-    compute_weights(las_points, current_las_point_ids, weights, point_normals);
+    std::vector<Vector_2> point_inner_dirs;
+    compute_weights(las_points, current_las_point_ids, weights,
+                    point_inner_dirs);
     // std::cout << "current_las_point_ids.size(): "
     //           << current_las_point_ids.size() << std::endl;
     // std::cout << "weights.size(): " << weights.size() << std::endl;
@@ -598,7 +598,7 @@ void AllLines::AllOutlines::compute_metrics(
         const auto &point_id = current_las_point_ids[i];
         selected_las_points[i] = las_points->get_point_2d(point_id);
     }
-    LinearCriterion criterion(selected_las_points, weights, point_normals);
+    LinearCriterion criterion(selected_las_points, weights, point_inner_dirs);
 
     // Compute the metric for each offset
     // std::cout << "Computing metric for each offset" << std::endl;
@@ -622,8 +622,10 @@ void AllLines::AllOutlines::compute_metrics(
 
         std::vector<Segment_2> segments;
         std::vector<double> segments_initial_length;
+        std::vector<UnitVector_2> segments_inner_normals;
         segments.reserve(criterion_edge_ids.size());
         segments_initial_length.reserve(criterion_edge_ids.size());
+        segments_inner_normals.reserve(criterion_edge_ids.size());
 
         for (EdgeId edge_id : criterion_edge_ids) {
             Edge edge = current_edges.at(edge_id);
@@ -644,14 +646,27 @@ void AllLines::AllOutlines::compute_metrics(
                 CustomCGAL::intersection(edge.to_line(), next_edge.to_line());
 
             segments.push_back(Segment_2(start, end));
+            Vector_3 initial_start_to_end =
+                edge.get_initial_end() - edge.get_initial_start();
+            // std::cout << "initial_start: " << std::setprecision(17)
+            //           << edge.get_initial_start() << std::endl;
+            // std::cout << "initial_end:   " << std::setprecision(17)
+            //           << edge.get_initial_end() << std::endl;
+            Vector_2 initial_start_to_end_2d(initial_start_to_end.x(),
+                                             initial_start_to_end.y());
             segments_initial_length.push_back(
-                std::sqrt((edge.get_initial_end() - edge.get_initial_start())
-                              .squared_length()));
+                std::sqrt(initial_start_to_end_2d.squared_length()));
+
+            Vector_2 inner_normal =
+                initial_start_to_end_2d.perpendicular(CGAL::COUNTERCLOCKWISE);
+            // std::cout << "inner_normal:   " << std::setprecision(17)
+            //           << inner_normal << std::endl;
+            segments_inner_normals.push_back(inner_normal);
         }
 
         // Compute the metric for the current configuration
-        metrics.at(pos_neg_offset_indices[i]) =
-            criterion.evaluate_segments(segments, segments_initial_length);
+        metrics.at(pos_neg_offset_indices[i]) = criterion.evaluate_segments(
+            segments, segments_initial_length, segments_inner_normals);
         configs.at(pos_neg_offset_indices[i]) = config;
     }
     // std::cout << "Done computing metric for each offset" << std::endl;

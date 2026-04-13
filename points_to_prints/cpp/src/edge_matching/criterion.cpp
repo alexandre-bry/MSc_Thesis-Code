@@ -6,7 +6,8 @@
 
 double LinearCriterion::evaluate_segments(
     const std::vector<Segment_2> &segments,
-    const std::vector<double> &segments_initial_length) const {
+    const std::vector<double> &segments_initial_length,
+    const std::vector<UnitVector_2> &segments_inner_normals) const {
     // Check that the input vectors have the same size
     if (segments.size() != segments_initial_length.size()) {
         throw std::invalid_argument(
@@ -27,9 +28,10 @@ double LinearCriterion::evaluate_segments(
     for (size_t i = 0; i < segments.size(); ++i) {
         const auto &segment = segments.at(i);
 
-        UnitVector_2 segment_normal(
-            segment.supporting_line().to_vector().perpendicular(
-                CGAL::CLOCKWISE));
+        // UnitVector_2 segment_inner_normal(
+        //     segment.supporting_line().to_vector().perpendicular(
+        //         CGAL::COUNTERCLOCKWISE));
+        UnitVector_2 segment_inner_normal = segments_inner_normals.at(i);
 
         // std::cout << "Evaluating segment " << i << ": " << segment <<
         // std::endl;
@@ -71,9 +73,9 @@ double LinearCriterion::evaluate_segments(
             }
 
             // Check the angle between the point normal and the segment normal
-            UnitVector_2 point_normal = point_normals.at(point_index);
-            double dot_product = point_normal * segment_normal;
-            if (dot_product < 0.5) {
+            Vector_2 point_inner_dir = point_inner_dirs.at(point_index);
+            double dot_product = point_inner_dir * segment_inner_normal;
+            if (dot_product <= 0.0) {
                 continue;
             }
             weight *= dot_product;

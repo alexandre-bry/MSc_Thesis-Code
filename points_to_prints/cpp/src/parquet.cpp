@@ -800,9 +800,9 @@ arrow::Status read_bd_topo_as_grouped_edges(
     std::map<uint32_t, std::size_t> edge_key_to_index;
     for (std::size_t i = 0; i < edges_output.row_count; ++i) {
         std::string cleabs = edges_output.value<std::string>("cleabs", i);
-        if (cleabs != "BATIMENT0000000337022078") {
-            continue;
-        }
+        // if (cleabs != "BATIMENT0000000337020979") {
+        //     continue;
+        // }
 
         edges.push_back({
             edges_output.value<std::string>("cleabs", i),

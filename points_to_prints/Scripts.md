@@ -7,13 +7,13 @@ This file contains useful scripts in command line.
 1. Rename the geometry layer from `geometrie` to `geom`
 
     ```bash
-    pixi run -e cpp ogr2ogr -overwrite ../data/BD_TOPO/2025-12-15-renamed.gpkg ../data/BD_TOPO/2025-12-15.gpkg -nln batiment -nlt GEOMETRY -sql "SELECT geometrie AS geom, * FROM batiment"
+    pixi run ogr2ogr -overwrite data/input/BD_TOPO/2025-12-15-renamed.gpkg data/input/BD_TOPO/2025-12-15.gpkg -nln batiment -nlt GEOMETRY -sql "SELECT ST_ForcePolygonCCW(geometrie) AS geom, * FROM batiment"
     ```
 
 2. Convert to GeoParquet with geoparquet-io:
 
     ```bash
-    gpio convert ../data/BD_TOPO/2025-12-15-renamed.gpkg ../data/BD_TOPO/2025-12-15.parquet
+    pixi run gpio convert data/input/BD_TOPO/2025-12-15-renamed.gpkg data/input/BD_TOPO/2025-12-15.parquet
     ```
 
 ## Clip the BD TOPO without clipping buildings
