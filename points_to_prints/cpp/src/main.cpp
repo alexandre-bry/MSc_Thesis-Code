@@ -202,6 +202,28 @@ void setup_add_pca(CLI::App &app) {
     });
 }
 
+void setup_add_inward_directions(CLI::App &app) {
+    auto opt = std::make_shared<InwardDirectionsOptions>();
+
+    CLI::App *sub = app.add_subcommand("add_inward_directions",
+                                       "Add inward directions to LAS");
+    std::string input_points_file;
+    sub->add_option("-i,--input", opt->input_points_file, "Input LAS file")
+        ->required();
+    std::string output_points_file;
+    sub->add_option("-o,--output", opt->output_points_file,
+                    "Output LAS file for points with inward directions")
+        ->required();
+    bool overwrite = false;
+    sub->add_flag("-f,--overwrite", opt->overwrite,
+                  "Overwrite the output file if it exists");
+
+    sub->callback([opt]() {
+        compute_inward_directions(opt->input_points_file,
+                                  opt->output_points_file, opt->overwrite);
+    });
+}
+
 int main(int argc, char **argv) {
     CLI::App app{"Roofprint and Footprint Extraction"};
 
@@ -213,6 +235,7 @@ int main(int argc, char **argv) {
     setup_test_parquet(app);
     setup_compute_roofprints(app);
     setup_add_pca(app);
+    setup_add_inward_directions(app);
     app.require_subcommand(1);
 
     CLI11_PARSE(app, argc, argv);

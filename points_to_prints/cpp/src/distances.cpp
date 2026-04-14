@@ -203,37 +203,112 @@ void compute_normal(PtsStructs::PointId point_id, PtsStructs::Topology3D &topo,
     }
 }
 
-void compute_inner_direction(PtsStructs::PointId point_id,
-                             PtsStructs::Topology3D &topo,
-                             Vector_3 &inner_direction) {
-    const double NEIGHBOURS_RADIUS = 1.0;
+void compute_inward_direction(PtsStructs::PointId point_id,
+                              PtsStructs::StoragePtr storage,
+                              Vector_3 &inner_direction) {
+    const double NEIGHBOURS_RADIUS = 2.0;
+    const double MAX_Z_DIFF = 1.0;
 
-    const Point_3 p = topo.points->get_point(point_id);
+    const Point_3 p = storage->get_point(point_id);
     std::vector<Point_3> points;
-    topo.points->get_kd_tree_3d()->search_points_in_sphere(p, NEIGHBOURS_RADIUS,
-                                                           points);
-
-    // std::vector<double> xs, ys;
-    // for (const auto &point : points) {
-    //     xs.push_back(point.x());
-    //     ys.push_back(point.y());
-    // }
-    // double x_median = xs[xs.size() / 2];
-    // double y_median = ys[ys.size() / 2];
+    storage->get_kd_tree_3d()->search_points_in_sphere(p, NEIGHBOURS_RADIUS,
+                                                       points);
 
     Vector_2 sum;
     double weights;
     for (const auto &point : points) {
-        double x = point.x();
-        double y = point.y();
-        double z = point.z();
+        if (std::abs(point.z() - p.z()) > MAX_Z_DIFF) {
+            continue;
+        }
+        // double weight = 1.0 - std::abs(z - p.z()) / MAX_Z_DIFF;
+        double weight = 1.0;
+        UnitVector_2 pos(point.x(), point.y());
 
-        sum += UnitVector_2(x, y);
-        weights += 1;
+        weights += weight;
+        sum += weight * pos;
     }
-    sum /= weights;
+    if (weights > 0) {
+        sum /= weights;
+    } else {
+        sum = Vector_2(p.x(), p.y());
+    }
 
     inner_direction = Vector_3(sum.x() - p.x(), sum.y() - p.y(), 0.0);
+}
+
+void compute_inward_directions(const std::string &input_points_file,
+                               const std::string &output_points_file,
+                               bool overwrite) {
+    if (std::filesystem::exists(output_points_file) && !overwrite) {
+        throw std::runtime_error("Output file already exists: " +
+                                 output_points_file);
+    }
+
+    // Read the LAS file and get the point view
+    std::cout << "Reading LAS file..." << std::endl;
+    NewLasReader las_reader(input_points_file);
+    auto [predefined_dims, proprietary_dims] = las_reader.points->dimensions();
+    auto n_features = las_reader.points->point_count();
+
+    std::cout << "Number of points: " << n_features << std::endl;
+
+    // Prepare the topology
+    std::cout << "Preparing topology..." << std::endl;
+    PtsStructs::StoragePtr storage_ptr(las_reader.points);
+    storage_ptr->build_kd_tree_3d();
+
+    // Prepare the output writer
+    std::cout << "Preparing output object..." << std::endl;
+    std::vector<pdal::Dimension::Id> distances_dims = predefined_dims;
+    std::vector<ProprietaryDimension> distances_custom_dims = proprietary_dims;
+    std::vector<ProprietaryDimension> new_distances_custom_dims = {
+        CustomDimensions::Id::InwardVectorX,
+        CustomDimensions::Id::InwardVectorY,
+        CustomDimensions::Id::InwardVectorZ,
+    };
+    distances_custom_dims.insert(distances_custom_dims.end(),
+                                 new_distances_custom_dims.begin(),
+                                 new_distances_custom_dims.end());
+    NewLasWriter las_writer(distances_dims, distances_custom_dims,
+                            las_reader.points->spatial_reference());
+
+    // Add the existing dimensions to the output point view
+    std::cout << "Adding existing dimensions to output view..." << std::endl;
+    ProgressBarTotal pbar_add_dims(n_features, "Adding existing dimensions");
+    for (PtsStructs::PointId idx(0); idx < n_features; ++idx) {
+        for (const auto &dim : predefined_dims) {
+            las_writer.points->copy_field<double>(dim, idx, las_reader.points,
+                                                  idx);
+        }
+        for (const auto &dim : proprietary_dims) {
+            las_writer.points->copy_field<double>(dim, idx, las_reader.points,
+                                                  idx);
+        }
+
+        pbar_add_dims.increment(1);
+    }
+    pbar_add_dims.finish();
+
+    // Compute the inward directions for each point
+    std::cout << "Computing inward directions for each point..." << std::endl;
+    ProgressBarTotal pbar_inward(n_features, "Computing inward directions");
+    for (PtsStructs::PointId idx(0); idx < n_features; ++idx) {
+        Vector_3 inner_direction;
+        compute_inward_direction(idx, storage_ptr, inner_direction);
+        las_writer.points->set_field(CustomDimensions::Id::InwardVectorX, idx,
+                                     inner_direction.x());
+        las_writer.points->set_field(CustomDimensions::Id::InwardVectorY, idx,
+                                     inner_direction.y());
+        las_writer.points->set_field(CustomDimensions::Id::InwardVectorZ, idx,
+                                     inner_direction.z());
+
+        pbar_inward.increment(1);
+    }
+    pbar_inward.finish();
+
+    // Write the output LAS file
+    std::cout << "Writing output LAS file..." << std::endl;
+    las_writer.write(output_points_file, {});
 }
 
 void compute_distances_in_order(const std::string &input_points_file,
@@ -275,9 +350,9 @@ void compute_distances_in_order(const std::string &input_points_file,
         CustomDimensions::Id::NumberOfReturnsComputed,
         CustomDimensions::Id::VerticalGain,
         CustomDimensions::Id::IsRoofEdge,
-        CustomDimensions::Id::InnerVectorX,
-        CustomDimensions::Id::InnerVectorY,
-        CustomDimensions::Id::InnerVectorZ,
+        // CustomDimensions::Id::InwardVectorX,
+        // CustomDimensions::Id::InwardVectorY,
+        // CustomDimensions::Id::InwardVectorZ,
     };
     distances_custom_dims.insert(distances_custom_dims.end(),
                                  new_distances_custom_dims.begin(),
@@ -296,9 +371,9 @@ void compute_distances_in_order(const std::string &input_points_file,
         CustomDimensions::Id::VerticalGain,
         // CustomDimensions::Id::Planarity,
         // CustomDimensions::Id::Horizontality,
-        CustomDimensions::Id::InnerVectorX,
-        CustomDimensions::Id::InnerVectorY,
-        CustomDimensions::Id::InnerVectorZ,
+        CustomDimensions::Id::InwardVectorX,
+        CustomDimensions::Id::InwardVectorY,
+        CustomDimensions::Id::InwardVectorZ,
     };
     NewLasWriter las_edge_writer(edge_dims, edge_custom_dims,
                                  las_reader.points->spatial_reference());
@@ -331,8 +406,8 @@ void compute_distances_in_order(const std::string &input_points_file,
 
     std::cout << "Computing distances..." << std::endl;
 
-    // Gather single-echo rays and multi-echo rays separately to process them in
-    // the right order
+    // Gather single-echo rays and multi-echo rays separately to process
+    // them in the right order
     auto ray_count = topo.ray_count();
     std::vector<PtsStructs::RayId> single_echo_ray_ids;
     std::vector<PtsStructs::RayId> multi_echo_ray_ids;
@@ -353,12 +428,14 @@ void compute_distances_in_order(const std::string &input_points_file,
     auto time_single_echo = std::chrono::microseconds(0);
     auto time_pca = std::chrono::microseconds(0);
 
-    /* ---------------------------------------------------------------------- */
-    /*                        Process multi-echo rays                         */
-    /* ---------------------------------------------------------------------- */
+    /* ----------------------------------------------------------------------
+     */
+    /*                        Process multi-echo rays */
+    /* ----------------------------------------------------------------------
+     */
 
-    // We do multi-echo first to mark them as roof edges and avoid using them
-    // for the single-echo rays
+    // We do multi-echo first to mark them as roof edges and avoid using
+    // them for the single-echo rays
     auto ray_count_multi = multi_echo_ray_ids.size();
     ProgressBarTotal bar_multi(
         ray_count_multi, "Processing multi-echo rays",
@@ -380,35 +457,41 @@ void compute_distances_in_order(const std::string &input_points_file,
             vertical_gain = p_0_0.z() - p_high.z();
             bool is_roof_edge = vertical_gain > MIN_VERT_GAIN_ROOF;
 
-            Vector_3 normal;
-            compute_inner_direction(p_0_0_id, topo, normal);
+            // Vector_3 normal;
+            // compute_inward_direction(p_0_0_id, topo.points, normal);
 
             las_distances_writer.points->set_field(
                 CustomDimensions::Id::VerticalGain, p_0_0_id, vertical_gain);
             las_distances_writer.points->set_field(
                 CustomDimensions::Id::IsRoofEdge, p_0_0_id, is_roof_edge);
-            las_distances_writer.points->set_field(
-                CustomDimensions::Id::InnerVectorX, p_0_0_id, normal.x());
-            las_distances_writer.points->set_field(
-                CustomDimensions::Id::InnerVectorY, p_0_0_id, normal.y());
-            las_distances_writer.points->set_field(
-                CustomDimensions::Id::InnerVectorZ, p_0_0_id, normal.z());
+            // las_distances_writer.points->set_field(
+            //     CustomDimensions::Id::InwardVectorX, p_0_0_id, normal.x());
+            // las_distances_writer.points->set_field(
+            //     CustomDimensions::Id::InwardVectorY, p_0_0_id, normal.y());
+            // las_distances_writer.points->set_field(
+            //     CustomDimensions::Id::InwardVectorZ, p_0_0_id, normal.z());
 
             // Add the points that are roof edges
             if (is_roof_edge) {
                 const PtsStructs::ScanLineId scan_line_0_id =
                     topo.get_scan_line_id(ray_0_0_id);
-                // const std::optional<PtsStructs::ScanLineId> scan_line_p1_id =
+                // const std::optional<PtsStructs::ScanLineId>
+                // scan_line_p1_id =
                 //     topo.get_prev_scan_line_id(scan_line_0_id);
-                // const std::optional<PtsStructs::ScanLineId> scan_line_n1_id =
+                // const std::optional<PtsStructs::ScanLineId>
+                // scan_line_n1_id =
                 //     topo.get_next_scan_line_id(scan_line_0_id);
-                // const std::optional<PtsStructs::ScanLineId> scan_line_p2_id =
+                // const std::optional<PtsStructs::ScanLineId>
+                // scan_line_p2_id =
                 //     topo.get_prev_scan_line_id(scan_line_p1_id);
-                // const std::optional<PtsStructs::ScanLineId> scan_line_n2_id =
+                // const std::optional<PtsStructs::ScanLineId>
+                // scan_line_n2_id =
                 //     topo.get_next_scan_line_id(scan_line_n1_id);
 
-                // // Try to compute the planarity and horizontality using the
-                // // neighbours in the previous and next scan lines, in both
+                // // Try to compute the planarity and horizontality using
+                // the
+                // // neighbours in the previous and next scan lines, in
+                // both
                 // // directions, and keep the best planarity among the four
                 // // combinations
                 // double best_planarity = 0.0;
@@ -440,10 +523,10 @@ void compute_distances_in_order(const std::string &input_points_file,
                 //     }
                 // }
 
-                // // Select among the two neighbours in the same scan line the
-                // one
-                // // that is the closest to the point to get an idea of where
-                // the
+                // // Select among the two neighbours in the same scan line
+                // the one
+                // // that is the closest to the point to get an idea of
+                // where the
                 // // exterior of the roof should be
                 // auto scan_line = topo.get_scan_line(scan_line_0_id);
                 // auto prev_ray_id = scan_line.get_prev_ray_id(ray_0_0_id);
@@ -453,7 +536,8 @@ void compute_distances_in_order(const std::string &input_points_file,
                 //     double best_sq_distance =
                 //         std::numeric_limits<double>::infinity();
                 //     Point_3 closest_point;
-                //     for (const auto &ray_id : {prev_ray_id, next_ray_id}) {
+                //     for (const auto &ray_id : {prev_ray_id, next_ray_id})
+                //     {
                 //         if (ray_id) {
                 //             auto ray = topo.get_ray(*ray_id);
                 //             for (PtsStructs::PointId neighbour_point_id :
@@ -491,12 +575,15 @@ void compute_distances_in_order(const std::string &input_points_file,
                 // las_edge_writer.points->set_field(
                 //     CustomDimensions::Id::Horizontality, edge_idx,
                 //     best_horizontality);
-                las_edge_writer.points->set_field(
-                    CustomDimensions::Id::InnerVectorX, edge_idx, normal.x());
-                las_edge_writer.points->set_field(
-                    CustomDimensions::Id::InnerVectorY, edge_idx, normal.y());
-                las_edge_writer.points->set_field(
-                    CustomDimensions::Id::InnerVectorZ, edge_idx, normal.z());
+                las_edge_writer.points->copy_field<double>(
+                    CustomDimensions::Id::InwardVectorX, edge_idx, topo.points,
+                    p_0_0_id);
+                las_edge_writer.points->copy_field<double>(
+                    CustomDimensions::Id::InwardVectorY, edge_idx, topo.points,
+                    p_0_0_id);
+                las_edge_writer.points->copy_field<double>(
+                    CustomDimensions::Id::InwardVectorZ, edge_idx, topo.points,
+                    p_0_0_id);
 
                 is_multi_echo_with_roof_edge[ray_0_0_id] = true;
             }
@@ -512,9 +599,11 @@ void compute_distances_in_order(const std::string &input_points_file,
     bar_multi.finish();
     auto edge_count_multi = las_edge_writer.points->point_count();
 
-    /* ---------------------------------------------------------------------- */
-    /*                        Process single-echo rays                        */
-    /* ---------------------------------------------------------------------- */
+    /* ----------------------------------------------------------------------
+     */
+    /*                        Process single-echo rays */
+    /* ----------------------------------------------------------------------
+     */
 
     auto ray_count_single = single_echo_ray_ids.size();
     ProgressBarTotal bar_single(
@@ -546,8 +635,8 @@ void compute_distances_in_order(const std::string &input_points_file,
             p_ground_id;
 
         // Check the neighbours in the previous and next rays for potential
-        // ground points, but only if the same ray has not already given a roof
-        // edge point
+        // ground points, but only if the same ray has not already given a
+        // roof edge point
 
         if (ray_0_p1_id && !is_multi_echo_with_roof_edge[*ray_0_p1_id]) {
             PtsStructs::RayId ray_0_ground_id = *ray_0_p1_id;
@@ -593,24 +682,24 @@ void compute_distances_in_order(const std::string &input_points_file,
             }
         }
 
-        // Decide whether the point is a roof edge based on the vertical gain
-        // and the GPS time delta to the potential ground point
+        // Decide whether the point is a roof edge based on the vertical
+        // gain and the GPS time delta to the potential ground point
         bool is_roof_edge = vertical_gain / gps_time_delta >
                             MIN_VERT_GAIN_ROOF / DEFAULT_GPS_TIME_DELTA;
 
-        Vector_3 normal;
-        compute_inner_direction(p_0_0_id, topo, normal);
+        // Vector_3 normal;
+        // compute_inward_direction(p_0_0_id, topo.points, normal);
 
         las_distances_writer.points->set_field(
             CustomDimensions::Id::VerticalGain, p_0_0_id, vertical_gain);
         las_distances_writer.points->set_field(CustomDimensions::Id::IsRoofEdge,
                                                p_0_0_id, is_roof_edge);
-        las_distances_writer.points->set_field(
-            CustomDimensions::Id::InnerVectorX, p_0_0_id, normal.x());
-        las_distances_writer.points->set_field(
-            CustomDimensions::Id::InnerVectorY, p_0_0_id, normal.y());
-        las_distances_writer.points->set_field(
-            CustomDimensions::Id::InnerVectorZ, p_0_0_id, normal.z());
+        // las_distances_writer.points->set_field(
+        //     CustomDimensions::Id::InwardVectorX, p_0_0_id, normal.x());
+        // las_distances_writer.points->set_field(
+        //     CustomDimensions::Id::InwardVectorY, p_0_0_id, normal.y());
+        // las_distances_writer.points->set_field(
+        //     CustomDimensions::Id::InwardVectorZ, p_0_0_id, normal.z());
 
         if (is_roof_edge) {
             // Add the points that are roof edges
@@ -620,12 +709,13 @@ void compute_distances_in_order(const std::string &input_points_file,
 
             // UnitVector_3 edge_normal;
             // if (p_0_roof_1_id) {
-            //     Point_3 p_roof_1 = topo.points->get_point(*p_0_roof_1_id);
-            //     edge_normal = UnitVector_3(p_0_0 - p_roof_1);
+            //     Point_3 p_roof_1 =
+            //     topo.points->get_point(*p_0_roof_1_id); edge_normal =
+            //     UnitVector_3(p_0_0 - p_roof_1);
             // }
 
-            // Check whether we can extend the roof edge using the neighbours in
-            // the same scan line
+            // Check whether we can extend the roof edge using the
+            // neighbours in the same scan line
             bool extend_roof = false;
             if (p_0_roof_1_id && p_0_roof_2_id) {
                 const Point_3 &p_roof_1 =
@@ -660,8 +750,8 @@ void compute_distances_in_order(const std::string &input_points_file,
 
                 is_generated = 1;
             } else {
-                // Scanner position and middle point between the point and the
-                // ground point
+                // Scanner position and middle point between the point and
+                // the ground point
                 if (!p_ground_id) {
                     throw std::runtime_error("No ground point found for "
                                              "single-echo point with ID " +
@@ -693,7 +783,8 @@ void compute_distances_in_order(const std::string &input_points_file,
             las_edge_writer.points->set_field(
                 CustomDimensions::Id::VerticalGain, edge_idx, vertical_gain);
 
-            // // Compute the roof likelihood as two measures: the planarity and
+            // // Compute the roof likelihood as two measures: the planarity
+            // and
             // // the horizontality
             // auto pca_start = std::chrono::high_resolution_clock::now();
             // const auto scan_line_p1_id =
@@ -705,10 +796,12 @@ void compute_distances_in_order(const std::string &input_points_file,
             // const auto scan_line_n2_id =
             //     topo.get_next_scan_line_id(scan_line_n1_id);
 
-            // const std::optional<PtsStructs::ScanLineId> scan_line_1_ids[2] =
+            // const std::optional<PtsStructs::ScanLineId>
+            // scan_line_1_ids[2] =
             // {
             //     scan_line_p1_id, scan_line_n1_id};
-            // const std::optional<PtsStructs::ScanLineId> scan_line_2_ids[2] =
+            // const std::optional<PtsStructs::ScanLineId>
+            // scan_line_2_ids[2] =
             // {
             //     scan_line_p2_id, scan_line_n2_id};
 
@@ -723,7 +816,8 @@ void compute_distances_in_order(const std::string &input_points_file,
             //         continue;
             //     }
             //     auto [planarity, horizontality] =
-            //     *planarity_and_horizontality; if (planarity > best_planarity)
+            //     *planarity_and_horizontality; if (planarity >
+            //     best_planarity)
             //     {
             //         best_planarity = planarity;
             //         best_horizontality = horizontality;
@@ -739,12 +833,15 @@ void compute_distances_in_order(const std::string &input_points_file,
             // las_edge_writer.points->set_field(
             //     CustomDimensions::Id::Horizontality, edge_idx,
             //     best_horizontality);
-            las_edge_writer.points->set_field(
-                CustomDimensions::Id::InnerVectorX, edge_idx, normal.x());
-            las_edge_writer.points->set_field(
-                CustomDimensions::Id::InnerVectorY, edge_idx, normal.y());
-            las_edge_writer.points->set_field(
-                CustomDimensions::Id::InnerVectorZ, edge_idx, normal.z());
+            las_edge_writer.points->copy_field<double>(
+                CustomDimensions::Id::InwardVectorX, edge_idx, topo.points,
+                p_0_0_id);
+            las_edge_writer.points->copy_field<double>(
+                CustomDimensions::Id::InwardVectorY, edge_idx, topo.points,
+                p_0_0_id);
+            las_edge_writer.points->copy_field<double>(
+                CustomDimensions::Id::InwardVectorZ, edge_idx, topo.points,
+                p_0_0_id);
         }
         bar_single.increment(1);
 

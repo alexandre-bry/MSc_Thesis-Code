@@ -90,9 +90,9 @@ namespace CustomDimensions {
 enum class Id {
     ReturnNumberComputed,
     NumberOfReturnsComputed,
-    InnerVectorX,
-    InnerVectorY,
-    InnerVectorZ,
+    InwardVectorX,
+    InwardVectorY,
+    InwardVectorZ,
     Eigenvalue0,
     Eigenvalue1,
     Eigenvalue2,
@@ -121,12 +121,12 @@ inline std::string name(Id id) {
         return "ReturnNumberComputed";
     case Id::NumberOfReturnsComputed:
         return "NumberOfReturnsComputed";
-    case Id::InnerVectorX:
-        return "InnerVectorX";
-    case Id::InnerVectorY:
-        return "InnerVectorY";
-    case Id::InnerVectorZ:
-        return "InnerVectorZ";
+    case Id::InwardVectorX:
+        return "InwardVectorX";
+    case Id::InwardVectorY:
+        return "InwardVectorY";
+    case Id::InwardVectorZ:
+        return "InwardVectorZ";
     case Id::Eigenvalue0:
         return "EigenvalueSmallest";
     case Id::Eigenvalue1:
@@ -180,11 +180,11 @@ inline pdal::Dimension::Type type(Id id) {
         return pdal::Dimension::Type::Unsigned8;
     case Id::NumberOfReturnsComputed:
         return pdal::Dimension::Type::Unsigned8;
-    case Id::InnerVectorX:
+    case Id::InwardVectorX:
         return pdal::Dimension::Type::Double;
-    case Id::InnerVectorY:
+    case Id::InwardVectorY:
         return pdal::Dimension::Type::Double;
-    case Id::InnerVectorZ:
+    case Id::InwardVectorZ:
         return pdal::Dimension::Type::Double;
     case Id::Eigenvalue0:
         return pdal::Dimension::Type::Double;

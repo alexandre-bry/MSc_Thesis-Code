@@ -47,6 +47,7 @@ double LinearCriterion::evaluate_segments(
 
         // int num_points_not_on_segment = 0;
         // int num_points_far_from_segment = 0;
+        // int num_points_wrong_dir = 0;
         // int num_points_considered = 0;
 
         for (std::size_t point_index : nearby_point_indices) {
@@ -76,6 +77,7 @@ double LinearCriterion::evaluate_segments(
             Vector_2 point_inner_dir = point_inner_dirs.at(point_index);
             double dot_product = point_inner_dir * segment_inner_normal;
             if (dot_product <= 0.0) {
+                // num_points_wrong_dir++;
                 continue;
             }
             weight *= dot_product;
@@ -90,10 +92,12 @@ double LinearCriterion::evaluate_segments(
         }
         // std::cout << "Not on segment: " << num_points_not_on_segment
         //           << ", Far from segment: " << num_points_far_from_segment
+        //           << ", Wrong direction: " << num_points_wrong_dir
         //           << ", Considered: " << num_points_considered << std::endl;
     }
     proximity_value =
         -std::accumulate(point_best_score.begin(), point_best_score.end(), 0.0);
+    // proximity_value /= current_perimeter;
     proximity_value *= EDGE_CRITERION_POINT_DENSITY;
 
     // // Compute the perimeter ratio value
@@ -110,8 +114,9 @@ double LinearCriterion::evaluate_segments(
     // Compute the mean edge length ratio value
     double mean_edge_length_ratio_value = 0.0;
     for (size_t i = 0; i < segments.size(); ++i) {
-        double current_length = std::sqrt(segments.at(i).squared_length());
-        double initial_length = segments_initial_length.at(i);
+        double current_length =
+            std::max(0.1, std::sqrt(segments.at(i).squared_length()));
+        double initial_length = std::max(0.1, segments_initial_length.at(i));
         if (current_length > initial_length) {
             mean_edge_length_ratio_value += (current_length / initial_length);
         } else {
@@ -119,10 +124,31 @@ double LinearCriterion::evaluate_segments(
         }
     }
     mean_edge_length_ratio_value /= segments.size();
-    mean_edge_length_ratio_value *= this->alpha_ratio;
+    mean_edge_length_ratio_value *= this->alpha_mean_edges_ratio;
+
+    double mean_edge_length_difference_value = 0.0;
+    for (size_t i = 0; i < segments.size(); ++i) {
+        double current_length =
+            std::max(0.1, std::sqrt(segments.at(i).squared_length()));
+        double initial_length = std::max(0.1, segments_initial_length.at(i));
+        mean_edge_length_difference_value +=
+            std::pow(current_length - initial_length, 2);
+    }
+    mean_edge_length_difference_value *= this->alpha_mean_edges_difference;
 
     // Compute the perimeter absolute value
-    double perimeter_abs_value = this->alpha_absolute * current_perimeter;
+    double perimeter_abs_value =
+        this->alpha_perimeter_absolute * current_perimeter;
 
-    return proximity_value + mean_edge_length_ratio_value + perimeter_abs_value;
+    // std::cout << "Proximity value: " << proximity_value
+    //           << ", Mean edge length ratio value: "
+    //           << mean_edge_length_ratio_value
+    //           << ", Perimeter absolute value: " << perimeter_abs_value
+    //           << std::endl;
+
+    double total_value = proximity_value +
+                         //  mean_edge_length_ratio_value +
+                         mean_edge_length_difference_value +
+                         perimeter_abs_value;
+    return total_value;
 }

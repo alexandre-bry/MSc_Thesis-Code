@@ -74,9 +74,9 @@ void compute_weights(PtsStructs::StoragePtr las_points,
 
         // Extracts the normal vector for the point
         double inner_x = las_points->get_field_as<double>(
-            CustomDimensions::Id::InnerVectorX, point_id);
+            CustomDimensions::Id::InwardVectorX, point_id);
         double inner_y = las_points->get_field_as<double>(
-            CustomDimensions::Id::InnerVectorY, point_id);
+            CustomDimensions::Id::InwardVectorY, point_id);
         point_inner_dirs.at(i) = Vector_2(inner_x, inner_y);
     }
 }
@@ -665,9 +665,13 @@ void AllLines::AllOutlines::compute_metrics(
         }
 
         // Compute the metric for the current configuration
-        metrics.at(pos_neg_offset_indices[i]) = criterion.evaluate_segments(
+        double metric = criterion.evaluate_segments(
             segments, segments_initial_length, segments_inner_normals);
+        metrics.at(pos_neg_offset_indices[i]) = metric;
         configs.at(pos_neg_offset_indices[i]) = config;
+
+        // std::cout << "Offset: " << offset << ", Metric: " << metric
+        //           << std::endl;
     }
     // std::cout << "Done computing metric for each offset" << std::endl;
 }
@@ -708,8 +712,11 @@ void AllLines::AllOutlines::compute_optimal_offset(
     size_t best_offset_index = -1;
     double best_metric = std::numeric_limits<double>::infinity();
     for (size_t i = 0; i < offsets.size(); ++i) {
-        if (metrics[i] < best_metric) {
-            best_metric = metrics[i];
+        // Add a small penalty to the metric based on the absolute value of the
+        // offset to prefer smaller offsets in case of ties
+        double metric = metrics[i] + std::abs(offsets[i]) * 1e-6;
+        if (metric < best_metric) {
+            best_metric = metric;
             best_offset_index = i;
         }
     }
@@ -794,8 +801,9 @@ void AllLines::AllOutlines::compute_optimal_offset(
         size_t new_best_offset_index = -1;
         double new_best_metric = std::numeric_limits<double>::infinity();
         for (size_t i = 0; i < new_metrics.size(); ++i) {
-            if (new_metrics[i] < new_best_metric) {
-                new_best_metric = new_metrics[i];
+            double metric = new_metrics[i] + std::abs(new_offsets[i]) * 1e-6;
+            if (metric < new_best_metric) {
+                new_best_metric = metric;
                 new_best_offset_index = i;
             }
         }

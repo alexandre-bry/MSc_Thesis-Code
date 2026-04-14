@@ -330,7 +330,51 @@ def run_pipeline(
     verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
 ):
     with LoggingContext(verbose=verbose_int):
-        source_laz_file = tile_dir / "lidarhd.copc.laz"
+        initial_laz_file = tile_dir / "lidarhd.copc.laz"
+
+        # Build the C++ tools using pixi
+        command_build = ["pixi", "run", "--quiet", "cpp-build"]
+        logging.info(f"Building the C++ tools: {' '.join(command_build)}")
+        return_code = run_command_with_tqdm_logging(command_build)
+        if return_code != 0:
+            logging.error("C++ build failed.")
+        else:
+            logging.info("C++ tools built successfully.")
+
+        # Add the inward direction information to the original .laz file
+        source_laz_file = tile_dir / "lidarhd-with_inwards.laz"
+        if source_laz_file.exists() and skip_existing:
+            logging.info(
+                f"{source_laz_file} already exists. Skipping creation of source .laz file with inward directions due to --skip_existing flag."
+            )
+        elif source_laz_file.exists() and not overwrite:
+            raise FileExistsError(
+                f"{source_laz_file} already exists. Use --overwrite to overwrite it or --skip_existing to skip creating it."
+            )
+        else:
+            command_inwards = [
+                "pixi",
+                "run",
+                "cpp-run-only",
+                "add_inward_directions",
+                "-i",
+                str(initial_laz_file),
+                "-o",
+                str(source_laz_file),
+            ]
+
+            if overwrite:
+                command_inwards.append("--overwrite")
+
+            logging.debug(
+                f"Creating {source_laz_file} with command: {' '.join(command_inwards)}"
+            )
+            return_code = run_command_with_tqdm_logging(command_inwards)
+            logging.debug(f"Return code for {source_laz_file}: {return_code}")
+            if return_code != 0:
+                logging.error(f"Failed to create {source_laz_file}.")
+            else:
+                logging.info(f"Successfully created {source_laz_file}.")
 
         # Split the source .laz file into multiple files based on the "PointSourceId" attribute
         all_strip_files = split_las(
@@ -423,15 +467,6 @@ def run_pipeline(
             overwrite=overwrite,
             skip_existing=skip_existing,
         )
-
-        # Build the C++ tools using pixi
-        command = ["pixi", "run", "--quiet", "cpp-build"]
-        logging.info(f"Building the C++ tools: {' '.join(command)}")
-        return_code = run_command_with_tqdm_logging(command)
-        if return_code != 0:
-            logging.error("C++ build failed.")
-        else:
-            logging.info("C++ tools built successfully.")
 
         # Process each .laz file with the C++ pipeline
         total_files = len(all_strip_files)

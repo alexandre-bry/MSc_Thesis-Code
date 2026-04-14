@@ -19,5 +19,8 @@
   },
   "BATIMENT0000000337020281": {
     "reason": "Height difference issues that lead to many missing edges and matching to the other building. Also the next building is higher."
+  },
+  "BATIMENT0000000246174929": {
+    "reason": "There is a topological error in BD TOPO which causes my algorithm to behave badly."
   }
 }
