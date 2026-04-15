@@ -1,3 +1,5 @@
+from typing import List
+
 from ..utils.result import Result
 from .constants import *
 from .geometry import Line, Segment, Vector
@@ -34,11 +36,25 @@ class AllLines:
         self.next_lines = next_lines
         self.touching_lines = touching_lines
 
+        self.initial_edge_lengths: List[float] = []
+        for idx in range(len(lines)):
+            line = self.get_line(idx)
+            prev_line = self.get_line(self.get_prev_line_idx(idx))
+            next_line = self.get_line(self.get_next_line_idx(idx))
+            segment_result = line.segment(prev_line, next_line)
+            if segment_result.is_ok():
+                self.initial_edge_lengths.append(segment_result.unwrap().length())
+            else:
+                self.initial_edge_lengths.append(0.0)
+
     def get_indices(self) -> list[int]:
         return list(range(len(self.lines)))
 
     def get_line(self, idx: int) -> Line:
         return self.lines[idx]
+
+    def get_initial_edge_length(self, idx: int) -> float:
+        return self.initial_edge_lengths[idx]
 
     def update_line(self, idx: int, new_line: Line) -> None:
         self.lines[idx] = new_line

@@ -333,7 +333,7 @@ def run_pipeline(
         initial_laz_file = tile_dir / "lidarhd.copc.laz"
 
         # Build the C++ tools using pixi
-        command_build = ["pixi", "run", "--quiet", "cpp-build"]
+        command_build = ["pixi", "run", "--quiet", "cpp", "build", "release"]
         logging.info(f"Building the C++ tools: {' '.join(command_build)}")
         return_code = run_command_with_tqdm_logging(command_build)
         if return_code != 0:
@@ -355,7 +355,9 @@ def run_pipeline(
             command_inwards = [
                 "pixi",
                 "run",
-                "cpp-run-only",
+                "cpp",
+                "run-only",
+                "release",
                 "add_inward_directions",
                 "-i",
                 str(initial_laz_file),
@@ -496,7 +498,9 @@ def run_pipeline(
                 "pixi",
                 "run",
                 "--quiet",
-                "cpp-run-only",
+                "cpp",
+                "run-only",
+                "release",
                 "distances_in_order",
                 "-i",
                 str(laz_file),
@@ -555,7 +559,9 @@ def run_pipeline(
             "pixi",
             "run",
             "--quiet",
-            "cpp-run-only",
+            "cpp",
+            "run-only",
+            "release",
             "compute_roofprints",
             "-i",
             str(merged_edges_file),

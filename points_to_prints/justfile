@@ -3,6 +3,7 @@
     just build {{ mode }}
     just run-only {{ mode }} {{ ARGS }}
 
+# Runs the binary built in the given mode, with the given arguments. It assumes the binary is already built and will not configure or build it.
 @run-only mode *ARGS:
     just _print "Running in {{ uppercamelcase(mode) }} mode"
     sh -eu -c 'bin=$(find "cpp/build/{{ uppercamelcase(mode) }}/executable" -maxdepth 1 -type f | head -n 1); [ -n "$bin" ] || { echo "No executable found in cpp/build/{{ uppercamelcase(mode) }}/executable" >&2; exit 1; }; exec "$bin" "$@"' _ {{ ARGS }}

@@ -1,6 +1,6 @@
 import math
 import random
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 from .geometry import Point, Polygon, Segment, Vector
 
@@ -73,6 +73,7 @@ def example_circle(
     radius_points: float,
     radius_polygon: float,
     shift_polygon_center: Vector,
+    remove_segments: List[int],
     random_seed: Optional[int] = None,
 ) -> Tuple[list[Point], Polygon]:
     if random_seed is not None:
@@ -87,8 +88,13 @@ def example_circle(
         noise=noise_polygon,
     )
 
+    segments = polygon.get_segments()
+    segments = [
+        segment for i, segment in enumerate(segments) if i not in remove_segments
+    ]
+
     points = sample_points_on_segments(
-        segments=polygon.get_segments()[0:-1:2],
+        segments=segments,
         num_points=num_points,
         noise=noise_points,
     )

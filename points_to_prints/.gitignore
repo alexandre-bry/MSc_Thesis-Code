@@ -19,3 +19,6 @@ rust/
 
 # Folder with visualization binaries
 visualization/
+
+# Folder with experiments and illustrations
+experiments

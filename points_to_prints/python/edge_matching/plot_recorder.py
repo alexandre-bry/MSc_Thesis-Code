@@ -119,7 +119,12 @@ class PlotRecorder:
             p.plot(color=self.style.point_color, size=self.style.point_size)
 
         for s in snap.segments:
-            s.plot(color=self.style.segment_color, width=self.style.segment_width)
+            s.plot(
+                color=self.style.segment_color,
+                width=self.style.segment_width,
+                point_color=self.style.segment_point_color,
+                point_size=self.style.segment_point_size,
+            )
 
         for poly in snap.polygons:
             poly.plot(
@@ -141,6 +146,18 @@ class PlotRecorder:
         output_dir.mkdir(parents=True, exist_ok=True)
         for name in self.snapshot_names():
             self.save(name, output_dir / f"{name}.png", dpi=dpi)
+
+    def save_first(self, output_path: Path, dpi: int = 150) -> None:
+        names = self.snapshot_names()
+        if not names:
+            raise ValueError("No snapshots to save")
+        self.save(names[0], output_path, dpi=dpi)
+
+    def save_last(self, output_path: Path, dpi: int = 150) -> None:
+        names = self.snapshot_names()
+        if not names:
+            raise ValueError("No snapshots to save")
+        self.save(names[-1], output_path, dpi=dpi)
 
     def save_all_combined(self, output_path: Path, dpi: int = 150) -> None:
         """Save all snapshots as subplots in a single figure."""

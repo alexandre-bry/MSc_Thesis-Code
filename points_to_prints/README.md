@@ -26,13 +26,13 @@ To list the available commands, run `pixi task list`.
 1. Find the commands of the C++ scripts:
 
     ```bash
-    pixi run cpp-run --help
+    pixi run cpp run release -- --help
     ```
 
 2. Find the arguments of a given command:
 
     ```bash
-    pixi run cpp-run <command> --help
+    pixi run cpp run release -- <command> --help
     ```
 
 ### Python scripts

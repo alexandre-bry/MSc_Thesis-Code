@@ -26,6 +26,16 @@ app = typer.Typer()
     help="Test the edge shifting algorithm on a circle example.",
 )
 def test_circle(
+    output_dir: Annotated[
+        Path,
+        typer.Option(
+            "--output-dir",
+            "-o",
+            file_okay=False,
+            dir_okay=True,
+            help="Directory to save output images",
+        ),
+    ],
     optimization_iterations: Annotated[
         int,
         typer.Option(
@@ -55,8 +65,11 @@ def test_circle(
         float, typer.Option("--shift-polygon-center-y", "-y")
     ] = 0.0,
     random_seed: Annotated[Optional[int], typer.Option("--random-seed", "-S")] = None,
-    alpha_ratio: Annotated[float, typer.Option("--alpha-ratio", "-a")] = 0.1,
-    alpha_abs: Annotated[float, typer.Option("--alpha-abs", "-A")] = 0.1,
+    removed_segments: Annotated[str, typer.Option("--removed-segments", "-m")] = "",
+    alpha_edge_difference: Annotated[
+        float, typer.Option("--alpha-edge-difference", "-a")
+    ] = 0.1,
+    # alpha_abs: Annotated[float, typer.Option("--alpha-abs", "-A")] = 0.1,
     verbose_int: Annotated[
         int,
         typer.Option(
@@ -78,6 +91,7 @@ def test_circle(
             radius_polygon=radius_polygon,
             shift_polygon_center=shift_polygon_center,
             random_seed=random_seed,
+            remove_segments=[int(x) for x in removed_segments.split(",") if x],
         )
 
         # Recorders
@@ -122,11 +136,11 @@ def test_circle(
                 points=points,
                 weights=[1.0] * len(points),
                 max_distance=LINEAR_CRITERION_MAX_DISTANCE,
-                alpha_ratio=alpha_ratio,
-                alpha_abs=alpha_abs,
-                initial_perimeter=sum(
-                    segment.length() for segment in all_lines.get_segments()
-                ),
+                alpha_edge_difference=alpha_edge_difference,
+                # alpha_abs=alpha_abs,
+                # initial_perimeter=sum(
+                #     segment.length() for segment in all_lines.get_segments()
+                # ),
             ),
         )
 
@@ -166,11 +180,15 @@ def test_circle(
         # recorder_iterations.save_all_combined(
         #     Path("images/optimization_iterations.png")
         # )
+        output_dir.mkdir(parents=True, exist_ok=True)
         recorder_iterations.save_combined_as_video(
-            Path("images/optimization_iterations.gif"), fps=2
+            output_dir / "optimization_iterations.gif", fps=2
         )
+        recorder_iterations.save_first(output_dir / "optimization_initial.png")
+        recorder_iterations.save_last(output_dir / "optimization_final.png")
+
         if recorder_steps is not None:
-            recorder_steps.save_all_combined(Path("images/optimization_steps.png"))
+            recorder_steps.save_all_combined(output_dir / "optimization_steps.png")
 
 
 def experiment_one_move(line_idx: int, shift: Vector) -> None:

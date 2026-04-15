@@ -202,5 +202,3 @@ mkdir cpp/include
 ```bash
 curl -L https://github.com/CLIUtils/CLI11/releases/download/v2.6.1/CLI11.hpp --output cpp/include/CLI11.hpp
 ```
-
-###

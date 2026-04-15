@@ -27,6 +27,7 @@ class EdgeShiftingAlgorithm:
             return self.all_lines.get_line(line_idx)
 
         segments: List[Segment] = []
+        initial_segment_lengths: List[float] = []
         perimeter = 0.0
         for idx in self.all_lines.get_indices():
             prev_line = get_line_local(self.all_lines.get_prev_line_idx(idx))
@@ -39,7 +40,10 @@ class EdgeShiftingAlgorithm:
             if idx in idxs:
                 segments.append(segment)
 
-        criterion = self.criterion.evaluate_segments(segments, perimeter)
+                initial_segment_length = self.all_lines.get_initial_edge_length(idx)
+                initial_segment_lengths.append(initial_segment_length)
+
+        criterion = self.criterion.evaluate_segments(segments, initial_segment_lengths)
 
         return criterion
 

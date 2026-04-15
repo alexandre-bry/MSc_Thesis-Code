@@ -1,8 +1,8 @@
 #include <cstdint>
 #include <string>
+#include <sys/types.h>
 
 #include <CLI11/CLI11.hpp>
-#include <sys/types.h>
 
 #include "distances.hpp"
 #include "edge_matching/topology.hpp"
@@ -15,15 +15,13 @@ void setup_sort_by_gps_time(CLI::App &app) {
 
     CLI::App *sub =
         app.add_subcommand("sort_by_gps_time", "Sort points by GPS time");
-    std::string input_file;
     sub->add_option("-i,--input", opt->input_file, "Input LAS file")
         ->required();
-    std::string output_file;
     sub->add_option("-o,--output", opt->output_file, "Output LAS file")
         ->required();
-    bool overwrite = false;
     sub->add_flag("-f,--overwrite", opt->overwrite,
-                  "Overwrite the output file if it exists");
+                  "Overwrite the output file if it exists")
+        ->default_val(false);
 
     sub->callback([opt]() {
         sort_by_gps_time(opt->input_file, opt->output_file, opt->overwrite);
@@ -35,24 +33,20 @@ void setup_distances_in_order(CLI::App &app) {
 
     CLI::App *sub = app.add_subcommand(
         "distances_in_order", "Compute the distances in GPS time order");
-    std::string input_points_file;
     sub->add_option("-i,--input", opt->input_points_file, "Input LAS file")
         ->required();
-    std::string input_trajectory_file;
     sub->add_option("-t,--trajectory", opt->input_trajectory_file,
                     "Input trajectory file")
         ->required();
-    std::string output_distances_file;
     sub->add_option("-d,--distances", opt->output_distances_file,
                     "Output LAS file for distances")
         ->required();
-    std::string output_edges_file;
     sub->add_option("-e,--edges", opt->output_edges_file,
                     "Output LAS file for points on edges")
         ->required();
-    bool overwrite = false;
     sub->add_flag("-f,--overwrite", opt->overwrite,
-                  "Overwrite the output file if it exists");
+                  "Overwrite the output file if it exists")
+        ->default_val(false);
 
     sub->callback([opt]() {
         compute_distances_in_order(
@@ -66,19 +60,16 @@ void setup_extract_random_lines(CLI::App &app) {
 
     CLI::App *sub = app.add_subcommand(
         "extract_random_lines", "Extract random lines from the point cloud");
-    std::string input_file;
     sub->add_option("-i,--input", opt->input_file, "Input LAS file")
         ->required();
-    std::string output_folder;
     sub->add_option("-o,--output", opt->output_folder, "Output folder")
         ->required();
-    uint16_t lines_count;
     sub->add_option("-l,--lines", opt->lines_count,
                     "Number of lines to extract")
         ->required();
-    bool overwrite = false;
     sub->add_flag("-f,--overwrite", opt->overwrite,
-                  "Overwrite the output folder if it exists");
+                  "Overwrite the output folder if it exists")
+        ->default_val(false);
 
     sub->callback([opt]() {
         extract_random_scanner_lines(opt->input_file, opt->output_folder,
@@ -91,15 +82,13 @@ void setup_split_flight_axes(CLI::App &app) {
 
     CLI::App *sub =
         app.add_subcommand("split_flight_axes", "Split the flight axes");
-    std::string input_file;
     sub->add_option("-i,--input", opt->input_file, "Input LAS file")
         ->required();
-    std::string output_folder;
     sub->add_option("-o,--output", opt->output_folder, "Output folder")
         ->required();
-    bool overwrite = false;
     sub->add_flag("-f,--overwrite", opt->overwrite,
-                  "Overwrite the output folder if it exists");
+                  "Overwrite the output folder if it exists")
+        ->default_val(false);
 
     sub->callback([opt]() {
         split_flight_axes(opt->input_file, opt->output_folder, opt->overwrite);
@@ -111,7 +100,6 @@ void setup_test_parquet(CLI::App &app) {
 
     CLI::App *sub =
         app.add_subcommand("test_parquet", "Test Parquet Read/Write");
-    std::string input_file;
     sub->add_option("-i,--input", opt->input_file, "Input Parquet file")
         ->required();
 
@@ -124,17 +112,15 @@ void setup_read_write_bd_topo(CLI::App &app) {
     CLI::App *sub = app.add_subcommand(
         "read_write_bd_topo",
         "Read and write building outlines from/to BD TOPO Parquet file");
-    std::string input_file;
     sub->add_option("-i,--input", opt->input_parquet_file,
                     "Input BD TOPO Parquet file")
         ->required();
-    std::string output_file;
     sub->add_option("-o,--output", opt->output_parquet_file,
                     "Output Parquet file for building outlines")
         ->required();
-    bool overwrite = false;
     sub->add_flag("-f,--overwrite", opt->overwrite,
-                  "Overwrite the output file if it exists");
+                  "Overwrite the output file if it exists")
+        ->default_val(false);
 
     sub->callback([opt]() {
         auto status = read_write_bd_topo(
@@ -151,29 +137,24 @@ void setup_compute_roofprints(CLI::App &app) {
 
     CLI::App *sub =
         app.add_subcommand("compute_roofprints", "Compute roofprints");
-    std::string input_las_file;
     sub->add_option("-l,--input-las", opt->input_las_file, "Input LAS file")
         ->required();
-    std::string input_bd_topo_edges_file;
     sub->add_option("-b,--input-bd-topo-edges", opt->input_bd_topo_edges_file,
                     "Input BD TOPO Parquet file with building edges")
         ->required();
-    std::string input_bd_topo_intersections_file;
     sub->add_option("-i,--input-bd-topo-intersections",
                     opt->input_bd_topo_intersections_file,
                     "Input BD TOPO Parquet file with building intersections")
         ->required();
-    std::string output_roofprints_file;
     sub->add_option("-o,--output-roofprints", opt->output_roofprints_file,
                     "Output Parquet file for roofprints")
         ->required();
-    uint iterations;
     sub->add_option("-n,--iterations", opt->iterations,
                     "Number of optimization iterations to perform")
         ->required();
-    bool overwrite = false;
     sub->add_flag("-f,--overwrite", opt->overwrite,
-                  "Overwrite the output file if it exists");
+                  "Overwrite the output file if it exists")
+        ->default_val(false);
 
     sub->callback([opt]() {
         AllLines::compute_roofprints(
@@ -187,15 +168,13 @@ void setup_add_pca(CLI::App &app) {
     auto opt = std::make_shared<AddPCAOptions>();
 
     CLI::App *sub = app.add_subcommand("add_pca", "Add PCA eigenvalues to LAS");
-    std::string input_file;
     sub->add_option("-i,--input", opt->input_file, "Input LAS file")
         ->required();
-    std::string output_file;
     sub->add_option("-o,--output", opt->output_file, "Output LAS file")
         ->required();
-    bool overwrite = false;
     sub->add_flag("-f,--overwrite", opt->overwrite,
-                  "Overwrite the output file if it exists");
+                  "Overwrite the output file if it exists")
+        ->default_val(false);
 
     sub->callback([opt]() {
         add_pca(opt->input_file, opt->output_file, opt->overwrite);
@@ -207,21 +186,33 @@ void setup_add_inward_directions(CLI::App &app) {
 
     CLI::App *sub = app.add_subcommand("add_inward_directions",
                                        "Add inward directions to LAS");
-    std::string input_points_file;
+
     sub->add_option("-i,--input", opt->input_points_file, "Input LAS file")
         ->required();
-    std::string output_points_file;
     sub->add_option("-o,--output", opt->output_points_file,
                     "Output LAS file for points with inward directions")
         ->required();
-    bool overwrite = false;
     sub->add_flag("-f,--overwrite", opt->overwrite,
-                  "Overwrite the output file if it exists");
+                  "Overwrite the output file if it exists")
+        ->default_val(false);
 
     sub->callback([opt]() {
         compute_inward_directions(opt->input_points_file,
                                   opt->output_points_file, opt->overwrite);
     });
+}
+
+struct HelloWorldOptions {
+    std::string name;
+};
+
+void setup_add_hello_world(CLI::App &app) {
+    auto opt = std::make_shared<HelloWorldOptions>();
+
+    CLI::App *sub = app.add_subcommand("hello_world", "Print Hello World");
+    sub->add_option("-n,--name", opt->name, "Name to greet")->required();
+    sub->callback(
+        [opt]() { std::cout << "Hello, " << opt->name << "!" << std::endl; });
 }
 
 int main(int argc, char **argv) {
@@ -236,6 +227,7 @@ int main(int argc, char **argv) {
     setup_compute_roofprints(app);
     setup_add_pca(app);
     setup_add_inward_directions(app);
+    setup_add_hello_world(app);
     app.require_subcommand(1);
 
     CLI11_PARSE(app, argc, argv);
