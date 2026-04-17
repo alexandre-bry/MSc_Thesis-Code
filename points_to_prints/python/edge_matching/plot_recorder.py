@@ -108,6 +108,7 @@ class PlotRecorder:
         dpi: int = 150,
         width: float = 5.0,
         height: float = 5.0,
+        show_axes: bool = True,
     ) -> None:
         if name not in self._snapshots:
             raise ValueError(f"Unknown snapshot '{name}'")
@@ -136,28 +137,37 @@ class PlotRecorder:
 
         plt.title(snap.title or snap.name)
         plt.axis("equal")
-        plt.grid(True)
+        if not show_axes:
+            plt.axis("off")
+        else:
+            plt.grid(True)
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
         plt.savefig(output_path, dpi=dpi, bbox_inches="tight")
         plt.close()
 
-    def save_all(self, output_dir: Path, dpi: int = 150) -> None:
+    def save_all(
+        self, output_dir: Path, dpi: int = 150, show_axes: bool = True
+    ) -> None:
         output_dir.mkdir(parents=True, exist_ok=True)
         for name in self.snapshot_names():
-            self.save(name, output_dir / f"{name}.png", dpi=dpi)
+            self.save(name, output_dir / f"{name}.png", dpi=dpi, show_axes=show_axes)
 
-    def save_first(self, output_path: Path, dpi: int = 150) -> None:
+    def save_first(
+        self, output_path: Path, dpi: int = 150, show_axes: bool = True
+    ) -> None:
         names = self.snapshot_names()
         if not names:
             raise ValueError("No snapshots to save")
-        self.save(names[0], output_path, dpi=dpi)
+        self.save(names[0], output_path, dpi=dpi, show_axes=show_axes)
 
-    def save_last(self, output_path: Path, dpi: int = 150) -> None:
+    def save_last(
+        self, output_path: Path, dpi: int = 150, show_axes: bool = True
+    ) -> None:
         names = self.snapshot_names()
         if not names:
             raise ValueError("No snapshots to save")
-        self.save(names[-1], output_path, dpi=dpi)
+        self.save(names[-1], output_path, dpi=dpi, show_axes=show_axes)
 
     def save_all_combined(self, output_path: Path, dpi: int = 150) -> None:
         """Save all snapshots as subplots in a single figure."""
@@ -232,7 +242,7 @@ class PlotRecorder:
         plt.close()
 
     def save_combined_as_video(
-        self, output_path: Path, fps: int = 10, dpi: int = 150
+        self, output_path: Path, fps: int = 10, dpi: int = 150, show_axes: bool = True
     ) -> None:
         """Save all snapshots as frames in a video."""
         import matplotlib.animation as animation
@@ -242,7 +252,7 @@ class PlotRecorder:
             return
 
         # Create figure
-        fig, ax = plt.subplots(figsize=(5, 5))
+        fig, ax = plt.subplots(figsize=(4, 4))
 
         artists_points: Sequence[Artist] = []
         artists_segments: Sequence[Artist] = []
@@ -277,6 +287,9 @@ class PlotRecorder:
             ax.set_xlim(x_min - 1, x_max + 1)
             ax.set_ylim(y_min - 1, y_max + 1)
             ax.set_aspect("equal")
+
+            if not show_axes:
+                ax.axis("off")
 
             name = names[frame_idx]
             snap = self._snapshots[name]
@@ -315,6 +328,8 @@ class PlotRecorder:
                 )
 
             ax.set_title(snap.title or snap.name)
+
+            fig.tight_layout()
 
             return artists_points + artists_segments + artists_polygons
 

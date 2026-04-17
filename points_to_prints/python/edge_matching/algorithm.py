@@ -6,7 +6,7 @@ import tqdm
 
 from .constants import *
 from .criterion import Criterion
-from .geometry import Line, NormalizedVector, Segment
+from .geometry import Line, Segment, UnitVector
 from .line_mover import AllLinesMoverSimple
 from .topology import AllLines
 
@@ -47,7 +47,9 @@ class EdgeShiftingAlgorithm:
 
         return criterion
 
-    def optimize_one_line(self, idx: int) -> Tuple[Dict[int, Line], float]:
+    def optimize_one_line(
+        self, idx: int, use_tqdm: bool = True
+    ) -> Tuple[Dict[int, Line], float]:
         line = self.all_lines.get_line(idx)
         shift_direction = line.normal_vector
         shift_direction_flipped = shift_direction.flipped()
@@ -80,14 +82,14 @@ class EdgeShiftingAlgorithm:
             [-offset for offset in reversed(offsets)] + [0.0] + offsets
         )
         all_shifted_lines: List[Dict[int, Line]] = (
-            [{}] + list(reversed(all_shifted_lines_2)) + all_shifted_lines_1
+            list(reversed(all_shifted_lines_2)) + [{}] + all_shifted_lines_1
         )
         all_shifts: List[Dict[int, float]] = (
-            [{}] + list(reversed(all_shifts_2)) + all_shifts_1
+            list(reversed(all_shifts_2)) + [{}] + all_shifts_1
         )
-        all_dirs: List[NormalizedVector] = (
-            [shift_direction]  # Does not matter
-            + [shift_direction_flipped] * len(offsets)
+        all_dirs: List[UnitVector] = (
+            [shift_direction_flipped] * len(offsets)
+            + [shift_direction]  # Does not matter
             + [shift_direction] * len(offsets)
         )
 
@@ -112,10 +114,16 @@ class EdgeShiftingAlgorithm:
             desc="Evaluating offsets",
             leave=False,
             total=len(all_shifted_lines),
+            disable=not use_tqdm,
         ):
             criterion_value = self.evaluate_lines(
                 list(lines_to_consider), shifted_lines
             )
+
+            # Add a small penalty based on the offset to prefer smaller offsets when the criterion values are close
+            penalty = 1e-6 * abs(offset)
+            criterion_value += penalty
+
             if criterion_value < best_criterion_value:
                 best_criterion_value = criterion_value
                 best_shifts = shifted_lines
@@ -131,22 +139,27 @@ class EdgeShiftingAlgorithm:
     def optimize_all_lines(
         self,
         callback_after_optimization: Callable[[int], None] = lambda i: None,
+        use_tqdm: bool = True,
     ) -> float:
         # Sort lines by length in descending order
         lengths = [
             self.all_lines.get_segment(i).unwrap().length()
             for i in range(len(self.all_lines.lines))
         ]
-        # sorted_indices = sorted(
-        #     range(len(lengths)), key=lambda i: lengths[i], reverse=True
-        # )
-        sorted_indices = list(range(len(self.all_lines.lines)))
-        random.shuffle(sorted_indices)
+        sorted_indices = sorted(
+            range(len(lengths)), key=lambda i: lengths[i], reverse=True
+        )
+        # sorted_indices = list(range(len(self.all_lines.lines)))
+        # random.shuffle(sorted_indices)
 
         # Optimize lines in order of their lengths
         sum_shifts = 0.0
-        for idx in tqdm.tqdm(sorted_indices, desc="Optimizing lines", leave=False):
-            best_shifts, best_total_shift = self.optimize_one_line(idx)
+        for idx in tqdm.tqdm(
+            sorted_indices, desc="Optimizing lines", leave=False, disable=not use_tqdm
+        ):
+            best_shifts, best_total_shift = self.optimize_one_line(
+                idx, use_tqdm=use_tqdm
+            )
             sum_shifts += best_total_shift
             for line_idx, new_line in best_shifts.items():
                 self.all_lines.update_line(line_idx, new_line)
@@ -157,6 +170,4 @@ class EdgeShiftingAlgorithm:
                 )
             callback_after_optimization(idx)
 
-        return sum_shifts
-        return sum_shifts
         return sum_shifts

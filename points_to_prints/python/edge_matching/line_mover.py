@@ -2,7 +2,7 @@ import logging
 from typing import Callable, Dict, List, Tuple
 
 from .constants import *
-from .geometry import Line, NormalizedVector
+from .geometry import Line, UnitVector
 from .topology import AllLines, is_problematic, is_reduced_to_point
 
 
@@ -11,7 +11,7 @@ class AllLinesMoverSimple:
         self,
         all_lines: AllLines,
         line_idx: int,
-        shift_direction: NormalizedVector,
+        shift_direction: UnitVector,
         queried_shifts: list[float],
     ) -> None:
         self.all_lines = all_lines
@@ -223,7 +223,7 @@ def compute_buffer_for_prev(
     dominating_line: Line,
     focus_line: Line,
     prev_line: Line,
-    movement_dir: NormalizedVector,
+    movement_dir: UnitVector,
 ) -> Tuple[float, bool]:
     # We consider that the focus line and the next line will move together along the movement direction
     limit = float("inf")
@@ -259,7 +259,7 @@ def compute_buffer_for_next(
     dominating_line: Line,
     focus_line: Line,
     next_line: Line,
-    movement_dir: NormalizedVector,
+    movement_dir: UnitVector,
 ) -> Tuple[float, bool]:
     # We consider that the focus line and the previous line will move together along the movement direction
     limit = float("inf")
@@ -298,7 +298,7 @@ def compute_buffer_for_main(
     next_line: Line,
     prev_prev_line: Line,
     next_next_line: Line,
-    movement_dir: NormalizedVector,
+    movement_dir: UnitVector,
 ) -> Tuple[float, float, bool]:
     prev_limit = float("inf")
     next_limit = float("inf")
@@ -339,7 +339,7 @@ class AllLinesMoverComplex:
         self,
         all_lines: AllLines,
         line_idx: int,
-        shift_direction: NormalizedVector,
+        shift_direction: UnitVector,
         queried_shifts: list[float],
     ) -> None:
         self.all_lines = all_lines

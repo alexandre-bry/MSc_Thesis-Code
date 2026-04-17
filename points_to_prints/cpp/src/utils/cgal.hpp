@@ -16,7 +16,15 @@ typedef CGAL::Bbox_2 Bbox_2;
 class UnitVector_2 : public Vector_2 {
   public:
     UnitVector_2() : Vector_2(0, 0) {}
-    UnitVector_2(K::FT x, K::FT y) : Vector_2(x, y) {}
+    UnitVector_2(K::FT x, K::FT y) : Vector_2() {
+        double length = std::sqrt(x * x + y * y);
+        if (length > 0) {
+            Vector_2 v(x / length, y / length);
+            *this = v;
+        } else {
+            *this = Vector_2(0, 0);
+        }
+    }
     UnitVector_2(const Vector_2 &v)
         : Vector_2(v / std::sqrt(v.squared_length())) {}
 };
@@ -48,7 +56,15 @@ typedef K::Segment_3 Segment_3;
 class UnitVector_3 : public Vector_3 {
   public:
     UnitVector_3() : Vector_3(0, 0, 0) {}
-    UnitVector_3(K::FT x, K::FT y, K::FT z) : Vector_3(x, y, z) {}
+    UnitVector_3(K::FT x, K::FT y, K::FT z) : Vector_3() {
+        double length = std::sqrt(x * x + y * y + z * z);
+        if (length > 0) {
+            Vector_3 v(x / length, y / length, z / length);
+            *this = v;
+        } else {
+            *this = Vector_3(0, 0, 0);
+        }
+    }
     UnitVector_3(const Vector_3 &v)
         : Vector_3(v / std::sqrt(v.squared_length())) {}
 };

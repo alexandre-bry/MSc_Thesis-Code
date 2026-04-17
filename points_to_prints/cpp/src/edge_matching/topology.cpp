@@ -57,7 +57,14 @@ void compute_weights(PtsStructs::StoragePtr las_points,
         // Give more weight to non-generated points
         uint8_t is_generated = las_points->get_field_as<uint8_t>(
             CustomDimensions::Id::IsGenerated, point_id);
-        double generated_factor = (2.0 - is_generated) / 2.0;
+        double generated_factor = 0.0;
+        if (is_generated == 0) {
+            generated_factor = 1.0;
+        } else if (is_generated == 1) {
+            generated_factor = 0.6;
+        } else {
+            generated_factor = 0.2;
+        }
 
         // Give more weight to points classified as building
         const auto cls_raw = las_points->get_field_as<

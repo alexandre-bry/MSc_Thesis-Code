@@ -124,11 +124,11 @@ class Vector(Geometry):
     def length(self) -> float:
         return (self.x**2 + self.y**2) ** 0.5
 
-    def normalized(self) -> "NormalizedVector":
-        return NormalizedVector(self.x, self.y)
+    def normalized(self) -> "UnitVector":
+        return UnitVector(self.x, self.y)
 
 
-class NormalizedVector(Vector):
+class UnitVector(Vector):
     x: float
     y: float
 
@@ -146,8 +146,8 @@ class NormalizedVector(Vector):
             self.x /= length
             self.y /= length
 
-    def flipped(self) -> "NormalizedVector":
-        return NormalizedVector(-self.x, -self.y)
+    def flipped(self) -> "UnitVector":
+        return UnitVector(-self.x, -self.y)
 
     def __mul__(self, scalar: float) -> Vector:
         return super().__mul__(scalar)
@@ -322,9 +322,9 @@ class Segment:
 
 
 class Line:
-    def __init__(self, dir_vector: NormalizedVector, value: float) -> None:
+    def __init__(self, dir_vector: UnitVector, value: float) -> None:
         self.dir_vector = dir_vector
-        self.normal_vector = NormalizedVector(-dir_vector.y, dir_vector.x)
+        self.normal_vector = UnitVector(-dir_vector.y, dir_vector.x)
         self.value = value
 
     def __str__(self) -> str:
@@ -347,7 +347,7 @@ class Line:
     def from_points(cls, point1: Point, point2: Point) -> "Line":
         # Create a line from two points
         dir_vector = point1.to(point2).normalized()
-        normal_vector = NormalizedVector(-dir_vector.y, dir_vector.x)
+        normal_vector = UnitVector(-dir_vector.y, dir_vector.x)
         value = normal_vector.x * point1.x + normal_vector.y * point1.y
         return cls(dir_vector=dir_vector, value=value)
 
@@ -355,7 +355,7 @@ class Line:
     def from_point_and_dir(cls, point: Point, dir_vector: Vector) -> "Line":
         # Create a line from a point and a direction vector
         dir_vector = dir_vector.normalized()
-        normal_vector = NormalizedVector(-dir_vector.y, dir_vector.x)
+        normal_vector = UnitVector(-dir_vector.y, dir_vector.x)
         value = normal_vector.x * point.x + normal_vector.y * point.y
         return cls(dir_vector=dir_vector, value=value)
 

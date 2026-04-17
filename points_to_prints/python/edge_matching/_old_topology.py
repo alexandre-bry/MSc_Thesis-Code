@@ -3,7 +3,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 from ..utils.result import Result
 from .constants import *
-from .geometry import Line, NormalizedVector, Point, Segment, Vector
+from .geometry import Line, Point, Segment, UnitVector, Vector
 from .topology import is_flipped, is_problematic, is_reduced_to_point
 
 
@@ -12,7 +12,7 @@ def compute_buffer_for_prev(
     dominating_line: Line,
     focus_line: Line,
     prev_line: Line,
-    movement_dir: NormalizedVector,
+    movement_dir: UnitVector,
 ) -> Tuple[float, bool]:
     # We consider that the focus line and the next line will move together along the movement direction
     limit = float("inf")
@@ -48,7 +48,7 @@ def compute_buffer_for_next(
     dominating_line: Line,
     focus_line: Line,
     next_line: Line,
-    movement_dir: NormalizedVector,
+    movement_dir: UnitVector,
 ) -> Tuple[float, bool]:
     # We consider that the focus line and the previous line will move together along the movement direction
     limit = float("inf")
@@ -87,7 +87,7 @@ def compute_buffer_for_main(
     next_line: Line,
     prev_prev_line: Line,
     next_next_line: Line,
-    movement_dir: NormalizedVector,
+    movement_dir: UnitVector,
 ) -> Tuple[float, float, bool]:
     prev_limit = float("inf")
     next_limit = float("inf")
@@ -275,7 +275,7 @@ def compute_buffer_self_moving(
     next_line: Line,
     prev_prev_line: Line,
     next_next_line: Line,
-    movement_dir: NormalizedVector,
+    movement_dir: UnitVector,
 ) -> Buffer:
     """Computes the limits of the movement of the focus line in the direction of the movement vector, in both directions.
     Takes into account:
@@ -356,7 +356,7 @@ def compute_buffer_prev_moving(
     next_line: Line,
     prev_prev_line: Line,
     next_next_line: Line,
-    movement_dir: NormalizedVector,
+    movement_dir: UnitVector,
 ) -> Tuple[float, float]:
     """Computes the limit of the movement of previous line in the direction of the movement vector, in both directions.
     Takes into account:
@@ -887,7 +887,7 @@ class AllLines:
     def _old_3_lines_to_move_if_line_is_shifted(
         self,
         idx: int,
-        shift_dir: NormalizedVector,
+        shift_dir: UnitVector,
         shift_length: float,
         callback: Callable[[int, Dict[int, Line]], None] = lambda i, s: None,
     ) -> Dict[int, Line]:
@@ -1351,7 +1351,7 @@ class AllLines:
     def lines_to_move_if_line_is_shifted(
         self,
         idx: int,
-        shift_dir: NormalizedVector,
+        shift_dir: UnitVector,
         shift_length: float,
         callback: Callable[[int, Dict[int, Line]], None] = lambda i, s: None,
     ) -> Dict[int, Line]:

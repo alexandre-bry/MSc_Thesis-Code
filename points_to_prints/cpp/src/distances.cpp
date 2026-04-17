@@ -203,37 +203,62 @@ void compute_normal(PtsStructs::PointId point_id, PtsStructs::Topology3D &topo,
     }
 }
 
-void compute_inward_direction(PtsStructs::PointId point_id,
+void compute_inward_direction(PtsStructs::PointId focus_point_id,
                               PtsStructs::StoragePtr storage,
                               Vector_3 &inner_direction) {
     const double NEIGHBOURS_RADIUS = 2.0;
     const double MAX_Z_DIFF = 1.0;
 
-    const Point_3 p = storage->get_point(point_id);
-    std::vector<Point_3> points;
-    storage->get_kd_tree_3d()->search_points_in_sphere(p, NEIGHBOURS_RADIUS,
-                                                       points);
+    const Point_3 focus_point = storage->get_point(focus_point_id);
+    const Point_2 focus_point_2d(focus_point.x(), focus_point.y());
+    std::vector<std::size_t> point_ids;
+    storage->get_kd_tree_3d()->search_indices_in_sphere(
+        focus_point, NEIGHBOURS_RADIUS, point_ids);
 
-    Vector_2 sum;
-    double weights;
-    for (const auto &point : points) {
-        if (std::abs(point.z() - p.z()) > MAX_Z_DIFF) {
+    Vector_2 weighted_inward_dir(0.0, 0.0);
+    double weights = 0.0;
+    for (const auto &point_id : point_ids) {
+        if (focus_point_id == point_id) {
             continue;
         }
-        // double weight = 1.0 - std::abs(z - p.z()) / MAX_Z_DIFF;
+        const Point_3 point = storage->get_point(PtsStructs::PointId(point_id));
+        if (std::abs(point.z() - focus_point.z()) > MAX_Z_DIFF) {
+            continue;
+        }
+
+        const Point_2 point_2d(point.x(), point.y());
+        // double weight =
+        //     1.0 - std::sqrt(CGAL::squared_distance(focus_point_2d, point_2d))
+        //     /
+        //               NEIGHBOURS_RADIUS;
         double weight = 1.0;
-        UnitVector_2 pos(point.x(), point.y());
+
+        UnitVector_2 inward_dir(point_2d - focus_point_2d);
+        // std::cout << "Focus point ID: " << focus_point_id
+        //           << ", Neighbour point ID: " << point_id
+        //           << ", Weight: " << weight << ", Position: (" <<
+        //           inward_dir.x()
+        //           << ", " << inward_dir.y() << ")" << std::endl;
 
         weights += weight;
-        sum += weight * pos;
+        weighted_inward_dir += weight * inward_dir;
+        // std::cout << "Weights: " << weights
+        //           << ", Weighted inward dir: " << weighted_inward_dir
+        //           << std::endl;
     }
     if (weights > 0) {
-        sum /= weights;
+        weighted_inward_dir /= weights;
     } else {
-        sum = Vector_2(p.x(), p.y());
+        weighted_inward_dir = Vector_2(0.0, 0.0);
     }
 
-    inner_direction = Vector_3(sum.x() - p.x(), sum.y() - p.y(), 0.0);
+    // std::cout << "Focus point ID: " << focus_point_id
+    //           << ", Neighbour count: " << point_ids.size() << ", Sum: ("
+    //           << weighted_inward_dir.x() << ", " << weighted_inward_dir.y()
+    //           << ")" << std::endl;
+
+    inner_direction =
+        Vector_3(weighted_inward_dir.x(), weighted_inward_dir.y(), 0.0);
 }
 
 void compute_inward_directions(const std::string &input_points_file,
