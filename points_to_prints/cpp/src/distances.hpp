@@ -37,18 +37,18 @@ struct DistancesInOrderOptions {
  * the edge.
  *
  * @param input_points_file Input LAS file path
- * @param input_trajectory_file Input LAS file path containing the trajectory of
- * the scanner device
  * @param output_points_file Output LAS file path containing the points with
  * inward directions
+ * @param type The type of inward direction to compute: "roof" or "facade"
  * @param overwrite Whether to overwrite the output file if it already exists
  */
 void compute_inward_directions(const std::string &input_points_file,
                                const std::string &output_points_file,
-                               bool overwrite);
+                               const std::string &type, bool overwrite);
 
 struct InwardDirectionsOptions {
     std::string input_points_file;
     std::string output_points_file;
+    std::string type;
     bool overwrite;
 };

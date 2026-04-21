@@ -1,8 +1,8 @@
 #pragma once
 
-#include <CGAL/Bbox_2.h>
 #include <vector>
 
+#include <CGAL/Bbox_2.h>
 #include <CGAL/Fuzzy_iso_box.h>
 #include <CGAL/Fuzzy_sphere.h>
 #include <CGAL/Kd_tree.h>
@@ -10,7 +10,6 @@
 #include <CGAL/Search_traits_2.h>
 #include <CGAL/Search_traits_3.h>
 
-#include "../geometry.hpp"
 #include "cgal.hpp"
 
 typedef CGAL::Search_traits_2<K> Traits_2_base;
@@ -43,50 +42,48 @@ struct KdTree_2 {
         tree.build();
     }
 
-    std::vector<std::size_t>
-    search_indices_in_box(const Point_2 &min_corner,
-                          const Point_2 &max_corner) const {
-        std::vector<std::size_t> result;
+    void search_indices_in_box(const Point_2 &min_corner,
+                               const Point_2 &max_corner,
+                               std::vector<std::size_t> &result) const {
         Fuzzy_iso_box_2 box(min_corner, max_corner, 0.0, Traits_2(point_map));
         tree.search(std::back_inserter(result), box);
-        return result;
     }
 
-    std::vector<std::size_t>
-    search_indices_in_box(const OGREnvelopePtr bbox,
-                          double buffer_distance) const {
-        std::vector<std::size_t> result;
-        Point_2 min_corner(bbox->MinX - buffer_distance,
-                           bbox->MinY - buffer_distance);
-        Point_2 max_corner(bbox->MaxX + buffer_distance,
-                           bbox->MaxY + buffer_distance);
-        Fuzzy_iso_box_2 box(min_corner, max_corner, 0.0, Traits_2(point_map));
-        tree.search(std::back_inserter(result), box);
-        return result;
-    }
-
-    std::vector<std::size_t>
-    search_indices_in_box(Bbox_2 bbox, double buffer_distance) const {
-        std::vector<std::size_t> result;
+    void search_indices_in_box(Bbox_2 bbox, double buffer_distance,
+                               std::vector<std::size_t> &result) const {
         Point_2 min_corner(bbox.xmin() - buffer_distance,
                            bbox.ymin() - buffer_distance);
         Point_2 max_corner(bbox.xmax() + buffer_distance,
                            bbox.ymax() + buffer_distance);
-        Fuzzy_iso_box_2 box(min_corner, max_corner, 0.0, Traits_2(point_map));
-        tree.search(std::back_inserter(result), box);
-        return result;
+        search_indices_in_box(min_corner, max_corner, result);
     }
 
-    std::vector<Point_2> search_points_in_box(const Point_2 &min_corner,
-                                              const Point_2 &max_corner) const {
-        std::vector<std::size_t> indices =
-            search_indices_in_box(min_corner, max_corner);
-        std::vector<Point_2> result;
+    void search_points_in_box(const Point_2 &min_corner,
+                              const Point_2 &max_corner,
+                              std::vector<Point_2> &result) const {
+        std::vector<std::size_t> indices;
+        search_indices_in_box(min_corner, max_corner, indices);
         result.reserve(indices.size());
         for (std::size_t idx : indices) {
             result.push_back(points[idx]);
         }
-        return result;
+    }
+
+    void search_indices_in_circle(const Point_2 &center, double radius,
+                                  std::vector<std::size_t> &result) const {
+        CGAL::Fuzzy_sphere<Traits_2> sphere(center, radius, 0.0,
+                                            Traits_2(point_map));
+        tree.search(std::back_inserter(result), sphere);
+    }
+
+    void search_points_in_circle(const Point_2 &center, double radius,
+                                 std::vector<Point_2> &result) const {
+        std::vector<std::size_t> indices;
+        search_indices_in_circle(center, radius, indices);
+        result.reserve(indices.size());
+        for (std::size_t idx : indices) {
+            result.push_back(points[idx]);
+        }
     }
 };
 
@@ -116,35 +113,33 @@ struct KdTree_3 {
         tree.build();
     }
 
-    std::vector<std::size_t> search_indices_in_box(const Point_3 &min_corner,
-                                                   const Point_3 &max_corner) {
-        std::vector<std::size_t> result;
+    void search_indices_in_box(const Point_3 &min_corner,
+                               const Point_3 &max_corner,
+                               std::vector<std::size_t> &result) const {
         Fuzzy_iso_box_3 box(min_corner, max_corner, 0.0, Traits_3(point_map));
         tree.search(std::back_inserter(result), box);
-        return result;
     }
 
-    std::vector<Point_3> search_points_in_box(const Point_3 &min_corner,
-                                              const Point_3 &max_corner) {
-        std::vector<std::size_t> indices =
-            search_indices_in_box(min_corner, max_corner);
-        std::vector<Point_3> result;
+    void search_points_in_box(const Point_3 &min_corner,
+                              const Point_3 &max_corner,
+                              std::vector<Point_3> &result) const {
+        std::vector<std::size_t> indices;
+        search_indices_in_box(min_corner, max_corner, indices);
         result.reserve(indices.size());
         for (std::size_t idx : indices) {
             result.push_back(points[idx]);
         }
-        return result;
     }
 
     void search_indices_in_sphere(const Point_3 &center, double radius,
-                                  std::vector<std::size_t> &result) {
+                                  std::vector<std::size_t> &result) const {
         CGAL::Fuzzy_sphere<Traits_3> sphere(center, radius, 0.0,
                                             Traits_3(point_map));
         tree.search(std::back_inserter(result), sphere);
     }
 
     void search_points_in_sphere(const Point_3 &center, double radius,
-                                 std::vector<Point_3> &result) {
+                                 std::vector<Point_3> &result) const {
         std::vector<std::size_t> indices;
         search_indices_in_sphere(center, radius, indices);
         result.reserve(indices.size());
@@ -175,7 +170,7 @@ struct Search_NN_3 {
     }
 
     void search_indices_knn(const Point_3 &query, int k,
-                            std::vector<std::size_t> &result) {
+                            std::vector<std::size_t> &result) const {
         Neighbor_search search(tree, query, k);
         for (auto it = search.begin(); it != search.end(); ++it) {
             result.push_back(it->first);
@@ -183,7 +178,7 @@ struct Search_NN_3 {
     }
 
     void search_points_knn(const Point_3 &query, int k,
-                           std::vector<Point_3> &result) {
+                           std::vector<Point_3> &result) const {
         std::vector<std::size_t> indices;
         search_indices_knn(query, k, indices);
         result.reserve(indices.size());

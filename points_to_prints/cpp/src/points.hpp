@@ -6,6 +6,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <pdal/DimUtil.hpp>
 #include <pdal/pdal_types.hpp>
 #include <vector>
 
@@ -414,6 +415,7 @@ struct Storage {
     std::shared_ptr<pdal::PointTable> table;
     std::shared_ptr<KdTree_2> las_kd_tree_2;
     std::shared_ptr<KdTree_3> las_kd_tree_3;
+    std::vector<Point_3> cached_points;
 
   private:
     void init(std::vector<pdal::Dimension::Id> predefined_dims,
@@ -507,6 +509,7 @@ struct Storage {
     void set_field(pdal::Dimension::Id dim, PointId point_id, const T value) {
         view->setField(dim, point_id, value);
     }
+
     /**
      * @brief Set the value of an attribute for a point in the storage.
      *
@@ -549,17 +552,24 @@ struct Storage {
     }
 
     Point_2 get_point_2d(PointId point_id) const {
-        double x = view->getFieldAs<double>(pdal::Dimension::Id::X, point_id);
-        double y = view->getFieldAs<double>(pdal::Dimension::Id::Y, point_id);
-        return Point_2(x, y);
+        // double x = view->getFieldAs<double>(pdal::Dimension::Id::X,
+        // point_id); double y =
+        // view->getFieldAs<double>(pdal::Dimension::Id::Y, point_id); return
+        // Point_2(x, y);
+        Point_3 point_3d = get_point(point_id);
+        return Point_2(point_3d.x(), point_3d.y());
     }
 
     Point_3 get_point(PointId point_id) const {
-        double x = view->getFieldAs<double>(pdal::Dimension::Id::X, point_id);
-        double y = view->getFieldAs<double>(pdal::Dimension::Id::Y, point_id);
-        double z = view->getFieldAs<double>(pdal::Dimension::Id::Z, point_id);
-        return Point_3(x, y, z);
+        // double x = view->getFieldAs<double>(pdal::Dimension::Id::X,
+        // point_id); double y =
+        // view->getFieldAs<double>(pdal::Dimension::Id::Y, point_id); double z
+        // = view->getFieldAs<double>(pdal::Dimension::Id::Z, point_id); return
+        // Point_3(x, y, z);
+        return cached_points[point_id];
     }
+
+    void cache_points();
 
     void build_kd_tree_2d();
     std::shared_ptr<KdTree_2> get_kd_tree_2d() const;
@@ -709,5 +719,6 @@ struct Topology3D {
     get_prev_scan_line_id(std::optional<ScanLineId> scan_line_id) const;
 
     CustomCGAL::Angle angle_between(RayId ray_1, RayId ray_2) const;
+    Point_3 get_point_at_height(RayId ray_id, double height) const;
 };
 } // namespace PtsStructs

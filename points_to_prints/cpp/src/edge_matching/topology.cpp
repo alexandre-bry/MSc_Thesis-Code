@@ -23,11 +23,11 @@ namespace {
 void compute_weights(PtsStructs::StoragePtr las_points,
                      const std::vector<PtsStructs::PointId> &point_ids,
                      std::vector<double> &weights,
-                     std::vector<Vector_2> &point_inner_dirs) {
+                     std::vector<Vector_2> &point_inward_dirs) {
     weights.clear();
     weights.resize(point_ids.size());
-    point_inner_dirs.clear();
-    point_inner_dirs.resize(point_ids.size());
+    point_inward_dirs.clear();
+    point_inward_dirs.resize(point_ids.size());
 
     // Compute the minimum and maximum Z values
     double min_z = std::numeric_limits<double>::infinity();
@@ -80,11 +80,11 @@ void compute_weights(PtsStructs::StoragePtr las_points,
         weights.at(i) = height_factor * generated_factor * class_factor;
 
         // Extracts the normal vector for the point
-        double inner_x = las_points->get_field_as<double>(
+        double inward_x = las_points->get_field_as<double>(
             CustomDimensions::Id::InwardVectorX, point_id);
-        double inner_y = las_points->get_field_as<double>(
+        double inward_y = las_points->get_field_as<double>(
             CustomDimensions::Id::InwardVectorY, point_id);
-        point_inner_dirs.at(i) = Vector_2(inner_x, inner_y);
+        point_inward_dirs.at(i) = Vector_2(inward_x, inward_y);
     }
 }
 
@@ -576,9 +576,9 @@ void AllLines::AllOutlines::compute_metrics(
     // std::cout << "Selecting all the necessary LAS points for the metric "
     //              "computation"
     //           << std::endl;
-    const std::vector<std::size_t> current_las_indices =
-        las_points->get_kd_tree_2d()->search_indices_in_box(all_cases_bbox,
-                                                            0.0);
+    std::vector<std::size_t> current_las_indices;
+    las_points->get_kd_tree_2d()->search_indices_in_box(all_cases_bbox, 0.0,
+                                                        current_las_indices);
 
     // std::cout << "Number of LAS points in the bounding box: "
     //           << current_las_indices.size() << std::endl;
@@ -592,9 +592,9 @@ void AllLines::AllOutlines::compute_metrics(
     // Compute the weights for the LAS points
     // std::cout << "Computing weights for the LAS points" << std::endl;
     std::vector<double> weights;
-    std::vector<Vector_2> point_inner_dirs;
+    std::vector<Vector_2> point_inward_dirs;
     compute_weights(las_points, current_las_point_ids, weights,
-                    point_inner_dirs);
+                    point_inward_dirs);
     // std::cout << "current_las_point_ids.size(): "
     //           << current_las_point_ids.size() << std::endl;
     // std::cout << "weights.size(): " << weights.size() << std::endl;
@@ -605,7 +605,7 @@ void AllLines::AllOutlines::compute_metrics(
         const auto &point_id = current_las_point_ids[i];
         selected_las_points[i] = las_points->get_point_2d(point_id);
     }
-    LinearCriterion criterion(selected_las_points, weights, point_inner_dirs);
+    LinearCriterion criterion(selected_las_points, weights, point_inward_dirs);
 
     // Compute the metric for each offset
     // std::cout << "Computing metric for each offset" << std::endl;
@@ -629,10 +629,10 @@ void AllLines::AllOutlines::compute_metrics(
 
         std::vector<Segment_2> segments;
         std::vector<double> segments_initial_length;
-        std::vector<UnitVector_2> segments_inner_normals;
+        std::vector<UnitVector_2> segments_inward_normals;
         segments.reserve(criterion_edge_ids.size());
         segments_initial_length.reserve(criterion_edge_ids.size());
-        segments_inner_normals.reserve(criterion_edge_ids.size());
+        segments_inward_normals.reserve(criterion_edge_ids.size());
 
         for (EdgeId edge_id : criterion_edge_ids) {
             Edge edge = current_edges.at(edge_id);
@@ -664,16 +664,16 @@ void AllLines::AllOutlines::compute_metrics(
             segments_initial_length.push_back(
                 std::sqrt(initial_start_to_end_2d.squared_length()));
 
-            Vector_2 inner_normal =
+            Vector_2 inward_normal =
                 initial_start_to_end_2d.perpendicular(CGAL::COUNTERCLOCKWISE);
-            // std::cout << "inner_normal:   " << std::setprecision(17)
-            //           << inner_normal << std::endl;
-            segments_inner_normals.push_back(inner_normal);
+            // std::cout << "inward_normal:   " << std::setprecision(17)
+            //           << inward_normal << std::endl;
+            segments_inward_normals.push_back(inward_normal);
         }
 
         // Compute the metric for the current configuration
         double metric = criterion.evaluate_segments(
-            segments, segments_initial_length, segments_inner_normals);
+            segments, segments_initial_length, segments_inward_normals);
         metrics.at(pos_neg_offset_indices[i]) = metric;
         configs.at(pos_neg_offset_indices[i]) = config;
 

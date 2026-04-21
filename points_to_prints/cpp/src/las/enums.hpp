@@ -111,6 +111,7 @@ enum class Id {
     RoofLikelihood,
     IsRoofEdge,
     IsFootEdge,
+    IsFacade,
     IsGenerated,
     AngleRayPrev,
     AngleRayNext,
@@ -163,6 +164,8 @@ inline std::string name(Id id) {
         return "IsRoofEdge";
     case Id::IsFootEdge:
         return "IsFootEdge";
+    case Id::IsFacade:
+        return "IsFacade";
     case Id::IsGenerated:
         return "IsGenerated";
     case Id::AngleRayPrev:
@@ -223,6 +226,8 @@ inline pdal::Dimension::Type type(Id id) {
     case Id::IsFootEdge:
         return pdal::Dimension::Type::Unsigned8;
     case Id::IsGenerated:
+        return pdal::Dimension::Type::Unsigned8;
+    case Id::IsFacade:
         return pdal::Dimension::Type::Unsigned8;
     case Id::AngleRayPrev:
         return pdal::Dimension::Type::Double;

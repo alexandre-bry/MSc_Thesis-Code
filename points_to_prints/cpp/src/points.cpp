@@ -26,6 +26,9 @@ void Storage::init(std::vector<pdal::Dimension::Id> predefined_dims,
     table->setSpatialReference(spatial_ref);
 
     view = pdal::PointViewPtr(new pdal::PointView(*table));
+
+    cached_points.clear();
+    cache_points();
 }
 
 Storage::Storage(std::vector<pdal::Dimension::Id> predefined_dims,
@@ -94,18 +97,30 @@ Bbox_2 Storage::bounding_box_cgal() const {
     return Bbox_2(bounds.minx, bounds.miny, bounds.maxx, bounds.maxy);
 }
 
+void Storage::cache_points() {
+    if (!cached_points.empty()) {
+        return; // Points already cached
+    }
+    cached_points.reserve(point_count());
+    for (pdal::PointId i = 0; i < view->size(); ++i) {
+        double x = view->getFieldAs<double>(pdal::Dimension::Id::X, i);
+        double y = view->getFieldAs<double>(pdal::Dimension::Id::Y, i);
+        double z = view->getFieldAs<double>(pdal::Dimension::Id::Z, i);
+        cached_points.emplace_back(x, y, z);
+    }
+}
+
 void Storage::build_kd_tree_2d() {
     if (las_kd_tree_2) {
         return; // Kd-tree already built
     }
-    std::vector<Point_2> point_2d;
-    point_2d.reserve(view->size());
-    for (pdal::PointId i = 0; i < view->size(); ++i) {
-        double x = view->getFieldAs<double>(pdal::Dimension::Id::X, i);
-        double y = view->getFieldAs<double>(pdal::Dimension::Id::Y, i);
-        point_2d.emplace_back(x, y);
+    cache_points();
+    std::vector<Point_2> points_2d;
+    points_2d.reserve(cached_points.size());
+    for (const auto &point : cached_points) {
+        points_2d.emplace_back(point.x(), point.y());
     }
-    las_kd_tree_2 = std::make_shared<KdTree_2>(point_2d);
+    las_kd_tree_2 = std::make_shared<KdTree_2>(points_2d);
 }
 
 std::shared_ptr<KdTree_2> Storage::get_kd_tree_2d() const {
@@ -119,15 +134,8 @@ void Storage::build_kd_tree_3d() {
     if (las_kd_tree_3) {
         return; // Kd-tree already built
     }
-    std::vector<Point_3> point_3d;
-    point_3d.reserve(view->size());
-    for (pdal::PointId i = 0; i < view->size(); ++i) {
-        double x = view->getFieldAs<double>(pdal::Dimension::Id::X, i);
-        double y = view->getFieldAs<double>(pdal::Dimension::Id::Y, i);
-        double z = view->getFieldAs<double>(pdal::Dimension::Id::Z, i);
-        point_3d.emplace_back(x, y, z);
-    }
-    las_kd_tree_3 = std::make_shared<KdTree_3>(point_3d);
+    cache_points();
+    las_kd_tree_3 = std::make_shared<KdTree_3>(cached_points);
 }
 
 std::shared_ptr<KdTree_3> Storage::get_kd_tree_3d() const {
@@ -667,4 +675,23 @@ CustomCGAL::Angle Topology3D::angle_between(RayId ray_1, RayId ray_2) const {
         throw std::out_of_range("Ray index out of range");
     }
     return rays[ray_1].angle_to(rays[ray_2], points);
+}
+
+Point_3 Topology3D::get_point_at_height(RayId ray_id, double height) const {
+    // Get two point on the ray
+    const Ray3D &ray = rays[ray_id];
+    const Point_3 &origin = ray.get_origin();
+    const Point_3 &point_on_ray =
+        points->get_point(ray.get_point_id_in_return_order(0));
+
+    // Get the direction of the ray
+    auto direction_vector = point_on_ray - origin;
+
+    // Calculate the point at the given height
+    double origin_height = origin.z();
+    double height_difference = height - origin_height;
+    double factor_to_height = height_difference / direction_vector.z();
+    Point_3 point_at_height = origin + factor_to_height * direction_vector;
+
+    return point_at_height;
 }

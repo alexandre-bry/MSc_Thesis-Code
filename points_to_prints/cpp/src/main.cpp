@@ -1,4 +1,3 @@
-#include <cstdint>
 #include <string>
 #include <sys/types.h>
 
@@ -192,13 +191,17 @@ void setup_add_inward_directions(CLI::App &app) {
     sub->add_option("-o,--output", opt->output_points_file,
                     "Output LAS file for points with inward directions")
         ->required();
+    sub->add_option("-t,--type", opt->type,
+                    "Type of inward direction to compute: 'roof' or 'facade'")
+        ->required();
     sub->add_flag("-f,--overwrite", opt->overwrite,
                   "Overwrite the output file if it exists")
         ->default_val(false);
 
     sub->callback([opt]() {
         compute_inward_directions(opt->input_points_file,
-                                  opt->output_points_file, opt->overwrite);
+                                  opt->output_points_file, opt->type,
+                                  opt->overwrite);
     });
 }
 
