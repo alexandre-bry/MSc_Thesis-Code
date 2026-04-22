@@ -22,6 +22,12 @@ void compute_distances_in_order(const std::string &input_points_file,
                                 const std::string &output_edges_file,
                                 bool overwrite);
 
+void compute_distances_to_neighbours(const std::string &input_points_file,
+                                     const std::string &input_trajectory_file,
+                                     const std::string &output_distances_file,
+                                     const std::string &output_edges_file,
+                                     bool overwrite);
+
 struct DistancesInOrderOptions {
     std::string input_points_file;
     std::string input_trajectory_file;

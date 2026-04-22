@@ -48,7 +48,7 @@ void setup_distances_in_order(CLI::App &app) {
         ->default_val(false);
 
     sub->callback([opt]() {
-        compute_distances_in_order(
+        compute_distances_to_neighbours(
             opt->input_points_file, opt->input_trajectory_file,
             opt->output_distances_file, opt->output_edges_file, opt->overwrite);
     });

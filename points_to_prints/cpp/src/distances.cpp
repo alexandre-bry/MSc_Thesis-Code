@@ -1,5 +1,6 @@
 #include "distances.hpp"
 
+#include <CGAL/Origin.h>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -1250,22 +1251,25 @@ void compute_distances_to_neighbours(const std::string &input_points_file,
 
         std::optional<PtsStructs::PointId> p_0_roof_1_id, p_0_roof_2_id,
             p_ground_id;
+        std::optional<PtsStructs::RayId> ray_ground_id;
 
         // Check the neighbour rays only if they have not already been marked as
         // having a roof edge point
 
         for (const auto &neighbour_ray_id : neighbour_ray_ids) {
+            if (!neighbour_ray_id) {
+                continue;
+            }
             // If the neighbour ray has already given a roof edge point, we
             // skip it because we assume that it was a better candidate
-            if (neighbour_ray_id &&
-                !is_multi_echo_with_roof_edge[*neighbour_ray_id]) {
+            if (is_multi_echo_with_roof_edge[*neighbour_ray_id]) {
                 continue;
             }
 
             // Get the last return of the neighbour ray as a potential ground
             // point
-            PtsStructs::RayId ground_ray_id = *neighbour_ray_id;
-            const auto &ground_ray = topo.get_ray(ground_ray_id);
+            PtsStructs::RayId potential_ray_ground_id = *neighbour_ray_id;
+            const auto &ground_ray = topo.get_ray(potential_ray_ground_id);
             PtsStructs::PointId potential_p_ground_id =
                 ground_ray.get_point_id_in_return_order(-1);
             Point_3 p_ground = topo.points->get_point(potential_p_ground_id);
@@ -1278,10 +1282,12 @@ void compute_distances_to_neighbours(const std::string &input_points_file,
                 // vertical gain a height proportional to the horizontal
                 // distance between the two rays at the height of the point
                 const Point_3 &p_ground_at_p_0_0_height =
-                    topo.get_point_at_height(ground_ray_id, p_0_0.z());
+                    topo.get_point_at_height(potential_ray_ground_id,
+                                             p_0_0.z());
                 double horizontal_distance = std::sqrt(
                     CGAL::squared_distance(p_0_0, p_ground_at_p_0_0_height));
-                vertical_gain -= ANGLE_BUFFER_FACTOR * horizontal_distance;
+                vertical_gain_current -=
+                    ANGLE_BUFFER_FACTOR * horizontal_distance;
 
                 if (vertical_gain > vertical_gain_current) {
                     continue;
@@ -1292,6 +1298,7 @@ void compute_distances_to_neighbours(const std::string &input_points_file,
                 //     find_closest_point(p_0_roof_1_id, ray_0_n2_id, topo);
 
                 p_ground_id = potential_p_ground_id;
+                ray_ground_id = potential_ray_ground_id;
                 vertical_gain = vertical_gain_current;
             }
         }
@@ -1366,17 +1373,25 @@ void compute_distances_to_neighbours(const std::string &input_points_file,
                                              std::to_string(p_0_0_id));
                 }
 
-                Point_3 p_ground = topo.points->get_point(*p_ground_id);
-                Point_3 p_scanner = trajectory.get_point_at_gps_time(gps_time);
-                Vector_3 scanner_to_p_0_0 = p_0_0 - p_scanner;
-                Vector_3 scanner_to_ground = p_ground - p_scanner;
-                Vector_3 scanner_to_edge =
-                    (scanner_to_p_0_0 + scanner_to_ground) / 2.0;
-                scanner_to_edge = scanner_to_edge /
-                                  std::sqrt(scanner_to_edge.squared_length()) *
-                                  std::sqrt(scanner_to_p_0_0.squared_length());
+                // Point_3 p_ground = topo.points->get_point(*p_ground_id);
+                // Point_3 p_scanner =
+                // trajectory.get_point_at_gps_time(gps_time); Vector_3
+                // scanner_to_p_0_0 = p_0_0 - p_scanner; Vector_3
+                // scanner_to_ground = p_ground - p_scanner; Vector_3
+                // scanner_to_edge =
+                //     (scanner_to_p_0_0 + scanner_to_ground) / 2.0;
+                // scanner_to_edge = scanner_to_edge /
+                //                   std::sqrt(scanner_to_edge.squared_length())
+                //                   *
+                //                   std::sqrt(scanner_to_p_0_0.squared_length());
+                // p_edge = p_scanner + scanner_to_edge;
+                const Point_3 &p_ground_at_p_0_0_height =
+                    topo.get_point_at_height(*ray_ground_id, p_0_0.z());
+                p_edge =
+                    CGAL::ORIGIN + ((p_0_0 - CGAL::ORIGIN) +
+                                    (p_ground_at_p_0_0_height - CGAL::ORIGIN)) /
+                                       2.0;
 
-                p_edge = p_scanner + scanner_to_edge;
                 is_generated = 2;
             }
 
