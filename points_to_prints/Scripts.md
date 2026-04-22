@@ -2,6 +2,12 @@
 
 This file contains useful scripts in command line.
 
+## Convert LAZ to EPT to open in QGIS
+
+```bash
+pixi run entwine build -i <input_laz> -o <output_ept_folder> --deep --srs EPSG:2154
+```
+
 ## Convert the BD TOPO to Parquet
 
 1. Rename the geometry layer from `geometrie` to `geom`

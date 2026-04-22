@@ -138,7 +138,7 @@ void setup_compute_roofprints(CLI::App &app) {
         app.add_subcommand("compute_roofprints", "Compute roofprints");
     sub->add_option("-l,--input-las", opt->input_las_file, "Input LAS file")
         ->required();
-    sub->add_option("-b,--input-bd-topo-edges", opt->input_bd_topo_edges_file,
+    sub->add_option("-e,--input-bd-topo-edges", opt->input_bd_topo_edges_file,
                     "Input BD TOPO Parquet file with building edges")
         ->required();
     sub->add_option("-i,--input-bd-topo-intersections",

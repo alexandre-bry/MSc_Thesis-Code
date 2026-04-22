@@ -2,11 +2,12 @@ import asyncio
 import logging
 from enum import Enum
 from pathlib import Path
-from typing import Annotated, List
+from typing import Annotated, List, Optional
 
 import typer
 
 from ..utils.custom_logging import LoggingContext, run_command_with_tqdm_logging
+from .bd_topo_convert import convert_bd_topo_to_parquet_call
 from .bd_topo_crop import crop_parquet_from_las
 from .bd_topo_intersections import (
     compute_export_intersections,
@@ -19,6 +20,7 @@ from .las_manipulations import (
     merge_files,
     split_point_cloud_call,
 )
+from .pipeline import run_pipeline_call
 
 app = typer.Typer()
 
@@ -78,7 +80,7 @@ def split_point_cloud_command(
         dimension=dimension,
         overwrite=overwrite,
         skip_existing=skip_existing,
-        verbose_int=verbose_int
+        verbose_int=verbose_int,
     )
 
 
@@ -185,7 +187,7 @@ def download_lidar_hd(
     "run_pipeline",
     help="Run the pipeline.",
 )
-def run_pipeline(
+def run_pipeline_command(
     other_data_dir: Annotated[
         Path,
         typer.Option(
@@ -210,18 +212,6 @@ def run_pipeline(
             readable=True,
         ),
     ],
-    bd_topo_file: Annotated[
-        Path,
-        typer.Option(
-            "-b",
-            "--bd_topo_file",
-            help="Path to the BD_TOPO parquet file.",
-            exists=True,
-            file_okay=True,
-            dir_okay=False,
-            readable=True,
-        ),
-    ],
     overwrite: Annotated[
         bool,
         typer.Option(
@@ -237,265 +227,16 @@ def run_pipeline(
         ),
     ] = False,
     verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
+    num_workers: Annotated[Optional[int], typer.Option("--num_workers")] = None,
 ):
-    with LoggingContext(verbose=verbose_int):
-        initial_laz_file = tile_dir / "lidarhd.copc.laz"
-
-        # Build the C++ tools using pixi
-        command_build = ["pixi", "run", "--quiet", "cpp", "build", "release"]
-        logging.info(f"Building the C++ tools: {' '.join(command_build)}")
-        return_code = run_command_with_tqdm_logging(command_build)
-        if return_code != 0:
-            logging.error("C++ build failed.")
-        else:
-            logging.info("C++ tools built successfully.")
-
-        # Add the inward direction information to the original .laz file
-        source_laz_file = tile_dir / "lidarhd-with_inwards.laz"
-        if source_laz_file.exists() and skip_existing:
-            logging.info(
-                f"{source_laz_file} already exists. Skipping creation of source .laz file with inward directions due to --skip_existing flag."
-            )
-        elif source_laz_file.exists() and not overwrite:
-            raise FileExistsError(
-                f"{source_laz_file} already exists. Use --overwrite to overwrite it or --skip_existing to skip creating it."
-            )
-        else:
-            command_inwards = [
-                "pixi",
-                "run",
-                "cpp",
-                "run-only",
-                "release",
-                "--",
-                "add_inward_directions",
-                "-i",
-                str(initial_laz_file),
-                "-o",
-                str(source_laz_file),
-            ]
-
-            if overwrite:
-                command_inwards.append("--overwrite")
-
-            logging.debug(
-                f"Creating {source_laz_file} with command: {' '.join(command_inwards)}"
-            )
-            return_code = run_command_with_tqdm_logging(command_inwards)
-            logging.debug(f"Return code for {source_laz_file}: {return_code}")
-            if return_code != 0:
-                logging.error(f"Failed to create {source_laz_file}.")
-            else:
-                logging.info(f"Successfully created {source_laz_file}.")
-
-        # Split the source .laz file into multiple files based on the "PointSourceId" attribute
-        all_strip_files = split_point_cloud_call(
-            input_file=source_laz_file,
-            output_file_template=tile_dir / "axis_#.laz",
-            dimension="PointSourceId",
-            overwrite=overwrite,
-            skip_existing=skip_existing,
-            verbose_int=verbose_int,
-        )
-        all_strip_files = sorted(all_strip_files)
-
-        # Compute the trajectory for each split file
-        for strip_file in all_strip_files:
-            final_trajectory_file = (
-                strip_file.parent / f"{strip_file.stem}-trajectory.txt"
-            )
-            if final_trajectory_file.exists() and skip_existing:
-                logging.info(
-                    f"Trajectory file already exists for {strip_file.name}: {final_trajectory_file}. Skipping trajectory computation due to --skip_existing flag."
-                )
-                continue
-            other_output_file = (
-                strip_file.parent / f"{strip_file.stem}_center_refine.txt"
-            )
-            command_trajectory_file_1 = strip_file.parent / f"{strip_file.stem}_1.txt"
-            command_trajectory_file_2 = strip_file.parent / f"{strip_file.stem}_2.txt"
-            command = ["pixi", "run", "traj-estimation", str(strip_file)]
-            logging.debug(
-                f"Computing trajectory for {strip_file.name} with command:\n{' '.join(command)}"
-            )
-            return_code = run_command_with_tqdm_logging(command)
-            logging.debug(
-                f"Return code for trajectory computation of {strip_file.name}: {return_code}"
-            )
-            if return_code != 0:
-                logging.error(f"Failed to compute trajectory for {strip_file.name}.")
-            else:
-                logging.info(f"Successfully computed trajectory for {strip_file.name}.")
-
-            # Check if the trajectory file was created
-            if not command_trajectory_file_1.exists():
-                logging.error(
-                    f"Trajectory file not found for {strip_file.name}: {command_trajectory_file_1}"
-                )
-
-            # Rename it to match the expected format for the next steps
-            command_trajectory_file_1.rename(final_trajectory_file)
-
-            # Check if there was a second file created
-            if command_trajectory_file_2.exists():
-                logging.error(
-                    f"Second trajectory file found for {strip_file.name}: {command_trajectory_file_2}. This may indicate an issue with the trajectory computation."
-                )
-
-            # Remove the other output file if it exists, since it is not needed
-            if other_output_file.exists():
-                other_output_file.unlink()
-
-        # Check that the intersections of the BD TOPO are available
-        bd_topo_dir = other_data_dir / "bd_topo"
-        edges_file = bd_topo_dir / "edges.parquet"
-        intersections_file = bd_topo_dir / "intersections.parquet"
-        groups_file = bd_topo_dir / "building_groups.parquet"
-        fail = False
-        for file in [edges_file, intersections_file, groups_file]:
-            if not file.exists():
-                logging.error(f"Required BD TOPO file not found: {file}")
-                fail = True
-            else:
-                logging.info(f"Found required BD TOPO file: {file}")
-        if fail:
-            raise FileNotFoundError(
-                "One or more required BD TOPO files are missing. Please ensure they are present in the specified directory."
-            )
-
-        # Crop the BD TOPO data to the bounds of the source .laz file
-        cropped_edges_file = tile_dir / "bd_topo-edges.parquet"
-        cropped_intersections_file = tile_dir / "bd_topo-intersections.parquet"
-        cropped_groups_file = tile_dir / "bd_topo-building_groups.parquet"
-        bounding_box = get_las_bounds(source_laz_file)
-        crop_intersections_files(
-            input_edges_file=edges_file,
-            input_intersections_file=intersections_file,
-            input_building_groups_file=groups_file,
-            output_edges_file=cropped_edges_file,
-            output_intersections_file=cropped_intersections_file,
-            output_building_groups_file=cropped_groups_file,
-            bounding_box=bounding_box,
-            overwrite=overwrite,
-            skip_existing=skip_existing,
-        )
-
-        # Process each .laz file with the C++ pipeline
-        total_files = len(all_strip_files)
-        distances_files = []
-        edges_files = []
-        for index, laz_file in enumerate(all_strip_files, start=1):
-            logging.info(
-                f"\n\nO----- [{index}/{total_files}] Processing tile: {laz_file.name} -----O\n"
-            )
-            distance_file = tile_dir / f"{laz_file.stem}-distances.laz"
-            edge_file = tile_dir / f"{laz_file.stem}-edges.laz"
-            distances_files.append(distance_file)
-            edges_files.append(edge_file)
-
-            if distance_file.exists() and edge_file.exists():
-                if skip_existing:
-                    logging.info(
-                        f"Output files for {laz_file.name} already exist. Skipping processing."
-                    )
-                    continue
-                elif not overwrite:
-                    raise FileExistsError(
-                        f"Output files for {laz_file.name} already exist. Use --overwrite to overwrite them or --skip_existing to skip processing."
-                    )
-
-            command = [
-                "pixi",
-                "run",
-                "--quiet",
-                "cpp",
-                "run-only",
-                "release",
-                "--",
-                "distances_in_order",
-                "-i",
-                str(laz_file),
-                "-t",
-                str(tile_dir / f"{laz_file.stem}-trajectory.txt"),
-                "-d",
-                str(distance_file),
-                "-e",
-                str(edge_file),
-            ]
-
-            if overwrite:
-                command.append("--overwrite")
-
-            logging.debug(
-                f"Processing {laz_file.name} with command: {' '.join(command)}"
-            )
-            return_code = run_command_with_tqdm_logging(command)
-            logging.debug(f"Return code for {laz_file.name}: {return_code}")
-            if return_code != 0:
-                logging.error(f"Failed to process {laz_file.name}.")
-            else:
-                logging.info(f"Successfully processed {laz_file.name}.")
-
-    # After processing all files, merge the distances and edges files into single files
-    logging.info("\n\nO----- Merging files -----O\n")
-
-    merged_distances_file = tile_dir / "merged_distances.laz"
-    merged_edges_file = tile_dir / "merged_edges.laz"
-
-    merge_files(
-        input_files=distances_files,
-        output_file=merged_distances_file,
+    run_pipeline_call(
+        other_data_dir=other_data_dir,
+        tile_dir=tile_dir,
         overwrite=overwrite,
         skip_existing=skip_existing,
+        verbose_int=verbose_int,
+        num_workers=num_workers,
     )
-    merge_files(
-        input_files=edges_files,
-        output_file=merged_edges_file,
-        overwrite=overwrite,
-        skip_existing=skip_existing,
-    )
-
-    # Exit here to skip the roofprint computation for now, since it is not working correctly yet
-    exit(0)
-
-    # Then, compute the roofprints using the merged edges
-    logging.info("\n\nO----- Computing roofprints -----O\n")
-    roofprints_file = tile_dir / "roofprints.parquet"
-    if roofprints_file.exists() and not overwrite:
-        logging.info(
-            f"Roofprints file already exists: {roofprints_file}. Skipping roofprint computation."
-        )
-    else:
-        command = [
-            "pixi",
-            "run",
-            "--quiet",
-            "cpp",
-            "run-only",
-            "release",
-            "--",
-            "compute_roofprints",
-            "-i",
-            str(merged_edges_file),
-            "-b",
-            str(bd_topo_file),
-            "-o",
-            roofprints_file,
-        ]
-
-        if overwrite:
-            command.append("--overwrite")
-
-        logging.debug(
-            f"Running roofprint computation with command: {' '.join(command)}"
-        )
-        return_code = run_command_with_tqdm_logging(command)
-        if return_code != 0:
-            logging.error("Failed to compute roofprints.")
-        else:
-            logging.info("Successfully computed roofprints.")
-
-    logging.info("\n\nPipeline completed.")
 
 
 @app.command(
@@ -770,6 +511,56 @@ def bd_topo_crop_from_las(
 
 
 @app.command(
+    "bd_topo_convert",
+    help="Convert the BD TOPO data from its original format to a parquet file with a geometry column in WKB format.",
+)
+def bd_topo_convert(
+    input_path: Annotated[
+        Path,
+        typer.Option(
+            "-i",
+            "--input_path",
+            help="Path to the input BD TOPO file (e.g., a .gpkg file).",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ],
+    output_path: Annotated[
+        Path,
+        typer.Option(
+            "-o",
+            "--output_path",
+            help="Path to the output parquet file.",
+        ),
+    ],
+    overwrite: Annotated[
+        bool,
+        typer.Option(
+            "--overwrite",
+            help="Whether to overwrite the output file if it already exists.",
+        ),
+    ] = False,
+    skip_existing: Annotated[
+        bool,
+        typer.Option(
+            "--skip_existing",
+            help="Whether to skip processing files that already exist.",
+        ),
+    ] = False,
+    verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
+):
+    convert_bd_topo_to_parquet_call(
+        input_path=input_path,
+        output_path=output_path,
+        overwrite=overwrite,
+        skip_existing=skip_existing,
+        verbose_int=verbose_int,
+    )
+
+
+@app.command(
     "test_logging",
     help="A simple command to test the logging setup with different verbosity levels.",
 )
@@ -778,11 +569,6 @@ def test(verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)
         logging.debug("This is a debug message.")
         logging.info("This is an info message.")
         logging.warning("This is a warning message.")
-        logging.error("This is an error message.")
-
-
-if __name__ == "__main__":
-    app()
         logging.error("This is an error message.")
 
 

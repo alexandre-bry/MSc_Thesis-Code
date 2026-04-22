@@ -6,8 +6,9 @@ import subprocess
 import sys
 import threading
 from enum import Enum
+from multiprocessing import Pool
 from pathlib import Path
-from typing import Annotated, List
+from typing import Annotated, List, Optional, Tuple
 
 import typer
 
@@ -163,142 +164,346 @@ def _check_file_exist(file_path: Path) -> bool:
     return file_exists
 
 
-def run_pipeline(
-    other_data_dir: Path,
-    tile_dir: Path,
-    bd_topo_file: Path,
+def _compute_single_trajectory(args: Tuple[Path, Path, bool, bool]) -> None:
+    """Helper function for multiprocessing trajectory computation."""
+    input_las_path, output_trajectory_path, overwrite, skip_existing = args
+    _compute_trajectory(
+        input_las_path=input_las_path,
+        output_trajectory_path=output_trajectory_path,
+        overwrite=overwrite,
+        skip_existing=skip_existing,
+    )
+
+
+def _process_bd_topo_data(
+    initial_laz_file: Path,
+    input_edges_file: Path,
+    input_intersections_file: Path,
+    input_building_groups_file: Path,
+    output_edges_file: Path,
+    output_intersections_file: Path,
+    output_building_groups_file: Path,
     overwrite: bool,
     skip_existing: bool,
-    verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
-):
-    with LoggingContext(verbose=verbose_int):
-        # Build the C++ tools
-        _build_cpp_tool()
+) -> None:
+    """Process and crop BD TOPO data to match the LiDAR HD bounds.
 
-        # Compute the inward directions
-        initial_laz_file = tile_dir / "lidarhd.copc.laz"
-        source_laz_file = tile_dir / "lidarhd-with_inwards_roof.laz"
-        _compute_inward_direction(
-            input_las_path=initial_laz_file,
-            output_las_path=source_laz_file,
-            overwrite=overwrite,
-            skip_existing=skip_existing,
+    Args:
+        other_data_dir: Directory containing BD TOPO data
+        tile_dir: Output directory for cropped BD TOPO files
+        initial_laz_file: LiDAR HD LAZ file to match bounds
+        overwrite: Whether to overwrite existing files
+        skip_existing: Whether to skip if files exist
+
+    Returns:
+        Tuple of (edges_file, intersections_file, groups_file) paths
+    """
+    logging.info("\n\nProcessing BD TOPO data...")
+
+    # Check that the intersections of the BD TOPO are available
+    fail = False
+    for file_path in [
+        input_edges_file,
+        input_intersections_file,
+        input_building_groups_file,
+    ]:
+        file_exists = _check_file_exist(file_path=file_path)
+        fail = fail or not file_exists
+    if fail:
+        raise FileNotFoundError(
+            "One or more required BD TOPO files are missing. Please ensure they are present in the specified directory."
         )
 
-        # Split the source .laz file into multiple files based on the "PointSourceId" attribute
-        all_flight_strip_files = _split_source_point_cloud(
-            input_las_path=source_laz_file,
-            output_template_path=tile_dir / "axis_#.laz",
-            overwrite=overwrite,
-            skip_existing=skip_existing,
+    # Crop the BD TOPO data to the bounds of the source .laz file
+    bounding_box = get_las_bounds(initial_laz_file)
+    crop_intersections_files(
+        input_edges_file=input_edges_file,
+        input_intersections_file=input_intersections_file,
+        input_building_groups_file=input_building_groups_file,
+        output_edges_file=output_edges_file,
+        output_intersections_file=output_intersections_file,
+        output_building_groups_file=output_building_groups_file,
+        bounding_box=bounding_box,
+        overwrite=overwrite,
+        skip_existing=skip_existing,
+    )
+
+
+def _process_lidar_hd_data(
+    initial_laz_file: Path,
+    laz_with_inwards_roof_file: Path,
+    template_flight_strip_file: Path,
+    overwrite: bool,
+    skip_existing: bool,
+) -> List[Path]:
+    """Process LiDAR HD data: compute inward directions and split by flight strips.
+
+    Args:
+        initial_laz_file: Input LiDAR HD LAZ file
+        laz_with_inwards_roof_file: Output file for LAZ with inward directions
+        template_flight_strip_file: Template file for flight strip splitting
+        overwrite: Whether to overwrite existing files
+        skip_existing: Whether to skip if files exist
+
+    Returns:
+        List of sorted flight strip LAZ file paths
+    """
+    logging.info("Processing LiDAR HD data...")
+
+    # Compute the inward directions
+    _compute_inward_direction(
+        input_las_path=initial_laz_file,
+        output_las_path=laz_with_inwards_roof_file,
+        overwrite=overwrite,
+        skip_existing=skip_existing,
+    )
+
+    # Split the source .laz file into multiple files based on the "PointSourceId" attribute
+    all_flight_strip_files = _split_source_point_cloud(
+        input_las_path=laz_with_inwards_roof_file,
+        output_template_path=template_flight_strip_file,
+        overwrite=overwrite,
+        skip_existing=skip_existing,
+    )
+
+    return sorted(all_flight_strip_files)
+
+
+def _compute_trajectories_parallel(
+    flight_strip_files: List[Path],
+    trajectory_files: List[Path],
+    overwrite: bool,
+    skip_existing: bool,
+    num_workers: Optional[int] = None,
+) -> None:
+    """Compute trajectories for all flight strips in parallel.
+
+    Args:
+        flight_strip_files: List of flight strip LAZ file paths
+        trajectory_files: List of trajectory file paths
+        overwrite: Whether to overwrite existing files
+        skip_existing: Whether to skip if files exist
+        num_workers: Number of worker processes (None = CPU count)
+    """
+    logging.info(
+        f"Computing trajectories for {len(flight_strip_files)} flight strips in parallel..."
+    )
+
+    # Prepare arguments for multiprocessing
+    trajectory_args = [
+        (
+            laz_file,
+            trajectory_file,
+            overwrite,
+            skip_existing,
         )
-        all_flight_strip_files = sorted(all_flight_strip_files)
+        for laz_file, trajectory_file in zip(flight_strip_files, trajectory_files)
+    ]
 
-        # Compute the trajectory for each split file
-        for flight_strip_file in all_flight_strip_files:
-            # We cannot chose the path of the output with the code we use, so this cannot be changed
-            final_trajectory_file = (
-                flight_strip_file.parent / f"{flight_strip_file.stem}-trajectory.txt"
-            )
-            _compute_trajectory(
-                input_las_path=flight_strip_file,
-                output_trajectory_path=final_trajectory_file,
-                overwrite=overwrite,
-                skip_existing=skip_existing,
-            )
+    # Use multiprocessing pool to compute trajectories in parallel
+    with Pool(processes=num_workers) as pool:
+        pool.map(_compute_single_trajectory, trajectory_args)
 
-        # Check that the intersections of the BD TOPO are available
-        bd_topo_dir = other_data_dir / "bd_topo"
-        edges_file = bd_topo_dir / "edges.parquet"
-        intersections_file = bd_topo_dir / "intersections.parquet"
-        groups_file = bd_topo_dir / "building_groups.parquet"
-        fail = False
-        for file_path in [edges_file, intersections_file, groups_file]:
-            file_exists = _check_file_exist(file_path=file_path)
-            fail = fail or not file_exists
-        if fail:
-            raise FileNotFoundError(
-                "One or more required BD TOPO files are missing. Please ensure they are present in the specified directory."
-            )
+    logging.info("Trajectory computation completed.")
 
-        # Crop the BD TOPO data to the bounds of the source .laz file
-        cropped_edges_file = tile_dir / "bd_topo-edges.parquet"
-        cropped_intersections_file = tile_dir / "bd_topo-intersections.parquet"
-        cropped_groups_file = tile_dir / "bd_topo-building_groups.parquet"
-        bounding_box = get_las_bounds(source_laz_file)
-        crop_intersections_files(
-            input_edges_file=edges_file,
-            input_intersections_file=intersections_file,
-            input_building_groups_file=groups_file,
-            output_edges_file=cropped_edges_file,
-            output_intersections_file=cropped_intersections_file,
-            output_building_groups_file=cropped_groups_file,
-            bounding_box=bounding_box,
-            overwrite=overwrite,
-            skip_existing=skip_existing,
-        )
 
-        # Process each .laz file with the C++ pipeline
-        total_files = len(all_flight_strip_files)
-        distances_files = []
-        edges_files = []
-        for index, laz_file in enumerate(all_flight_strip_files, start=1):
+def _compute_distances_and_edges(
+    laz_file: Path,
+    trajectory_file: Path,
+    distance_file: Path,
+    edge_file: Path,
+    overwrite: bool,
+    skip_existing: bool,
+) -> None:
+    """
+    _summary_
+
+    Parameters
+    ----------
+    laz_file : Path
+        _description_
+    trajectory_file : Path
+        _description_
+    distance_file : Path
+        _description_
+    edge_file : Path
+        _description_
+    overwrite : bool
+        _description_
+    skip_existing : bool
+        _description_
+    """
+
+    output_files = [distance_file, edge_file]
+    existing_files = []
+    for file_path in output_files:
+        if file_path.exists():
+            existing_files.append(file_path)
+    if skip_existing:
+        if len(existing_files) == len(output_files):
             logging.info(
-                f"\n\nO----- [{index}/{total_files}] Processing tile: {laz_file.name} -----O\n"
+                f"Output files for {laz_file.name} already exist. Skipping processing."
             )
-            distance_file = tile_dir / f"{laz_file.stem}-distances.laz"
-            edge_file = tile_dir / f"{laz_file.stem}-edges.laz"
-            distances_files.append(distance_file)
-            edges_files.append(edge_file)
-
-            if distance_file.exists() and edge_file.exists():
-                if skip_existing:
-                    logging.info(
-                        f"Output files for {laz_file.name} already exist. Skipping processing."
-                    )
-                    continue
-                elif not overwrite:
-                    raise FileExistsError(
-                        f"Output files for {laz_file.name} already exist. Use --overwrite to overwrite them or --skip_existing to skip processing."
-                    )
-
-            command = [
-                "pixi",
-                "run",
-                "--quiet",
-                "cpp",
-                "run-only",
-                "release",
-                "--",
-                "distances_in_order",
-                "-i",
-                str(laz_file),
-                "-t",
-                str(tile_dir / f"{laz_file.stem}-trajectory.txt"),
-                "-d",
-                str(distance_file),
-                "-e",
-                str(edge_file),
-            ]
-
-            if overwrite:
-                command.append("--overwrite")
-
-            logging.debug(
-                f"Processing {laz_file.name} with command: {' '.join(command)}"
+            return
+        if len(existing_files) > 0:
+            logging.error(
+                f"Only some of the expected output files already exist for {laz_file.name}: {', '.join(str(f) for f in existing_files)}. This likely means that a previous run of the pipeline was interrupted. Please check the existing files and either remove them or use --overwrite to overwrite them."
             )
-            return_code = run_command_with_tqdm_logging(command)
-            logging.debug(f"Return code for {laz_file.name}: {return_code}")
-            if return_code != 0:
-                logging.error(f"Failed to process {laz_file.name}.")
-            else:
-                logging.info(f"Successfully processed {laz_file.name}.")
+    if overwrite:
+        if len(existing_files) > 0:
+            logging.info(
+                f"Overwriting existing files for {laz_file.name}: {', '.join(str(f) for f in existing_files)}."
+            )
 
-    # After processing all files, merge the distances and edges files into single files
+    command = [
+        "pixi",
+        "run",
+        "--quiet",
+        "cpp",
+        "run-only",
+        "release",
+        "--",
+        "distances_in_order",
+        "-i",
+        str(laz_file),
+        "-t",
+        str(trajectory_file),
+        "-d",
+        str(distance_file),
+        "-e",
+        str(edge_file),
+    ]
+
+    if overwrite:
+        command.append("--overwrite")
+
+    return_code = run_command_with_tqdm_logging(command)
+    if return_code != 0:
+        logging.error(f"Failed to process {laz_file.name}.")
+    else:
+        logging.info(f"Successfully processed {laz_file.name}.")
+
+
+def _compute_distances_and_edges_single(
+    args: Tuple[Path, Path, Path, Path, int, int, bool, bool],
+) -> Tuple[Path, Path]:
+    """Helper function for processing a single file with C++ pipeline.
+
+    Parameters
+    ----------
+    args : Tuple[Path, Path, Path, Path, int, int, bool, bool]
+        laz_file, trajectory_file, distance_file, edge_file, index, total_files, overwrite, skip_existing
+    """
+    (
+        laz_file,
+        trajectory_file,
+        distance_file,
+        edge_file,
+        index,
+        total_files,
+        overwrite,
+        skip_existing,
+    ) = args
+
+    logging.info(
+        f"\n\nO----- [{index}/{total_files}] Processing tile: {laz_file.name} -----O\n"
+    )
+
+    _compute_distances_and_edges(
+        laz_file=laz_file,
+        trajectory_file=trajectory_file,
+        distance_file=distance_file,
+        edge_file=edge_file,
+        overwrite=overwrite,
+        skip_existing=skip_existing,
+    )
+
+    return distance_file, edge_file
+
+
+def _compute_distances_and_edges_parallel(
+    flight_strip_files: List[Path],
+    trajectory_files: List[Path],
+    distances_files: List[Path],
+    edges_files: List[Path],
+    overwrite: bool,
+    skip_existing: bool,
+    num_workers: Optional[int] = None,
+) -> Tuple[List[Path], List[Path]]:
+    """Process all flight strips with C++ pipeline in parallel.
+
+    Args:
+        flight_strip_files: List of flight strip LAZ file paths
+        tile_dir: Output directory
+        overwrite: Whether to overwrite existing files
+        skip_existing: Whether to skip if files exist
+        num_workers: Number of worker processes (None = CPU count)
+
+    Returns:
+        Tuple of (distances_files, edges_files) lists
+    """
+    logging.info(
+        f"Processing {len(flight_strip_files)} flight strips with C++ pipeline in parallel..."
+    )
+
+    total_files = len(flight_strip_files)
+
+    # Prepare arguments for multiprocessing
+    cpp_args = [
+        (
+            laz_file,
+            trajectory_file,
+            distance_file,
+            edge_file,
+            index,
+            total_files,
+            overwrite,
+            skip_existing,
+        )
+        for index, (laz_file, trajectory_file, distance_file, edge_file) in enumerate(
+            zip(flight_strip_files, trajectory_files, distances_files, edges_files),
+            start=1,
+        )
+    ]
+
+    # Use multiprocessing pool to process files in parallel
+    with Pool(processes=num_workers) as pool:
+        results = pool.map(_compute_distances_and_edges_single, cpp_args)
+
+    # Separate the results into distances and edges files
+    distances_files = [result[0] for result in results]
+    edges_files = [result[1] for result in results]
+
+    logging.info("C++ pipeline processing completed.")
+    return distances_files, edges_files
+
+
+def _merge_output_files(
+    distances_files: List[Path],
+    edges_files: List[Path],
+    merged_distances_file: Path,
+    merged_edges_file: Path,
+    overwrite: bool,
+    skip_existing: bool,
+) -> None:
+    """Merge distances and edges files from all flight strips.
+
+    Parameters
+    ----------
+    distances_files : List[Path]
+        List of distances LAZ files to merge.
+    edges_files : List[Path]
+        List of edges LAZ files to merge.
+    merged_distances_file : Path
+        Output path for merged distances LAZ file.
+    merged_edges_file : Path
+        Output path for merged edges LAZ file.
+    overwrite : bool
+        Whether to overwrite existing merged files.
+    skip_existing : bool
+        Whether to skip merging if merged files already exist.
+    """
     logging.info("\n\nO----- Merging files -----O\n")
-
-    merged_distances_file = tile_dir / "merged_distances.laz"
-    merged_edges_file = tile_dir / "merged_edges.laz"
 
     merge_files(
         input_files=distances_files,
@@ -313,44 +518,228 @@ def run_pipeline(
         skip_existing=skip_existing,
     )
 
-    # Exit here to skip the roofprint computation for now, since it is not working correctly yet
-    exit(0)
+    logging.info("File merging completed.")
 
-    # Then, compute the roofprints using the merged edges
+
+def _compute_roofprints(
+    merged_edges_file: Path,
+    bd_topo_edges_file: Path,
+    bd_topo_intersections_file: Path,
+    output_roofprints_file: Path,
+    max_iterations: int,
+    overwrite: bool,
+    skip_existing: bool,
+) -> None:
+    """Compute roofprints from merged edges and BD TOPO data.
+
+    Parameters
+    ----------
+    merged_edges_file : Path
+        Path to merged edges LAZ file.
+    bd_topo_edges_file : Path
+        Path to cropped BD TOPO edges Parquet file.
+    bd_topo_intersections_file : Path
+        Path to cropped BD TOPO intersections Parquet file.
+    output_roofprints_file : Path
+        Output path for roofprints file.
+    max_iterations : int
+        Maximum number of iterations for roofprint computation.
+    overwrite : bool
+        Whether to overwrite existing roofprints file.
+    skip_existing : bool
+        Whether to skip computation if roofprints file already exists.
+    """
     logging.info("\n\nO----- Computing roofprints -----O\n")
-    roofprints_file = tile_dir / "roofprints.parquet"
-    if roofprints_file.exists() and not overwrite:
-        logging.info(
-            f"Roofprints file already exists: {roofprints_file}. Skipping roofprint computation."
-        )
-    else:
-        command = [
-            "pixi",
-            "run",
-            "--quiet",
-            "cpp",
-            "run-only",
-            "release",
-            "--",
-            "compute_roofprints",
-            "-i",
-            str(merged_edges_file),
-            "-b",
-            str(bd_topo_file),
-            "-o",
-            roofprints_file,
-        ]
 
+    if output_roofprints_file.exists():
+        if skip_existing:
+            logging.info(f"{output_roofprints_file} already exists. Skipping.")
+            return
         if overwrite:
-            command.append("--overwrite")
-
-        logging.debug(
-            f"Running roofprint computation with command: {' '.join(command)}"
-        )
-        return_code = run_command_with_tqdm_logging(command)
-        if return_code != 0:
-            logging.error("Failed to compute roofprints.")
+            logging.info(f"Overwriting {output_roofprints_file}.")
         else:
-            logging.info("Successfully computed roofprints.")
+            raise FileExistsError(
+                f"{output_roofprints_file} already exists. Use --overwrite to overwrite it or --skip_existing to skip creating it."
+            )
 
-    logging.info("\n\nPipeline completed.")
+    command = [
+        "pixi",
+        "run",
+        "--quiet",
+        "cpp",
+        "run-only",
+        "release",
+        "--",
+        "compute_roofprints",
+        "-l",
+        str(merged_edges_file),
+        "-e",
+        str(bd_topo_edges_file),
+        "-i",
+        str(bd_topo_intersections_file),
+        "-n",
+        str(max_iterations),
+        "-o",
+        str(output_roofprints_file),
+    ]
+
+    if overwrite:
+        command.append("--overwrite")
+
+    return_code = run_command_with_tqdm_logging(command)
+    if return_code != 0:
+        logging.error("Failed to compute roofprints.")
+    else:
+        logging.info("Successfully computed roofprints.")
+
+
+def run_pipeline_implementation(
+    other_data_dir: Path,
+    tile_dir: Path,
+    overwrite: bool,
+    skip_existing: bool,
+    num_workers: Optional[int],
+):
+    """Execute the complete pipeline to compute roofprints from LiDAR HD data.
+
+    Args:
+        other_data_dir: Directory containing BD TOPO data
+        tile_dir: Working directory for intermediate and output files
+        bd_topo_file: Path to BD TOPO shapefile
+        overwrite: Whether to overwrite existing files
+        skip_existing: Whether to skip processing if output files exist
+        num_workers: Number of worker processes for multiprocessing (None = CPU count)
+    """
+    initial_laz_file = tile_dir / "lidarhd.copc.laz"
+
+    # Build the C++ tools
+    _build_cpp_tool()
+
+    # -------------------------------------------------------------------- #
+    #                                BD TOPO                               #
+    # -------------------------------------------------------------------- #
+
+    bd_topo_dir = other_data_dir / "bd_topo"
+    edges_file = bd_topo_dir / "edges.parquet"
+    intersections_file = bd_topo_dir / "intersections.parquet"
+    groups_file = bd_topo_dir / "building_groups.parquet"
+    cropped_edges_file = tile_dir / "bd_topo-edges.parquet"
+    cropped_intersections_file = tile_dir / "bd_topo-intersections.parquet"
+    cropped_groups_file = tile_dir / "bd_topo-building_groups.parquet"
+
+    _process_bd_topo_data(
+        initial_laz_file=initial_laz_file,
+        input_edges_file=edges_file,
+        input_intersections_file=intersections_file,
+        input_building_groups_file=groups_file,
+        output_edges_file=cropped_edges_file,
+        output_intersections_file=cropped_intersections_file,
+        output_building_groups_file=cropped_groups_file,
+        overwrite=overwrite,
+        skip_existing=skip_existing,
+    )
+
+    # -------------------------------------------------------------------- #
+    #                               LiDAR HD                               #
+    # -------------------------------------------------------------------- #
+
+    # Process LiDAR HD: compute inward directions and split by flight strips
+    las_with_inwards_roof_file = tile_dir / "lidarhd-with_inwards_roof.laz"
+    template_flight_strip_file = tile_dir / "axis_#.laz"
+
+    all_flight_strip_files = _process_lidar_hd_data(
+        initial_laz_file=initial_laz_file,
+        laz_with_inwards_roof_file=las_with_inwards_roof_file,
+        template_flight_strip_file=template_flight_strip_file,
+        overwrite=overwrite,
+        skip_existing=skip_existing,
+    )
+
+    # Compute trajectories in parallel
+    trajectory_files = [
+        tile_dir / f"{laz_file.stem}-trajectory.txt"
+        for laz_file in all_flight_strip_files
+    ]
+    _compute_trajectories_parallel(
+        flight_strip_files=all_flight_strip_files,
+        trajectory_files=trajectory_files,
+        overwrite=overwrite,
+        skip_existing=skip_existing,
+        num_workers=num_workers,
+    )
+
+    # Process flight strips with C++ pipeline in parallel
+    distances_files = [
+        tile_dir / f"{laz_file.stem}-distances.laz"
+        for laz_file in all_flight_strip_files
+    ]
+    edges_files = [
+        tile_dir / f"{laz_file.stem}-edges.laz" for laz_file in all_flight_strip_files
+    ]
+    _compute_distances_and_edges_parallel(
+        flight_strip_files=all_flight_strip_files,
+        trajectory_files=trajectory_files,
+        distances_files=distances_files,
+        edges_files=edges_files,
+        overwrite=overwrite,
+        skip_existing=skip_existing,
+        num_workers=num_workers,
+    )
+
+    # Merge output files
+    merged_distances_file = tile_dir / "merged_distances.laz"
+    merged_edges_file = tile_dir / "merged_edges.laz"
+    _merge_output_files(
+        distances_files=distances_files,
+        edges_files=edges_files,
+        merged_distances_file=merged_distances_file,
+        merged_edges_file=merged_edges_file,
+        overwrite=overwrite,
+        skip_existing=skip_existing,
+    )
+
+    # -------------------------------------------------------------------- #
+    #                              Roofprints                              #
+    # -------------------------------------------------------------------- #
+
+    roofprints_file = tile_dir / "roofprints.parquet"
+    _compute_roofprints(
+        merged_edges_file=merged_edges_file,
+        bd_topo_edges_file=cropped_edges_file,
+        bd_topo_intersections_file=cropped_intersections_file,
+        output_roofprints_file=roofprints_file,
+        max_iterations=1,
+        overwrite=overwrite,
+        skip_existing=skip_existing,
+    )
+
+    logging.info("\n\nPipeline completed successfully.")
+
+
+def run_pipeline_call(
+    other_data_dir: Path,
+    tile_dir: Path,
+    overwrite: bool,
+    skip_existing: bool,
+    verbose_int: int,
+    num_workers: Optional[int],
+):
+    """Execute the complete pipeline to compute roofprints from LiDAR HD data.
+
+    Args:
+        other_data_dir: Directory containing BD TOPO data
+        tile_dir: Working directory for intermediate and output files
+        bd_topo_file: Path to BD TOPO shapefile
+        overwrite: Whether to overwrite existing files
+        skip_existing: Whether to skip processing if output files exist
+        verbose_int: Verbosity level (0-4)
+        num_workers: Number of worker processes for multiprocessing (None = CPU count)
+    """
+    with LoggingContext(verbose=verbose_int):
+        run_pipeline_implementation(
+            other_data_dir=other_data_dir,
+            tile_dir=tile_dir,
+            overwrite=overwrite,
+            skip_existing=skip_existing,
+            num_workers=num_workers,
+        )

@@ -1,6 +1,5 @@
 #include "distances.hpp"
 
-#include <CGAL/Origin.h>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -384,6 +383,14 @@ void compute_inward_directions(const std::string &input_points_file,
     pbar_add_dims.finish();
 
     /* ------------------------- Process the points ------------------------- */
+
+    if (type == "roof") {
+        storage_ptr->build_kd_tree_3d();
+    } else if (type == "facade") {
+        storage_ptr->build_kd_tree_2d();
+    } else {
+        throw std::runtime_error("Invalid inward direction type: " + type);
+    }
 
     // Cache the ground point mask if needed for the façade inward direction
     std::vector<bool> ground_point_mask;

@@ -102,7 +102,23 @@ class LoggingContext:
         self._redirector.__exit__(exc_type, exc_val, exc_tb)
 
 
-def run_command_with_tqdm_logging(command: list[str]) -> int:
+def run_command_with_tqdm_logging(command: list[str], display: bool = True) -> int:
+    """
+    Run a command and handle logging its standard output and standard error properly.
+
+    Parameters
+    ----------
+    command : list[str]
+        The command to run.
+    display : bool, optional
+        Whether to display the command output.
+        By default False.
+
+    Returns
+    -------
+    int
+        _description_
+    """
     logging.debug(f"Running this command: {" ".join(command)}")
     env = os.environ.copy()
     env.setdefault("PY_COLORS", "1")
@@ -111,36 +127,47 @@ def run_command_with_tqdm_logging(command: list[str]) -> int:
     env.setdefault("TERM", "xterm-256color")
 
     if os.name == "posix":
-        master_fd, slave_fd = pty.openpty()
-        try:
+        if display:
+            parent_fd, child_fd = pty.openpty()
+            try:
+                process = subprocess.Popen(
+                    command,
+                    stdout=child_fd,
+                    stderr=child_fd,
+                    text=False,
+                    env=env,
+                )
+            finally:
+                os.close(child_fd)
+
+            try:
+                while True:
+                    try:
+                        chunk = os.read(parent_fd, 4096)
+                    except OSError:
+                        break
+
+                    if not chunk:
+                        break
+
+                    sys.stdout.buffer.write(chunk)
+                    sys.stdout.buffer.flush()
+            finally:
+                os.close(parent_fd)
+
+        else:
             process = subprocess.Popen(
                 command,
-                stdout=slave_fd,
-                stderr=slave_fd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=False,
                 env=env,
             )
-        finally:
-            os.close(slave_fd)
-
-        try:
-            while True:
-                try:
-                    chunk = os.read(master_fd, 4096)
-                except OSError:
-                    break
-
-                if not chunk:
-                    break
-
-                sys.stdout.buffer.write(chunk)
-                sys.stdout.buffer.flush()
-        finally:
-            os.close(master_fd)
 
         return_code = process.wait()
         logging.debug(f"Return code for {" ".join(command)}: {return_code}")
         return return_code
+
     else:
         process = subprocess.Popen(
             command,
