@@ -11,6 +11,7 @@ from typing import Dict, List
 from pdal import Filter, Pipeline, Reader, Writer
 from tqdm import tqdm
 
+from ..utils.custom_logging import LoggingContext
 from ..utils.utils import Box2154, Point2154
 
 
@@ -128,7 +129,7 @@ def merge_files(
     pdal_pipeline.execute()
 
 
-def split_file(
+def split_point_cloud_implementation(
     input_file: Path,
     output_file_template: Path,
     dimension: str,
@@ -263,3 +264,25 @@ def identity_convert(input_file: Path, output_file: Path, overwrite: bool) -> No
 
     pipeline = Pipeline([reader, writer])
     pipeline.execute()
+
+
+def split_point_cloud_call(
+    input_file: Path,
+    output_file_template: Path,
+    dimension: str,
+    overwrite: bool,
+    skip_existing: bool,
+    verbose_int: int,
+):
+    with LoggingContext(verbose=verbose_int):
+        output_file_template.parent.mkdir(parents=True, exist_ok=True)
+
+        all_output_files = split_point_cloud_implementation(
+            input_file=input_file,
+            output_file_template=output_file_template,
+            dimension=dimension,
+            overwrite=overwrite,
+            skip_existing=skip_existing,
+        )
+
+    return all_output_files

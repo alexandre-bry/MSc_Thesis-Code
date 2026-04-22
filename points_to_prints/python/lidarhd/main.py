@@ -1,112 +1,33 @@
 import asyncio
 import logging
-import os
-import pty
-import re
-import subprocess
-import sys
-import threading
 from enum import Enum
 from pathlib import Path
 from typing import Annotated, List
 
 import typer
 
-from ..utils.custom_logging import LoggingContext
+from ..utils.custom_logging import LoggingContext, run_command_with_tqdm_logging
 from .bd_topo_crop import crop_parquet_from_las
 from .bd_topo_intersections import (
     compute_export_intersections,
     crop_intersections_files,
 )
 from .download import download_lidar_hd_data
-from .las_manipulations import get_las_bounds, identity_convert, merge_files, split_file
+from .las_manipulations import (
+    get_las_bounds,
+    identity_convert,
+    merge_files,
+    split_point_cloud_call,
+)
 
 app = typer.Typer()
-
-
-def run_command_with_tqdm_logging(command: list[str]) -> int:
-    env = os.environ.copy()
-    env.setdefault("PY_COLORS", "1")
-    env.setdefault("CLICOLOR_FORCE", "1")
-    env.setdefault("FORCE_COLOR", "1")
-    env.setdefault("TERM", "xterm-256color")
-
-    if os.name == "posix":
-        master_fd, slave_fd = pty.openpty()
-        try:
-            process = subprocess.Popen(
-                command,
-                stdout=slave_fd,
-                stderr=slave_fd,
-                text=False,
-                env=env,
-            )
-        finally:
-            os.close(slave_fd)
-
-        try:
-            while True:
-                try:
-                    chunk = os.read(master_fd, 4096)
-                except OSError:
-                    break
-
-                if not chunk:
-                    break
-
-                sys.stdout.buffer.write(chunk)
-                sys.stdout.buffer.flush()
-        finally:
-            os.close(master_fd)
-
-        return process.wait()
-
-    process = subprocess.Popen(
-        command,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=False,
-        bufsize=0,
-        env=env,
-    )
-
-    def _forward_stream(stream, target_buffer):
-        if stream is None:
-            return
-
-        try:
-            while True:
-                chunk = stream.read(4096)
-                if not chunk:
-                    break
-                target_buffer.write(chunk)
-                target_buffer.flush()
-        finally:
-            stream.close()
-
-    stdout_thread = threading.Thread(
-        target=_forward_stream, args=(process.stdout, sys.stdout.buffer), daemon=True
-    )
-    stderr_thread = threading.Thread(
-        target=_forward_stream,
-        args=(process.stderr, sys.stderr.buffer),
-        daemon=True,
-    )
-
-    stdout_thread.start()
-    stderr_thread.start()
-
-    return_code = process.wait()
-    stdout_thread.join()
-    stderr_thread.join()
-    return return_code
 
 
 @app.command(
     "split_las",
     help="Split a .laz file into one file for each value of a specified dimension.",
 )
-def split_las(
+def split_point_cloud_command(
     input_file: Annotated[
         Path,
         typer.Option(
@@ -135,14 +56,6 @@ def split_las(
             help="The dimension to split by (e.g., 'Classification').",
         ),
     ],
-    # use_value_in_filename: Annotated[
-    #     bool,
-    #     typer.Option(
-    #         "-n",
-    #         "--name_with_value",
-    #         help="Whether to include the dimension value in the output filename.",
-    #     ),
-    # ] = False,
     overwrite: Annotated[
         bool,
         typer.Option(
@@ -159,18 +72,14 @@ def split_las(
     ] = False,
     verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
 ):
-    with LoggingContext(verbose=verbose_int):
-        output_file_template.parent.mkdir(parents=True, exist_ok=True)
-
-        all_output_files = split_file(
-            input_file=input_file,
-            output_file_template=output_file_template,
-            dimension=dimension,
-            overwrite=overwrite,
-            skip_existing=skip_existing,
-        )
-
-    return all_output_files
+    split_point_cloud_call(
+        input_file=input_file,
+        output_file_template=output_file_template,
+        dimension=dimension,
+        overwrite=overwrite,
+        skip_existing=skip_existing,
+        verbose_int=verbose_int
+    )
 
 
 @app.command("merge_las", help="Merge multiple .laz files into a single .laz file.")
@@ -380,7 +289,7 @@ def run_pipeline(
                 logging.info(f"Successfully created {source_laz_file}.")
 
         # Split the source .laz file into multiple files based on the "PointSourceId" attribute
-        all_strip_files = split_las(
+        all_strip_files = split_point_cloud_call(
             input_file=source_laz_file,
             output_file_template=tile_dir / "axis_#.laz",
             dimension="PointSourceId",
@@ -869,6 +778,11 @@ def test(verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)
         logging.debug("This is a debug message.")
         logging.info("This is an info message.")
         logging.warning("This is a warning message.")
+        logging.error("This is an error message.")
+
+
+if __name__ == "__main__":
+    app()
         logging.error("This is an error message.")
 
 

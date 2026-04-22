@@ -1,5 +1,9 @@
 import logging
+import os
+import pty
+import subprocess
 import sys
+import threading
 from enum import Enum
 
 from tqdm.contrib.logging import logging_redirect_tqdm
@@ -96,3 +100,86 @@ class LoggingContext:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self._redirector.__exit__(exc_type, exc_val, exc_tb)
+
+
+def run_command_with_tqdm_logging(command: list[str]) -> int:
+    logging.debug(f"Running this command: {" ".join(command)}")
+    env = os.environ.copy()
+    env.setdefault("PY_COLORS", "1")
+    env.setdefault("CLICOLOR_FORCE", "1")
+    env.setdefault("FORCE_COLOR", "1")
+    env.setdefault("TERM", "xterm-256color")
+
+    if os.name == "posix":
+        master_fd, slave_fd = pty.openpty()
+        try:
+            process = subprocess.Popen(
+                command,
+                stdout=slave_fd,
+                stderr=slave_fd,
+                text=False,
+                env=env,
+            )
+        finally:
+            os.close(slave_fd)
+
+        try:
+            while True:
+                try:
+                    chunk = os.read(master_fd, 4096)
+                except OSError:
+                    break
+
+                if not chunk:
+                    break
+
+                sys.stdout.buffer.write(chunk)
+                sys.stdout.buffer.flush()
+        finally:
+            os.close(master_fd)
+
+        return_code = process.wait()
+        logging.debug(f"Return code for {" ".join(command)}: {return_code}")
+        return return_code
+    else:
+        process = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=False,
+            bufsize=0,
+            env=env,
+        )
+
+        def _forward_stream(stream, target_buffer):
+            if stream is None:
+                return
+
+            try:
+                while True:
+                    chunk = stream.read(4096)
+                    if not chunk:
+                        break
+                    target_buffer.write(chunk)
+                    target_buffer.flush()
+            finally:
+                stream.close()
+
+        stdout_thread = threading.Thread(
+            target=_forward_stream,
+            args=(process.stdout, sys.stdout.buffer),
+            daemon=True,
+        )
+        stderr_thread = threading.Thread(
+            target=_forward_stream,
+            args=(process.stderr, sys.stderr.buffer),
+            daemon=True,
+        )
+
+        stdout_thread.start()
+        stderr_thread.start()
+
+        return_code = process.wait()
+        stdout_thread.join()
+        stderr_thread.join()
+        return return_code
