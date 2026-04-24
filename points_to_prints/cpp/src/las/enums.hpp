@@ -105,16 +105,13 @@ enum class Id {
     SurfaceVariation,
     Verticality,
     Horizontality,
-    DownSignedVertGap,
-    UpSignedVertGap,
-    VerticalGain,
+    MaxVerticalDiff,
+    MinVerticalDiff,
     RoofLikelihood,
     IsRoofEdge,
     IsFootEdge,
     IsFacade,
     IsGenerated,
-    AngleRayPrev,
-    AngleRayNext,
 };
 inline std::string name(Id id) {
     switch (id) {
@@ -152,12 +149,10 @@ inline std::string name(Id id) {
         return "Verticality";
     case Id::Horizontality:
         return "Horizontality";
-    case Id::DownSignedVertGap:
-        return "DownSignedVertGap";
-    case Id::UpSignedVertGap:
-        return "UpSignedVertGap";
-    case Id::VerticalGain:
-        return "VerticalGain";
+    case Id::MaxVerticalDiff:
+        return "MaxVerticalDiff";
+    case Id::MinVerticalDiff:
+        return "MinVerticalDiff";
     case Id::RoofLikelihood:
         return "RoofLikelihood";
     case Id::IsRoofEdge:
@@ -168,10 +163,6 @@ inline std::string name(Id id) {
         return "IsFacade";
     case Id::IsGenerated:
         return "IsGenerated";
-    case Id::AngleRayPrev:
-        return "AngleRayPrev";
-    case Id::AngleRayNext:
-        return "AngleRayNext";
     default:
         throw std::runtime_error("Unknown custom dimension ID");
     }
@@ -213,11 +204,9 @@ inline pdal::Dimension::Type type(Id id) {
         return pdal::Dimension::Type::Double;
     case Id::Horizontality:
         return pdal::Dimension::Type::Double;
-    case Id::DownSignedVertGap:
+    case Id::MaxVerticalDiff:
         return pdal::Dimension::Type::Double;
-    case Id::UpSignedVertGap:
-        return pdal::Dimension::Type::Double;
-    case Id::VerticalGain:
+    case Id::MinVerticalDiff:
         return pdal::Dimension::Type::Double;
     case Id::RoofLikelihood:
         return pdal::Dimension::Type::Unsigned8;
@@ -229,10 +218,6 @@ inline pdal::Dimension::Type type(Id id) {
         return pdal::Dimension::Type::Unsigned8;
     case Id::IsFacade:
         return pdal::Dimension::Type::Unsigned8;
-    case Id::AngleRayPrev:
-        return pdal::Dimension::Type::Double;
-    case Id::AngleRayNext:
-        return pdal::Dimension::Type::Double;
     default:
         throw std::runtime_error("Unknown custom dimension ID");
     }

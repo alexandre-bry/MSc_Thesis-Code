@@ -596,7 +596,8 @@ struct Ray3D {
     Ray3D(const Point_3 &origin_, double gps_time_,
           uint8_t scan_direction_flag_, double scan_angle_,
           const std::vector<PointId> &point_ids_,
-          const std::vector<int> &return_numbers);
+          const std::vector<int> &return_numbers,
+          const std::vector<double> &z_values);
 
     bool empty() const { return return_number_to_point_id.empty(); }
     std::size_t size() const { return return_number_to_point_id.size(); }

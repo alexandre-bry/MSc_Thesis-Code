@@ -8,6 +8,7 @@
 #include "las_filter.hpp"
 #include "parquet.hpp"
 #include "pca.hpp"
+#include "roofprints/transfer_3d.hpp"
 
 void setup_sort_by_gps_time(CLI::App &app) {
     auto opt = std::make_shared<SortByGpsTimeOptions>();
@@ -205,6 +206,35 @@ void setup_add_inward_directions(CLI::App &app) {
     });
 }
 
+void setup_add_roofprints_to_3d(CLI::App &app) {
+    auto opt = std::make_shared<RooprintsTo3DOptions>();
+
+    CLI::App *sub =
+        app.add_subcommand("roofprints_to_3d", "Convert roofprints to 3D");
+    sub->add_option("-i,--input", opt->input_roofprints_file,
+                    "Input Parquet file with roofprints")
+        ->required();
+    sub->add_option("-e,--edge-points", opt->edge_points_file,
+                    "Input LAS file with edge points")
+        ->required();
+    sub->add_option("-o,--output", opt->output_roofprints_3d_file,
+                    "Output Parquet file for 3D roofprints")
+        ->required();
+    sub->add_flag("-f,--overwrite", opt->overwrite,
+                  "Overwrite the output file if it exists")
+        ->default_val(false);
+
+    sub->callback([opt]() {
+        auto status =
+            roofprints_to_3d(opt->input_roofprints_file, opt->edge_points_file,
+                             opt->output_roofprints_3d_file, opt->overwrite);
+        if (!status.ok()) {
+            std::cerr << "Error in roofprints_to_3d: " << status.ToString()
+                      << std::endl;
+        }
+    });
+}
+
 struct HelloWorldOptions {
     std::string name;
 };
@@ -230,6 +260,7 @@ int main(int argc, char **argv) {
     setup_compute_roofprints(app);
     setup_add_pca(app);
     setup_add_inward_directions(app);
+    setup_add_roofprints_to_3d(app);
     setup_add_hello_world(app);
     app.require_subcommand(1);
 

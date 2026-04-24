@@ -148,28 +148,39 @@ std::shared_ptr<KdTree_3> Storage::get_kd_tree_3d() const {
 Ray3D::Ray3D(const Point_3 &origin_, double gps_time_,
              uint8_t scan_direction_flag_, double scan_angle_,
              const std::vector<PointId> &point_ids_,
-             const std::vector<int> &return_numbers)
+             const std::vector<int> &return_numbers,
+             const std::vector<double> &z_values)
     : origin(origin_), gps_time(gps_time_),
       scan_direction_flag(scan_direction_flag_), scan_angle(scan_angle_) {
-    // Sort the point IDs by return number
-    std::vector<std::pair<PointId, int>> point_id_and_return_number;
-    for (size_t i = 0; i < point_ids_.size(); ++i) {
-        PointId point_id = point_ids_[i];
-        int return_number = return_numbers[i];
-        point_id_and_return_number.push_back(
-            std::make_pair(point_id, return_number));
-    }
+    // Sort the point ids by height (z value) in descending order because a
+    // higher point has a lower return number
+    std::vector<std::size_t> indices(point_ids_.size());
+    std::iota(indices.begin(), indices.end(), 0);
+    std::sort(indices.begin(), indices.end(),
+              [&z_values](std::size_t i1, std::size_t i2) {
+                  return z_values[i1] > z_values[i2];
+              });
 
-    // Sort the point IDs by return number
-    std::sort(
-        point_id_and_return_number.begin(), point_id_and_return_number.end(),
-        [](const std::pair<PointId, int> &a, const std::pair<PointId, int> &b) {
-            return a.second < b.second;
-        });
+    // // Check if the order is coherent with the return numbers
+    // for (std::size_t i = 0; i < indices.size() - 1; ++i) {
+    //     if (return_numbers[indices[i]] > return_numbers[indices[i + 1]]) {
+    //         std::string error_message = std::format(
+    //             "Incoherent return numbers for ray of GPS time {}: ",
+    //             gps_time_);
+    //         for (std::size_t j = 0; j < indices.size(); ++j) {
+    //             error_message += std::format("Return Number: {}, Z: {}; ",
+    //                                          return_numbers[indices[j]],
+    //                                          z_values[indices[j]]);
+    //         }
+    //         // throw std::runtime_error(error_message);
+    //         std::cout << "Warning: " << error_message << std::endl;
+    //     }
+    // }
 
-    for (const auto &pair : point_id_and_return_number) {
-        return_number_to_point_id.push_back(pair.first);
-        point_id_to_return_number[pair.first] = pair.second;
+    // Store the point ids in order of return number from lowest to highest
+    for (std::size_t i = 0; i < indices.size(); ++i) {
+        return_number_to_point_id.push_back(point_ids_[indices[i]]);
+        point_id_to_return_number[point_ids_[indices[i]]] = indices[i];
     }
 }
 
@@ -182,7 +193,11 @@ PointId Ray3D::get_point_id_in_return_order(int return_number) const {
 
     // Check if out of bounds
     if (return_number < 0 || return_number >= number_of_returns) {
-        throw std::out_of_range("Return number is out of bounds");
+        std::string error_message = std::format(
+            "Return number {} is out of bounds for ray with GPS time {} and "
+            "{} returns",
+            return_number, gps_time, number_of_returns);
+        throw std::out_of_range(error_message);
     }
 
     // Find the point with the given return number
@@ -267,7 +282,8 @@ RayId ScanLine3D::get_closest_ray_by_scan_angle(double scan_angle) const {
 }
 
 RayId ScanLine3D::get_closest_ray_by_direction(RayId other_ray_id) const {
-    // Start with a good first guess for the closest ray based on the scan angle
+    // Start with a good first guess for the closest ray based on the scan
+    // angle
     Ray3D other_ray = rays->at(other_ray_id);
     RayId closest_ray_id =
         get_closest_ray_by_scan_angle(other_ray.get_scan_angle());
@@ -277,7 +293,8 @@ RayId ScanLine3D::get_closest_ray_by_direction(RayId other_ray_id) const {
     auto current_angle = rays->at(closest_ray_id).angle_to(other_ray, points);
     double best_angle = current_angle.in_degrees();
 
-    // Check the next rays in the scan line until the angle starts increasing
+    // Check the next rays in the scan line until the angle starts
+    // increasing
     RayId next_ray_id = closest_ray_id;
     while (true) {
         auto next_ray_id_new = get_next_ray_id(next_ray_id);
@@ -317,8 +334,8 @@ RayId ScanLine3D::get_closest_ray_by_direction(RayId other_ray_id) const {
 
 RayId ScanLine3D::get_closest_ray_by_two_directions(
     const RayId other_ray_id_1, const RayId other_ray_id_2) const {
-    // This function is only expected to work well if the two other rays are not
-    // too far apart
+    // This function is only expected to work well if the two other rays are
+    // not too far apart
 
     // Start with a good first guess for the closest ray based on one of the
     // directions
@@ -336,7 +353,8 @@ RayId ScanLine3D::get_closest_ray_by_two_directions(
     double best_angle =
         current_angle_1.in_degrees() + current_angle_2.in_degrees();
 
-    // Check the next rays in the scan line until the angle starts increasing
+    // Check the next rays in the scan line until the angle starts
+    // increasing
     RayId next_ray_id = closest_ray_id;
     while (true) {
         auto next_ray_id_new = get_next_ray_id(next_ray_id);
@@ -382,8 +400,8 @@ RayId ScanLine3D::get_closest_ray_by_two_directions(
 
 void Topology3D::init(Trajectory trajectory) {
     // This function is called by all constructors to avoid code duplication
-    // The implementation is in the .cpp file to avoid including the Trajectory
-    // class in the header file
+    // The implementation is in the .cpp file to avoid including the
+    // Trajectory class in the header file
 
     // Create a mapping from GPS time to indices
     std::cout << "Creating mapping from GPS time to indices..." << std::endl;
@@ -412,14 +430,18 @@ void Topology3D::init(Trajectory trajectory) {
         const std::vector<PointId> &indices = entry.second;
         Point_3 origin = trajectory.get_point_at_gps_time(gps_time);
         std::vector<int> return_numbers;
+        std::vector<double> z_values;
         for (PointId idx : indices) {
             int return_number = points->get_field_as<int>(
                 pdal::Dimension::Id::ReturnNumber, idx);
             return_numbers.push_back(return_number);
+            double z =
+                points->get_field_as<double>(pdal::Dimension::Id::Z, idx);
+            z_values.push_back(z);
         }
         double scan_angle = gps_time_to_scan_angle[gps_time];
         rays.emplace_back(origin, gps_time, scan_direction_flag, scan_angle,
-                          indices, return_numbers);
+                          indices, return_numbers, z_values);
     }
     std::cout << "Created " << rays.size() << " rays" << std::endl;
 
@@ -524,7 +546,8 @@ Topology3D::Topology3D(StoragePtr storage, Trajectory trajectory) {
 }
 
 // const std::vector<Ray3D> &Topology3D::get_rays() const { return rays; }
-// const std::vector<RayId> &Topology3D::get_rays_in_gps_time_order() const {
+// const std::vector<RayId> &Topology3D::get_rays_in_gps_time_order() const
+// {
 //     return rays_gps_time_order;
 // }
 RayId Topology3D::get_ray_id(PointId point_id) const {
@@ -584,7 +607,8 @@ std::optional<RayId> Topology3D::get_prev_ray_in_gps_time_order(RayId i) const {
         return std::nullopt;
     }
 }
-// std::optional<RayId> Topology3D::get_next_ray_in_scan_line(RayId i) const {
+// std::optional<RayId> Topology3D::get_next_ray_in_scan_line(RayId i) const
+// {
 //     auto potential_next = get_next_ray_in_gps_time_order(i);
 //     if (!potential_next) {
 //         return std::nullopt;
@@ -602,7 +626,8 @@ std::optional<RayId> Topology3D::get_prev_ray_in_gps_time_order(RayId i) const {
 //         return next;
 //     }
 // }
-// std::optional<RayId> Topology3D::get_prev_ray_in_scan_line(RayId i) const {
+// std::optional<RayId> Topology3D::get_prev_ray_in_scan_line(RayId i) const
+// {
 //     auto potential_prev = get_prev_ray_in_gps_time_order(i);
 //     if (!potential_prev) {
 //         return std::nullopt;

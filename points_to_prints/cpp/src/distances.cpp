@@ -479,7 +479,7 @@ void compute_distances_in_order(const std::string &input_points_file,
     std::vector<ProprietaryDimension> new_distances_custom_dims = {
         CustomDimensions::Id::ReturnNumberComputed,
         CustomDimensions::Id::NumberOfReturnsComputed,
-        CustomDimensions::Id::VerticalGain,
+        CustomDimensions::Id::MaxVerticalDiff,
         CustomDimensions::Id::IsRoofEdge,
         CustomDimensions::Id::IsFacade,
         // CustomDimensions::Id::InwardVectorX,
@@ -500,7 +500,7 @@ void compute_distances_in_order(const std::string &input_points_file,
     };
     std::vector<ProprietaryDimension> edge_custom_dims = {
         CustomDimensions::Id::IsGenerated,
-        CustomDimensions::Id::VerticalGain,
+        CustomDimensions::Id::MaxVerticalDiff,
         // CustomDimensions::Id::Planarity,
         // CustomDimensions::Id::Horizontality,
         CustomDimensions::Id::InwardVectorX,
@@ -591,7 +591,7 @@ void compute_distances_in_order(const std::string &input_points_file,
             // compute_inward_direction(p_0_0_id, topo.points, normal);
 
             las_distances_writer.points->set_field(
-                CustomDimensions::Id::VerticalGain, p_0_0_id, vertical_gain);
+                CustomDimensions::Id::MaxVerticalDiff, p_0_0_id, vertical_gain);
             las_distances_writer.points->set_field(
                 CustomDimensions::Id::IsRoofEdge, p_0_0_id, is_roof_edge);
             // las_distances_writer.points->set_field(
@@ -697,7 +697,7 @@ void compute_distances_in_order(const std::string &input_points_file,
                 las_edge_writer.points->set_field(
                     CustomDimensions::Id::IsGenerated, edge_idx, is_generated);
                 las_edge_writer.points->set_field(
-                    CustomDimensions::Id::VerticalGain, edge_idx,
+                    CustomDimensions::Id::MaxVerticalDiff, edge_idx,
                     vertical_gain);
                 // las_edge_writer.points->set_field(
                 //     CustomDimensions::Id::Planarity, edge_idx,
@@ -823,7 +823,7 @@ void compute_distances_in_order(const std::string &input_points_file,
         // compute_inward_direction(p_0_0_id, topo.points, normal);
 
         las_distances_writer.points->set_field(
-            CustomDimensions::Id::VerticalGain, p_0_0_id, vertical_gain);
+            CustomDimensions::Id::MaxVerticalDiff, p_0_0_id, vertical_gain);
         las_distances_writer.points->set_field(CustomDimensions::Id::IsRoofEdge,
                                                p_0_0_id, is_roof_edge);
         // las_distances_writer.points->set_field(
@@ -913,7 +913,7 @@ void compute_distances_in_order(const std::string &input_points_file,
             las_edge_writer.points->set_field(CustomDimensions::Id::IsGenerated,
                                               edge_idx, is_generated);
             las_edge_writer.points->set_field(
-                CustomDimensions::Id::VerticalGain, edge_idx, vertical_gain);
+                CustomDimensions::Id::MaxVerticalDiff, edge_idx, vertical_gain);
 
             // // Compute the roof likelihood as two measures: the planarity
             // and
@@ -1052,7 +1052,8 @@ void compute_distances_to_neighbours(const std::string &input_points_file,
     std::vector<ProprietaryDimension> new_distances_custom_dims = {
         CustomDimensions::Id::ReturnNumberComputed,
         CustomDimensions::Id::NumberOfReturnsComputed,
-        CustomDimensions::Id::VerticalGain,
+        CustomDimensions::Id::MaxVerticalDiff,
+        CustomDimensions::Id::MinVerticalDiff,
         CustomDimensions::Id::IsRoofEdge,
         CustomDimensions::Id::IsFacade,
     };
@@ -1070,7 +1071,7 @@ void compute_distances_to_neighbours(const std::string &input_points_file,
     };
     std::vector<ProprietaryDimension> edge_custom_dims = {
         CustomDimensions::Id::IsGenerated,
-        CustomDimensions::Id::VerticalGain,
+        CustomDimensions::Id::MaxVerticalDiff,
         CustomDimensions::Id::InwardVectorX,
         CustomDimensions::Id::InwardVectorY,
         CustomDimensions::Id::InwardVectorZ,
@@ -1166,7 +1167,7 @@ void compute_distances_to_neighbours(const std::string &input_points_file,
                 }
             }
             las_distances_writer.points->set_field(
-                CustomDimensions::Id::VerticalGain, p_0_0_id, vertical_gain);
+                CustomDimensions::Id::MaxVerticalDiff, p_0_0_id, vertical_gain);
             las_distances_writer.points->set_field(
                 CustomDimensions::Id::IsRoofEdge, p_0_0_id, is_roof_edge);
 
@@ -1182,7 +1183,7 @@ void compute_distances_to_neighbours(const std::string &input_points_file,
                 las_edge_writer.points->set_field(
                     CustomDimensions::Id::IsGenerated, edge_idx, is_generated);
                 las_edge_writer.points->set_field(
-                    CustomDimensions::Id::VerticalGain, edge_idx,
+                    CustomDimensions::Id::MaxVerticalDiff, edge_idx,
                     vertical_gain);
                 las_edge_writer.points->copy_field<double>(
                     CustomDimensions::Id::InwardVectorX, edge_idx, topo.points,
@@ -1250,11 +1251,13 @@ void compute_distances_to_neighbours(const std::string &input_points_file,
         if (raw_cls == LASclassification::Value::LowVegetation ||
             raw_cls == LASclassification::Value::MediumVegetation ||
             raw_cls == LASclassification::Value::HighVegetation) {
+            bar_single.increment(1);
             continue;
         }
         Point_3 p_0_0 = topo.points->get_point(p_0_0_id);
 
-        double vertical_gain = 0.0;
+        double max_vertical_diff = 0.0;
+        double min_vertical_diff = 0.0;
 
         std::optional<PtsStructs::PointId> p_0_roof_1_id, p_0_roof_2_id,
             p_ground_id;
@@ -1280,10 +1283,10 @@ void compute_distances_to_neighbours(const std::string &input_points_file,
             PtsStructs::PointId potential_p_ground_id =
                 ground_ray.get_point_id_in_return_order(-1);
             Point_3 p_ground = topo.points->get_point(potential_p_ground_id);
-            double vertical_gain_current = p_0_0.z() - p_ground.z();
+            double vertical_diff_current = p_0_0.z() - p_ground.z();
 
             // If the vertical gain is better than the previous one
-            if (vertical_gain_current > vertical_gain) {
+            if (vertical_diff_current > max_vertical_diff) {
                 // We want to prevent matching points that are simply far from
                 // each other on the same roof slope, so we remove from the
                 // vertical gain a height proportional to the horizontal
@@ -1293,10 +1296,10 @@ void compute_distances_to_neighbours(const std::string &input_points_file,
                                              p_0_0.z());
                 double horizontal_distance = std::sqrt(
                     CGAL::squared_distance(p_0_0, p_ground_at_p_0_0_height));
-                vertical_gain_current -=
+                vertical_diff_current -=
                     ANGLE_BUFFER_FACTOR * horizontal_distance;
 
-                if (vertical_gain > vertical_gain_current) {
+                if (max_vertical_diff > vertical_diff_current) {
                     continue;
                 }
 
@@ -1306,13 +1309,13 @@ void compute_distances_to_neighbours(const std::string &input_points_file,
 
                 p_ground_id = potential_p_ground_id;
                 ray_ground_id = potential_ray_ground_id;
-                vertical_gain = vertical_gain_current;
+                max_vertical_diff = vertical_diff_current;
             }
         }
 
         // Decide whether the point is a roof edge based on the vertical
         // gain and the GPS time delta to the potential ground point
-        bool is_roof_edge = vertical_gain > MIN_VERT_GAIN_ROOF;
+        bool is_roof_edge = max_vertical_diff > MIN_VERT_GAIN_ROOF;
 
         if (is_roof_edge) {
             if (p_ground_id) {
@@ -1326,7 +1329,7 @@ void compute_distances_to_neighbours(const std::string &input_points_file,
         }
 
         las_distances_writer.points->set_field(
-            CustomDimensions::Id::VerticalGain, p_0_0_id, vertical_gain);
+            CustomDimensions::Id::MaxVerticalDiff, p_0_0_id, max_vertical_diff);
         las_distances_writer.points->set_field(CustomDimensions::Id::IsRoofEdge,
                                                p_0_0_id, is_roof_edge);
 
@@ -1411,7 +1414,8 @@ void compute_distances_to_neighbours(const std::string &input_points_file,
             las_edge_writer.points->set_field(CustomDimensions::Id::IsGenerated,
                                               edge_idx, is_generated);
             las_edge_writer.points->set_field(
-                CustomDimensions::Id::VerticalGain, edge_idx, vertical_gain);
+                CustomDimensions::Id::MaxVerticalDiff, edge_idx,
+                max_vertical_diff);
 
             las_edge_writer.points->copy_field<double>(
                 CustomDimensions::Id::InwardVectorX, edge_idx, topo.points,

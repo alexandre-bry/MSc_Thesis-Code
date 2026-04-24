@@ -111,6 +111,7 @@ def _compute_trajectory(
     output_trajectory_path: Path,
     overwrite: bool,
     skip_existing: bool,
+    display: bool,
 ):
     logging.info(f"Computing the trajectory for {input_las_path}...")
     if output_trajectory_path.exists():
@@ -128,7 +129,7 @@ def _compute_trajectory(
     command_trajectory_file_2 = input_las_path.parent / f"{input_las_path.stem}_2.txt"
 
     command = ["pixi", "run", "traj-estimation", str(input_las_path)]
-    return_code = run_command_with_tqdm_logging(command)
+    return_code = run_command_with_tqdm_logging(command, display=display)
     if return_code != 0:
         logging.error(f"Failed to compute trajectory for {input_las_path.name}.")
     else:
@@ -164,14 +165,15 @@ def _check_file_exist(file_path: Path) -> bool:
     return file_exists
 
 
-def _compute_single_trajectory(args: Tuple[Path, Path, bool, bool]) -> None:
+def _compute_single_trajectory(args: Tuple[Path, Path, bool, bool, bool]) -> None:
     """Helper function for multiprocessing trajectory computation."""
-    input_las_path, output_trajectory_path, overwrite, skip_existing = args
+    input_las_path, output_trajectory_path, overwrite, skip_existing, display = args
     _compute_trajectory(
         input_las_path=input_las_path,
         output_trajectory_path=output_trajectory_path,
         overwrite=overwrite,
         skip_existing=skip_existing,
+        display=display,
     )
 
 
@@ -198,7 +200,7 @@ def _process_bd_topo_data(
     Returns:
         Tuple of (edges_file, intersections_file, groups_file) paths
     """
-    logging.info("\n\nProcessing BD TOPO data...")
+    logging.info("Processing BD TOPO data...")
 
     # Check that the intersections of the BD TOPO are available
     fail = False
@@ -238,15 +240,23 @@ def _process_lidar_hd_data(
 ) -> List[Path]:
     """Process LiDAR HD data: compute inward directions and split by flight strips.
 
-    Args:
-        initial_laz_file: Input LiDAR HD LAZ file
-        laz_with_inwards_roof_file: Output file for LAZ with inward directions
-        template_flight_strip_file: Template file for flight strip splitting
-        overwrite: Whether to overwrite existing files
-        skip_existing: Whether to skip if files exist
+    Parameters
+    ----------
+    initial_laz_file : Path
+        Input LiDAR HD LAZ file
+    laz_with_inwards_roof_file : Path
+        Output file for LAZ with inward directions
+    template_flight_strip_file : Path
+        Template file for flight strip splitting (should contain a "#" character to be replaced by the strip number)
+    overwrite : bool
+        Whether to overwrite existing files
+    skip_existing : bool
+        Whether to skip if files exist
 
-    Returns:
-        List of sorted flight strip LAZ file paths
+    Returns
+    -------
+    List[Path]
+        List of flight strip LAZ file paths
     """
     logging.info("Processing LiDAR HD data...")
 
@@ -296,6 +306,7 @@ def _compute_trajectories_parallel(
             trajectory_file,
             overwrite,
             skip_existing,
+            False,  # display
         )
         for laz_file, trajectory_file in zip(flight_strip_files, trajectory_files)
     ]
@@ -314,24 +325,27 @@ def _compute_distances_and_edges(
     edge_file: Path,
     overwrite: bool,
     skip_existing: bool,
+    display: bool,
 ) -> None:
     """
-    _summary_
+    Compute distances and edges for a single flight strip using the C++ pipeline.
 
     Parameters
     ----------
     laz_file : Path
-        _description_
+        Path to the input flight strip LAZ file.
     trajectory_file : Path
-        _description_
+        Path to the trajectory file for the flight strip.
     distance_file : Path
-        _description_
+        Path to the output distances LAZ file.
     edge_file : Path
-        _description_
+        Path to the output edges LAZ file.
     overwrite : bool
-        _description_
+        Whether to overwrite existing output files.
     skip_existing : bool
-        _description_
+        Whether to skip processing if output files already exist.
+    display : bool
+        Whether to display the command output.
     """
 
     output_files = [distance_file, edge_file]
@@ -377,7 +391,7 @@ def _compute_distances_and_edges(
     if overwrite:
         command.append("--overwrite")
 
-    return_code = run_command_with_tqdm_logging(command)
+    return_code = run_command_with_tqdm_logging(command, display=display)
     if return_code != 0:
         logging.error(f"Failed to process {laz_file.name}.")
     else:
@@ -385,14 +399,14 @@ def _compute_distances_and_edges(
 
 
 def _compute_distances_and_edges_single(
-    args: Tuple[Path, Path, Path, Path, int, int, bool, bool],
+    args: Tuple[Path, Path, Path, Path, int, int, bool, bool, bool],
 ) -> Tuple[Path, Path]:
     """Helper function for processing a single file with C++ pipeline.
 
     Parameters
     ----------
-    args : Tuple[Path, Path, Path, Path, int, int, bool, bool]
-        laz_file, trajectory_file, distance_file, edge_file, index, total_files, overwrite, skip_existing
+    args : Tuple[Path, Path, Path, Path, int, int, bool, bool, bool]
+        laz_file, trajectory_file, distance_file, edge_file, index, total_files, overwrite, skip_existing, display
     """
     (
         laz_file,
@@ -403,6 +417,7 @@ def _compute_distances_and_edges_single(
         total_files,
         overwrite,
         skip_existing,
+        display,
     ) = args
 
     logging.info(
@@ -416,6 +431,7 @@ def _compute_distances_and_edges_single(
         edge_file=edge_file,
         overwrite=overwrite,
         skip_existing=skip_existing,
+        display=display,
     )
 
     return distance_file, edge_file
@@ -459,6 +475,7 @@ def _compute_distances_and_edges_parallel(
             total_files,
             overwrite,
             skip_existing,
+            False,  # display
         )
         for index, (laz_file, trajectory_file, distance_file, edge_file) in enumerate(
             zip(flight_strip_files, trajectory_files, distances_files, edges_files),
@@ -702,16 +719,16 @@ def run_pipeline_implementation(
     #                              Roofprints                              #
     # -------------------------------------------------------------------- #
 
-    roofprints_file = tile_dir / "roofprints.parquet"
-    _compute_roofprints(
-        merged_edges_file=merged_edges_file,
-        bd_topo_edges_file=cropped_edges_file,
-        bd_topo_intersections_file=cropped_intersections_file,
-        output_roofprints_file=roofprints_file,
-        max_iterations=1,
-        overwrite=overwrite,
-        skip_existing=skip_existing,
-    )
+    # roofprints_file = tile_dir / "roofprints.parquet"
+    # _compute_roofprints(
+    #     merged_edges_file=merged_edges_file,
+    #     bd_topo_edges_file=cropped_edges_file,
+    #     bd_topo_intersections_file=cropped_intersections_file,
+    #     output_roofprints_file=roofprints_file,
+    #     max_iterations=1,
+    #     overwrite=overwrite,
+    #     skip_existing=skip_existing,
+    # )
 
     logging.info("\n\nPipeline completed successfully.")
 
@@ -726,14 +743,20 @@ def run_pipeline_call(
 ):
     """Execute the complete pipeline to compute roofprints from LiDAR HD data.
 
-    Args:
-        other_data_dir: Directory containing BD TOPO data
-        tile_dir: Working directory for intermediate and output files
-        bd_topo_file: Path to BD TOPO shapefile
-        overwrite: Whether to overwrite existing files
-        skip_existing: Whether to skip processing if output files exist
-        verbose_int: Verbosity level (0-4)
-        num_workers: Number of worker processes for multiprocessing (None = CPU count)
+    Parameters
+    ----------
+    other_data_dir: Path
+        Directory containing BD TOPO data
+    tile_dir: Path
+        Working directory for intermediate and output files
+    overwrite: bool
+        Whether to overwrite existing files
+    skip_existing: bool
+        Whether to skip processing if output files exist
+    verbose_int: int
+        Verbosity level (0-4)
+    num_workers: Optional[int]
+        Number of worker processes for multiprocessing (None = CPU count)
     """
     with LoggingContext(verbose=verbose_int):
         run_pipeline_implementation(
