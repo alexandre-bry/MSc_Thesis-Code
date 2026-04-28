@@ -19,8 +19,8 @@
 #include <pdal/pdal_types.hpp>
 #include <pdal/util/Bounds.hpp>
 
-#include "../geometry.hpp"
 #include "../points.hpp"
+#include "../utils/ogc_simple_features.hpp"
 
 void CustomLasReader::execute() {
     reader.prepare(table);

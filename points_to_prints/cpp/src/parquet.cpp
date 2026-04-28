@@ -26,8 +26,8 @@
 
 #include "json/json.hpp"
 
-#include "geometry.hpp"
 #include "parquet/reader.hpp"
+#include "utils/ogc_simple_features.hpp"
 #include "utils/pbar.hpp"
 
 using json = nlohmann::json;

@@ -5,9 +5,9 @@
 
 #include "distances.hpp"
 #include "edge_matching/topology.hpp"
+#include "footprints/footprints.hpp"
 #include "las_filter.hpp"
 #include "parquet.hpp"
-#include "pca.hpp"
 #include "roofprints/transfer_3d.hpp"
 
 void setup_sort_by_gps_time(CLI::App &app) {
@@ -164,23 +164,6 @@ void setup_compute_roofprints(CLI::App &app) {
     });
 }
 
-void setup_add_pca(CLI::App &app) {
-    auto opt = std::make_shared<AddPCAOptions>();
-
-    CLI::App *sub = app.add_subcommand("add_pca", "Add PCA eigenvalues to LAS");
-    sub->add_option("-i,--input", opt->input_file, "Input LAS file")
-        ->required();
-    sub->add_option("-o,--output", opt->output_file, "Output LAS file")
-        ->required();
-    sub->add_flag("-f,--overwrite", opt->overwrite,
-                  "Overwrite the output file if it exists")
-        ->default_val(false);
-
-    sub->callback([opt]() {
-        add_pca(opt->input_file, opt->output_file, opt->overwrite);
-    });
-}
-
 void setup_add_inward_directions(CLI::App &app) {
     auto opt = std::make_shared<InwardDirectionsOptions>();
 
@@ -206,7 +189,7 @@ void setup_add_inward_directions(CLI::App &app) {
     });
 }
 
-void setup_add_roofprints_to_3d(CLI::App &app) {
+void setup_roofprints_to_3d(CLI::App &app) {
     auto opt = std::make_shared<RooprintsTo3DOptions>();
 
     CLI::App *sub =
@@ -235,6 +218,43 @@ void setup_add_roofprints_to_3d(CLI::App &app) {
     });
 }
 
+void setup_roofprints_3d_to_footprints(CLI::App &app) {
+    auto opt = std::make_shared<Roofprints3DToFootprintsOptions>();
+
+    CLI::App *sub =
+        app.add_subcommand("roofprints_3d_to_footprints",
+                           "Convert 3D roofprints to 2D footprints");
+    sub->add_option("-i,--input", opt->input_roofprints_file,
+                    "Input Parquet file with 3D roofprints")
+        ->required();
+    sub->add_option("-p,--points", opt->points_file,
+                    "Input LAS file with points for footprint computation")
+        ->required();
+    sub->add_option("-t,--trajectory", opt->trajectory_file,
+                    "Input trajectory file for footprint computation")
+        ->required();
+    sub->add_option("-f,--output-footprints", opt->output_footprints_file,
+                    "Output Parquet file for 2D footprints")
+        ->required();
+    sub->add_option("-o,--output-points", opt->output_points_file,
+                    "Output LAS file for points with corresponding building ID")
+        ->required();
+    sub->add_flag("--overwrite", opt->overwrite,
+                  "Overwrite the output file if it exists")
+        ->default_val(false);
+
+    sub->callback([opt]() {
+        auto status = roofprints_3d_to_footprints(
+            opt->input_roofprints_file, opt->points_file, opt->trajectory_file,
+            opt->output_footprints_file, opt->output_points_file,
+            opt->overwrite);
+        if (!status.ok()) {
+            std::cerr << "Error in roofprints_3d_to_footprints: "
+                      << status.ToString() << std::endl;
+        }
+    });
+}
+
 struct HelloWorldOptions {
     std::string name;
 };
@@ -256,11 +276,11 @@ int main(int argc, char **argv) {
     setup_extract_random_lines(app);
     setup_distances_in_order(app);
     setup_read_write_bd_topo(app);
-    setup_test_parquet(app);
     setup_compute_roofprints(app);
-    setup_add_pca(app);
     setup_add_inward_directions(app);
-    setup_add_roofprints_to_3d(app);
+    setup_roofprints_to_3d(app);
+    setup_roofprints_3d_to_footprints(app);
+    setup_test_parquet(app);
     setup_add_hello_world(app);
     app.require_subcommand(1);
 

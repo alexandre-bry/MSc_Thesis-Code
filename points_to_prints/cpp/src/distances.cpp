@@ -21,7 +21,7 @@
 #include "las/reader.hpp"
 #include "las/trajectory.hpp"
 #include "las/writer.hpp"
-#include "pca.hpp"
+#include "pca/pca.hpp"
 #include "points.hpp"
 #include "utils/cgal.hpp"
 #include "utils/pbar.hpp"
@@ -1056,6 +1056,9 @@ void compute_distances_to_neighbours(const std::string &input_points_file,
         CustomDimensions::Id::MinVerticalDiff,
         CustomDimensions::Id::IsRoofEdge,
         CustomDimensions::Id::IsFacade,
+        CustomDimensions::Id::ScannerPositionX,
+        CustomDimensions::Id::ScannerPositionY,
+        CustomDimensions::Id::ScannerPositionZ,
     };
     distances_custom_dims.insert(distances_custom_dims.end(),
                                  new_distances_custom_dims.begin(),
@@ -1096,6 +1099,8 @@ void compute_distances_to_neighbours(const std::string &input_points_file,
         const auto &ray = topo.get_ray(ray_id);
         auto return_number_computed = ray.get_return_number(idx);
         auto number_of_returns_computed = ray.get_number_of_returns();
+        const Point_3 &point_scanner =
+            trajectory.get_point_at_gps_time(ray.get_gps_time());
 
         las_distances_writer.points->set_field(
             CustomDimensions::Id::ReturnNumberComputed, idx,
@@ -1103,6 +1108,12 @@ void compute_distances_to_neighbours(const std::string &input_points_file,
         las_distances_writer.points->set_field(
             CustomDimensions::Id::NumberOfReturnsComputed, idx,
             number_of_returns_computed);
+        las_distances_writer.points->set_field(
+            CustomDimensions::Id::ScannerPositionX, idx, point_scanner.x());
+        las_distances_writer.points->set_field(
+            CustomDimensions::Id::ScannerPositionY, idx, point_scanner.y());
+        las_distances_writer.points->set_field(
+            CustomDimensions::Id::ScannerPositionZ, idx, point_scanner.z());
     }
 
     std::cout << "Computing distances..." << std::endl;
@@ -1252,6 +1263,12 @@ void compute_distances_to_neighbours(const std::string &input_points_file,
             raw_cls == LASclassification::Value::MediumVegetation ||
             raw_cls == LASclassification::Value::HighVegetation) {
             bar_single.increment(1);
+
+            las_distances_writer.points->set_field(
+                CustomDimensions::Id::MaxVerticalDiff, p_0_0_id, 0.0);
+            las_distances_writer.points->set_field(
+                CustomDimensions::Id::IsRoofEdge, p_0_0_id, 0.0);
+
             continue;
         }
         Point_3 p_0_0 = topo.points->get_point(p_0_0_id);

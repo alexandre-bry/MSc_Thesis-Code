@@ -11,42 +11,6 @@
 #include "../points.hpp"
 #include "../utils/pbar.hpp"
 
-namespace {
-
-arrow::Result<OGRMultiPolygonPtr>
-parse_wkb_multipolygonz(const std::vector<uint8_t> &wkb) {
-    if (wkb.empty()) {
-        return arrow::Status::Invalid("Geometry WKB is empty");
-    }
-
-    OGRGeometry *geom_raw = nullptr;
-    OGRErr err = OGRGeometryFactory::createFromWkb(
-        wkb.data(), getLAMB93(), &geom_raw, static_cast<int>(wkb.size()));
-    if (err != OGRERR_NONE || geom_raw == nullptr) {
-        return arrow::Status::Invalid("Failed to parse geometry WKB");
-    }
-
-    OGRGeometryPtr geom(geom_raw);
-    if (wkbFlatten(geom->getGeometryType()) != wkbMultiPolygon) {
-        return arrow::Status::TypeError("Geometry is not a MultiPolygon");
-    }
-
-    OGRMultiPolygon *multi_polygon_raw = geom.release()->toMultiPolygon();
-    if (multi_polygon_raw == nullptr) {
-        return arrow::Status::Invalid(
-            "Failed to cast geometry to OGRMultiPolygon");
-    }
-
-    if (multi_polygon_raw->getCoordinateDimension() != 3) {
-        return arrow::Status::TypeError(
-            "Geometry is MultiPolygon but not 3D (MultiPolygonZ)");
-    }
-
-    return OGRMultiPolygonPtr(multi_polygon_raw);
-}
-
-} // namespace
-
 const double DISTANCE_SEGMENTS = 1.0;
 const double MIN_COVERAGE_SEGMENT = 0.1;
 
@@ -1007,11 +971,9 @@ arrow::Status roofprints_to_3d(const std::string &input_roofprints_file,
                                  output_roofprints_3d_file);
     }
 
-    /* ----------------------------------------------------------------------
-     */
-    /*                           Load the roofprints */
-    /* ----------------------------------------------------------------------
-     */
+    /* ---------------------------------------------------------------------- */
+    /*                           Load the roofprints                          */
+    /* ---------------------------------------------------------------------- */
 
     // Read the roofprints data from the Parquet file using the
     // ParquetReader
@@ -1046,7 +1008,7 @@ arrow::Status roofprints_to_3d(const std::string &input_roofprints_file,
         return status;
     }
 
-    // Convert the input data into the desired BDTOPOEdge format
+    // Convert the input data into the desired format
     std::vector<MultiPolygonZWithAttributes> roofprints;
     roofprints.reserve(roofprints_output.row_count);
     for (std::size_t i = 0; i < roofprints_output.row_count; ++i) {
@@ -1085,20 +1047,17 @@ arrow::Status roofprints_to_3d(const std::string &input_roofprints_file,
     std::cout << "Loaded " << roofprints.size() << " MultiPolygonZ roofprints"
               << std::endl;
 
-    /* ----------------------------------------------------------------------
-     */
-    /*                          Load the point cloud */
-    /* ----------------------------------------------------------------------
-     */
+    /* ---------------------------------------------------------------------- */
+    /*                          Load the point cloud                          */
+    /* ---------------------------------------------------------------------- */
+
     NewLasReader las_reader(edge_points_file);
     auto storage = las_reader.points;
     storage->build_kd_tree_2d();
 
-    /* ----------------------------------------------------------------------
-     */
-    /*                            Process each edge */
-    /* ----------------------------------------------------------------------
-     */
+    /* ---------------------------------------------------------------------- */
+    /*                            Process each edge                           */
+    /* ---------------------------------------------------------------------- */
 
     std::cout << "Processing roofprints to extract 3D edges..." << std::endl;
     std::vector<MultiLineStringZWithAttributes> roofprints_3D;
@@ -1158,11 +1117,9 @@ arrow::Status roofprints_to_3d(const std::string &input_roofprints_file,
     }
     progress_bar.finish();
 
-    /* ----------------------------------------------------------------------
-     */
-    /*                       Write the output roofprints */
-    /* ----------------------------------------------------------------------
-     */
+    /* ---------------------------------------------------------------------- */
+    /*                       Write the output roofprints                      */
+    /* ---------------------------------------------------------------------- */
 
     std::filesystem::create_directories(
         std::filesystem::path(output_roofprints_3d_file).parent_path());

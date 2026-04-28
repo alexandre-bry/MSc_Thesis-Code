@@ -13,19 +13,25 @@ pixi run entwine build -i <input_laz> -o <output_ept_folder> --deep --srs EPSG:2
 1. Rename the geometry layer from `geometrie` to `geom`
 
     ```bash
-    pixi run ogr2ogr -overwrite data/input/BD_TOPO/2025-12-15-renamed.gpkg data/input/BD_TOPO/2025-12-15.gpkg -nln batiment -nlt GEOMETRY -sql "SELECT ST_ForcePolygonCCW(geometrie) AS geom, * FROM batiment"
+    pixi run ogr2ogr -overwrite data/input/BD_TOPO/2026-03-15-renamed.gpkg data/input/BD_TOPO/2026-03-15.gpkg -nln batiment -nlt GEOMETRY -sql "SELECT CAST(SUBSTR(cleabs, 8, 16) AS INTEGER) AS cleabs_int, ST_ForcePolygonCCW(geometrie) AS geom, * FROM batiment"
     ```
 
-2. Convert to GeoParquet with geoparquet-io:
+2. Extract an integer ID from the `cleabs` column (which is a string) and put it in a new `cleabs_int` column:
 
     ```bash
-    pixi run gpio convert data/input/BD_TOPO/2025-12-15-renamed.gpkg data/input/BD_TOPO/2025-12-15.parquet
+    pixi run duckdb -c "INSTALL spatial; LOAD spatial; COPY (SELECT CAST(array_slice(cleabs, 9, -1) AS INT64) AS cleabs_int, * FROM 'data/input/BD_TOPO/2026-03-15-renamed.gpkg' ) TO 'data/input/BD_TOPO/2026-03-15-renamed_processed.parquet';"
+    ```
+
+3. Convert to GeoParquet with geoparquet-io:
+
+    ```bash
+    pixi run gpio convert data/input/BD_TOPO/2026-03-15-renamed_processed.parquet data/input/BD_TOPO/2026-03-15.parquet
     ```
 
 ## Clip the BD TOPO without clipping buildings
 
 ```bash
-pixi run -e cpp gdal vector filter data/BD_TOPO/2025-12-15.gpkg output/bd_topo/2025-12-15.shp --bbox 676000,6852000,677000,6853000
+pixi run -e cpp gdal vector filter data/BD_TOPO/2026-03-15.gpkg output/bd_topo/2026-03-15.shp --bbox 676000,6852000,677000,6853000
 ```
 
 ## Identify groups of touching outlines in BD TOPO with DuckDB
@@ -44,7 +50,7 @@ LOAD spatial;
 Load the BD TOPO data:
 
 ```sql
-CREATE TABLE bd_topo AS (SELECT * FROM 'data/input/BD_TOPO/2025-12-15.parquet');
+CREATE TABLE bd_topo AS (SELECT * FROM 'data/input/BD_TOPO/2026-03-15.parquet');
 ```
 
 Compute the intersections between all buildings:
@@ -280,7 +286,7 @@ DROP TABLE test.*;
 LOAD spatial;
 
 -- Load the data
-CREATE TABLE multipolygons AS SELECT cleabs, geometry FROM 'data/input/BD_TOPO/2025-12-15.parquet';
+CREATE TABLE multipolygons AS SELECT cleabs, geometry FROM 'data/input/BD_TOPO/2026-03-15.parquet';
 CREATE TABLE edges AS SELECT * FROM 'data/bd_topo-edges.parquet';
 CREATE TABLE intersections AS SELECT * FROM 'data/bd_topo-intersections.parquet' WHERE ST_GeometryType(geometry) = 'LINESTRING';
 

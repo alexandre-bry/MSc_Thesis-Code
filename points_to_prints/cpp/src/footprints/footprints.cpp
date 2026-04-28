@@ -1,0 +1,445 @@
+#include "footprints.hpp"
+
+#include <cstddef>
+#include <filesystem>
+#include <ogr_geometry.h>
+
+#include "../las/reader.hpp"
+#include "../las/writer.hpp"
+#include "../parquet.hpp"
+#include "../parquet/reader.hpp"
+#include "../points.hpp"
+#include "../utils/cgal.hpp"
+#include "../utils/pbar.hpp"
+
+struct VerticalPlane {
+  protected:
+    UnitVector_3 segment_direction;
+    UnitVector_3 vertical_direction;
+    UnitVector_3 normal_direction;
+    Point_3 origin;
+    double min_proj_x;
+    double max_proj_x;
+
+    double _get_projection_x(const Point_3 &point) const {
+        return (point - origin) * segment_direction;
+    }
+
+    double _get_projection_y(const Point_3 &point) const {
+        return (point - origin) * vertical_direction;
+    }
+
+    double _get_projection_z(const Point_3 &point) const {
+        return (point - origin) * normal_direction;
+    }
+
+    Point_2 _get_projection(const Point_3 &point) const {
+        return Point_2(_get_projection_x(point), _get_projection_y(point));
+    }
+
+    Point_3 _to_plane_space(const Point_3 &point) const {
+        return Point_3(_get_projection_x(point), _get_projection_y(point),
+                       _get_projection_z(point));
+    }
+
+    Point_3 _to_default_space(const Point_2 &point) const {
+        return origin + segment_direction * point.x() +
+               vertical_direction * point.y();
+    }
+
+    Point_3 _to_default_space(const Point_3 &point) const {
+        return origin + segment_direction * point.x() +
+               vertical_direction * point.y() + normal_direction * point.z();
+    }
+
+  public:
+    VerticalPlane(const Segment_2 &segment) {
+        Point_2 seg_start = segment.source();
+        Point_2 seg_end = segment.target();
+        UnitVector_3 horizontal_dir(seg_end.x() - seg_start.x(),
+                                    seg_end.y() - seg_start.y(), 0);
+        UnitVector_3 vertical_dir(0, 0, 1);
+        UnitVector_3 normal_dir =
+            CGAL::cross_product(horizontal_dir, vertical_dir);
+        segment_direction = horizontal_dir;
+        vertical_direction = vertical_dir;
+        normal_direction = normal_dir;
+
+        origin = Point_3(seg_start.x(), seg_start.y(), 0);
+        min_proj_x = 0;
+        max_proj_x = _get_projection_x(Point_3(seg_end.x(), seg_end.y(), 0));
+    }
+};
+
+struct Vertical2DCroppedPlane : VerticalPlane {
+  private:
+    double min_x;
+    double max_x;
+    std::vector<Segment_2> limits_intervals; // in 2D in the plane, sorted by
+                                             // their projection on the X axis
+    double vertical_buffer;
+    double min_z;
+    double max_z;
+
+    std::size_t _find_limit_interval(double x) const {
+        // Binary search to find the interval in limits_intervals that contains
+        // x
+        std::size_t left = 0;
+        std::size_t right = limits_intervals.size();
+        while (left < right) {
+            std::size_t mid = left + (right - left) / 2;
+            if (limits_intervals[mid].source().x() <= x &&
+                limits_intervals[mid].target().x() >= x) {
+                return mid;
+            } else if (limits_intervals[mid].source().x() > x) {
+                right = mid;
+            } else {
+                left = mid + 1;
+            }
+        }
+        throw std::runtime_error("No limit interval found for x = " +
+                                 std::to_string(x));
+    }
+
+  public:
+    Vertical2DCroppedPlane(const Segment_2 &segment,
+                           const std::vector<Point_3> &limits,
+                           double horizontal_buffer, double vertical_buffer,
+                           double max_extrusion_outside,
+                           double max_extrusion_inside)
+        : VerticalPlane(segment), vertical_buffer(vertical_buffer),
+          min_z(-max_extrusion_inside), max_z(max_extrusion_outside) {
+        // The Z axis points outwards if the segments are ordered
+        // counterclockwise, which is assumed here
+        min_x = min_proj_x + horizontal_buffer;
+        max_x = max_proj_x - horizontal_buffer;
+
+        for (std::size_t i = 0; i < limits.size() - 1; ++i) {
+            Point_2 limit_start = _get_projection(limits[i]);
+            Point_2 limit_end = _get_projection(limits[i + 1]);
+            if (limit_start.x() > limit_end.x()) {
+                throw std::invalid_argument(
+                    "Limits should be ordered in the direction of the segment");
+            }
+            if (limit_end.x() < min_x || limit_start.x() > max_x) {
+                continue;
+            }
+            limits_intervals.emplace_back(limit_start, limit_end);
+        }
+    }
+
+    bool is_within_limits(const Point_3 &point) const {
+        const Point_3 point_plane_space = _to_plane_space(point);
+        // Reject if outside of the horizontal limits
+        if (point_plane_space.x() < min_x || point_plane_space.x() > max_x) {
+            return false;
+        }
+
+        // Reject if outside of the extrusion limits
+        if (point_plane_space.z() < min_z || point_plane_space.z() > max_z) {
+            return false;
+        }
+
+        // Find the corresponding interval in limits_intervals
+        std::size_t interval_idx;
+        try {
+            interval_idx = _find_limit_interval(point_plane_space.x());
+        } catch (const std::exception &e) {
+            // std::cout << "Warning: " << e.what() << " for point " << point
+            //           << " in plane of origin " << origin << " and direction
+            //           "
+            //           << horizontal_direction << std::endl;
+            return false;
+        }
+
+        // Get the height of the segment at the point's X coordinate
+        const Point_2 &limit_start = limits_intervals[interval_idx].source();
+        const Point_2 &limit_end = limits_intervals[interval_idx].target();
+        double segment_y =
+            limit_start.y() + (limit_end.y() - limit_start.y()) *
+                                  (point_plane_space.x() - limit_start.x()) /
+                                  (limit_end.x() - limit_start.x());
+        return point_plane_space.y() <= segment_y - vertical_buffer;
+    }
+};
+
+const double OUTSIDE_BUFFER = 0.3;
+const double INSIDE_BUFFER = 1.5;
+const double HORIZONTAL_MARGIN = 0.5;
+const double VERTICAL_MARGIN = 0.5;
+
+void one_facade_to_footprint(const PtsStructs::StoragePtr &storage,
+                             const std::vector<Point_3> &facade_roof_edges,
+                             std::vector<std::size_t> &footprint_points,
+                             Segment_2 &footprint_edge) {
+    if (facade_roof_edges.size() < 2) {
+        throw std::invalid_argument(
+            "At least two points are required to define a facade roof edge");
+    }
+
+    // Compute the area of interest for the facade in 2D
+    const Point_3 &start_3d = facade_roof_edges.front();
+    const Point_3 &end_3d = facade_roof_edges.back();
+    Point_2 start_2d(start_3d.x(), start_3d.y());
+    Point_2 end_2d(end_3d.x(), end_3d.y());
+
+    if (start_2d == end_2d) {
+        std::cerr << "The start and end points of the facade "
+                     "roof edge are the same in 2D, skipping this facade"
+                  << std::endl;
+        return;
+    }
+
+    UnitVector_2 direction_inwards(
+        (end_2d - start_2d).perpendicular(CGAL::COUNTERCLOCKWISE));
+
+    double outside_buffer = OUTSIDE_BUFFER;
+    double inside_buffer = INSIDE_BUFFER;
+    Segment_2 outside_boundary(start_2d - outside_buffer * direction_inwards,
+                               end_2d - outside_buffer * direction_inwards);
+    Segment_2 inside_boundary(start_2d + inside_buffer * direction_inwards,
+                              end_2d + inside_buffer * direction_inwards);
+    Bbox_2 area_of_interest = outside_boundary.bbox() + inside_boundary.bbox();
+
+    // Prepare the vertical plane
+    double horizontal_margin = HORIZONTAL_MARGIN;
+    double vertical_margin = VERTICAL_MARGIN;
+    Vertical2DCroppedPlane segment_2d_space(
+        Segment_2(start_2d, end_2d), facade_roof_edges, horizontal_margin,
+        vertical_margin, outside_buffer, inside_buffer);
+
+    // Get the points in the area of interest
+    auto kd_tree = storage->get_kd_tree_2d();
+    std::vector<std::size_t> nearby_point_indices;
+    kd_tree->search_indices_in_box(area_of_interest, 0.0, nearby_point_indices);
+
+    // Get only the points that are below the roof edges
+    footprint_points.clear();
+    for (std::size_t idx : nearby_point_indices) {
+        const Point_3 &point = storage->get_point(PtsStructs::PointId(idx));
+        // Check if the point is within the area of interest in 2D
+        Point_2 point_2d(point.x(), point.y());
+
+        // Check if the point is within the limits defined by the facade roof
+        // edges
+        if (!segment_2d_space.is_within_limits(point)) {
+            continue;
+        }
+
+        footprint_points.push_back(idx);
+    }
+}
+
+arrow::Status roofprints_3d_to_footprints(
+    const std::string &input_roofprints_file, const std::string &points_file,
+    const std::string &trajectory_file,
+    const std::string &output_footprints_file,
+    const std::string &output_points_file, bool overwrite) {
+    arrow::Status status;
+
+    if (std::filesystem::exists(output_footprints_file) && !overwrite) {
+        throw std::runtime_error("Output file already exists: " +
+                                 output_footprints_file);
+    }
+
+    /* ----------------------------------------------------------------------
+     */
+    /*                           Load the roofprints */
+    /* ----------------------------------------------------------------------
+     */
+
+    // Read the roofprints data from the Parquet file using the
+    // ParquetReader
+    ParquetReader roofprints_reader(input_roofprints_file);
+
+    std::shared_ptr<arrow::Table> roofprints_table;
+    status = roofprints_reader.read_table(roofprints_table);
+    if (!status.ok()) {
+        std::cerr << "Error reading roofprints table: " << status.ToString()
+                  << std::endl;
+        return status;
+    }
+
+    // Check that the geometry column exists and is of the expected type
+    int geometry_idx = roofprints_table->schema()->GetFieldIndex("geometry");
+    if (geometry_idx < 0) {
+        return arrow::Status::Invalid(
+            "Column 'geometry' not found in roofprints table");
+    }
+    if (roofprints_table->schema()->field(geometry_idx)->type()->id() !=
+        arrow::Type::BINARY) {
+        return arrow::Status::Invalid(
+            "Column 'geometry' is not of type Binary in roofprints table");
+    }
+
+    // Prepare the columns to read from the roofprints Parquet file
+    std::vector<RequestedColumn> columns{
+        {"cleabs", ParquetValueType::Utf8},
+        {"origine_du_batiment", ParquetValueType::Utf8},
+        {"geometry", ParquetValueType::Binary}};
+
+    GenericParquetOutput roofprints_output;
+    status = roofprints_reader.read_columns(columns, roofprints_output);
+    if (!status.ok()) {
+        std::cerr << "Error reading edges Parquet file: " << status.ToString()
+                  << std::endl;
+        return status;
+    }
+
+    // Convert the input data into the desired format
+    std::vector<MultiLineStringZWithAttributes> roofprints;
+    roofprints.reserve(roofprints_output.row_count);
+    for (std::size_t i = 0; i < roofprints_output.row_count; ++i) {
+        if (roofprints_output.value_is_null("cleabs", i) ||
+            roofprints_output.value_is_null("origine_du_batiment", i) ||
+            roofprints_output.value_is_null("geometry", i)) {
+            continue;
+        }
+
+        std::string cleabs = roofprints_output.value<std::string>("cleabs", i);
+        std::string origine_du_batiment =
+            roofprints_output.value<std::string>("origine_du_batiment", i);
+        OutlineSource::Id outline_source =
+            OutlineSource::from_string(origine_du_batiment);
+
+        // if (cleabs != "BATIMENT0000000337020997") {
+        //     continue;
+        // }
+
+        const std::vector<uint8_t> &geometry_binary =
+            roofprints_output.value<std::vector<uint8_t>>("geometry", i);
+
+        ARROW_ASSIGN_OR_RAISE(OGRMultiLineStringPtr multi_line_string,
+                              parse_wkb_multilinestringz(geometry_binary));
+
+        roofprints.emplace_back(std::move(multi_line_string), cleabs,
+                                outline_source);
+
+        // std::cout << "Read row " << i << ": cleabs=" << cleabs
+        //           << ", origine_du_batiment=" << origine_du_batiment
+        //           << ", geometry="
+        //           << roofprints.back().multi_polygon->exportToWkt()
+        //           << std::endl;
+    }
+
+    std::cout << "Loaded " << roofprints.size()
+              << " MultiLineStringZ roofprints" << std::endl;
+
+    /* ----------------------------------------------------------------------
+     */
+    /*                          Load the point cloud */
+    /* ----------------------------------------------------------------------
+     */
+
+    NewLasReader las_reader(points_file);
+    auto storage = las_reader.points;
+    storage->build_kd_tree_2d();
+    Trajectory trajectory = read_trajectory(trajectory_file);
+    PtsStructs::Topology3D topo(storage, trajectory);
+
+    /* ----------------------------------------------------------------------
+     */
+    /*                            Process each edge */
+    /* ----------------------------------------------------------------------
+     */
+
+    auto [initial_pdal_dims, initial_custom_dims] =
+        las_reader.points->dimensions();
+    std::vector<pdal::Dimension::Id> pdal_dims = initial_pdal_dims;
+    std::vector<ProprietaryDimension> custom_dims = initial_custom_dims;
+    std::vector<ProprietaryDimension> new_distances_custom_dims = {
+        CustomDimensions::Id::CorrespondingBuildingId,
+    };
+    custom_dims.insert(custom_dims.end(), new_distances_custom_dims.begin(),
+                       new_distances_custom_dims.end());
+    NewLasWriter las_writer(pdal_dims, custom_dims,
+                            las_reader.points->spatial_reference());
+    std::vector<std::size_t> footprint_points;
+
+    std::cout << "Processing roofprints to compute footprints..." << std::endl;
+    std::vector<MultiLineStringZWithAttributes> footprints;
+    footprints.reserve(roofprints.size());
+    ProgressBarTotal progress_bar(roofprints.size(), "Processing roofprints");
+    progress_bar.start();
+    for (const auto &roofprint : roofprints) {
+        OGRMultiLineString *multi_line_string_raw = new OGRMultiLineString();
+        const std::string &id = roofprint.get_id();
+        for (int i = 0; i < roofprint.multi_line_string->getNumGeometries();
+             ++i) {
+            // Extract the facade roof edges as a vector of Point_3
+            OGRLineString *line_string =
+                roofprint.multi_line_string->getGeometryRef(i);
+            std::vector<Point_3> facade_roof_edges;
+            for (int j = 0; j < line_string->getNumPoints(); ++j) {
+                Point_3 point(line_string->getX(j), line_string->getY(j),
+                              line_string->getZ(j));
+                facade_roof_edges.push_back(point);
+            }
+
+            // Compute the footprint edge for this facade using the point
+            // cloud
+            Segment_2 footprint_edge;
+            one_facade_to_footprint(storage, facade_roof_edges,
+                                    footprint_points, footprint_edge);
+
+            for (const auto &point_id : footprint_points) {
+                PtsStructs::PointId new_idx(las_writer.points->point_count());
+                for (const auto &dim : initial_pdal_dims) {
+                    las_writer.points->copy_field<double>(
+                        dim, new_idx, storage, PtsStructs::PointId(point_id));
+                }
+                for (const auto &dim : initial_custom_dims) {
+                    las_writer.points->copy_field<double>(
+                        dim, new_idx, storage, PtsStructs::PointId(point_id));
+                }
+                las_writer.points->set_field(
+                    CustomDimensions::Id::CorrespondingBuildingId, new_idx,
+                    building_id_to_int64(id));
+            }
+
+            // Add the computed footprint edge to the output MultiLineString
+            OGRLineString *footprint_line_string = new OGRLineString();
+            footprint_line_string->addPoint(footprint_edge.source().x(),
+                                            footprint_edge.source().y(), 0.0);
+            footprint_line_string->addPoint(footprint_edge.target().x(),
+                                            footprint_edge.target().y(), 0.0);
+            multi_line_string_raw->addGeometry(footprint_line_string);
+        }
+        OGRMultiLineStringPtr multi_line_string(multi_line_string_raw);
+        footprints.emplace_back(std::move(multi_line_string),
+                                roofprint.get_id(),
+                                roofprint.get_outline_source());
+
+        progress_bar.increment(1);
+    }
+    progress_bar.finish();
+
+    /* ----------------------------------------------------------------------
+     */
+    /*                       Write the output footprints */
+    /* ----------------------------------------------------------------------
+     */
+
+    std::filesystem::create_directories(
+        std::filesystem::path(output_footprints_file).parent_path());
+
+    status = write_geoms_to_parquet(footprints, output_footprints_file, true);
+    if (!status.ok()) {
+        std::cerr << "Error writing footprints Parquet file: "
+                  << status.ToString() << std::endl;
+        return status;
+    }
+
+    /* ----------------------------------------------------------------------
+     */
+    /*                       Write the output points */
+    /* ----------------------------------------------------------------------
+     */
+
+    std::filesystem::create_directories(
+        std::filesystem::path(output_points_file).parent_path());
+
+    las_writer.write(output_points_file, {});
+
+    return status;
+}

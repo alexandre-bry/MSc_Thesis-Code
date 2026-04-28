@@ -1,16 +1,20 @@
+#pragma once
+
 #include <string>
 
-struct ComputeFootprintsOptions {
-    std::string input_las_file;
-    std::string input_bd_topo_edges_file;
-    std::string input_bd_topo_intersections_file;
+#include <arrow/api.h>
+
+struct Roofprints3DToFootprintsOptions {
+    std::string input_roofprints_file;
+    std::string points_file;
+    std::string trajectory_file;
     std::string output_footprints_file;
-    uint iterations;
+    std::string output_points_file;
     bool overwrite;
 };
 
-void compute_footprints(const std::string &input_las_file,
-                        const std::string &input_bd_topo_edges_file,
-                        const std::string &input_bd_topo_intersections_file,
-                        const std::string &output_footprints_file,
-                        uint iterations, bool overwrite);
+arrow::Status roofprints_3d_to_footprints(
+    const std::string &input_roofprints_file, const std::string &points_file,
+    const std::string &trajectory_file,
+    const std::string &output_footprints_file,
+    const std::string &output_points_file, bool overwrite);

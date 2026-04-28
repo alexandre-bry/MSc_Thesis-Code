@@ -93,25 +93,16 @@ enum class Id {
     InwardVectorX,
     InwardVectorY,
     InwardVectorZ,
-    Eigenvalue0,
-    Eigenvalue1,
-    Eigenvalue2,
-    Planarity,
-    Linearity,
-    Sphericity,
-    Omnivariance,
-    Anisotropy,
-    Eigenentropy,
-    SurfaceVariation,
-    Verticality,
-    Horizontality,
     MaxVerticalDiff,
     MinVerticalDiff,
-    RoofLikelihood,
     IsRoofEdge,
     IsFootEdge,
     IsFacade,
     IsGenerated,
+    ScannerPositionX,
+    ScannerPositionY,
+    ScannerPositionZ,
+    CorrespondingBuildingId
 };
 inline std::string name(Id id) {
     switch (id) {
@@ -125,36 +116,10 @@ inline std::string name(Id id) {
         return "InwardVectorY";
     case Id::InwardVectorZ:
         return "InwardVectorZ";
-    case Id::Eigenvalue0:
-        return "EigenvalueSmallest";
-    case Id::Eigenvalue1:
-        return "EigenvalueMiddle";
-    case Id::Eigenvalue2:
-        return "EigenvalueLargest";
-    case Id::Planarity:
-        return "CustomPlanarity";
-    case Id::Linearity:
-        return "Linearity";
-    case Id::Sphericity:
-        return "Sphericity";
-    case Id::Omnivariance:
-        return "Omnivariance";
-    case Id::Anisotropy:
-        return "Anisotropy";
-    case Id::Eigenentropy:
-        return "Eigenentropy";
-    case Id::SurfaceVariation:
-        return "SurfaceVariation";
-    case Id::Verticality:
-        return "Verticality";
-    case Id::Horizontality:
-        return "Horizontality";
     case Id::MaxVerticalDiff:
         return "MaxVerticalDiff";
     case Id::MinVerticalDiff:
         return "MinVerticalDiff";
-    case Id::RoofLikelihood:
-        return "RoofLikelihood";
     case Id::IsRoofEdge:
         return "IsRoofEdge";
     case Id::IsFootEdge:
@@ -163,6 +128,14 @@ inline std::string name(Id id) {
         return "IsFacade";
     case Id::IsGenerated:
         return "IsGenerated";
+    case Id::ScannerPositionX:
+        return "ScannerPositionX";
+    case Id::ScannerPositionY:
+        return "ScannerPositionY";
+    case Id::ScannerPositionZ:
+        return "ScannerPositionZ";
+    case Id::CorrespondingBuildingId:
+        return "CorrespondingBuildingId";
     default:
         throw std::runtime_error("Unknown custom dimension ID");
     }
@@ -180,36 +153,10 @@ inline pdal::Dimension::Type type(Id id) {
         return pdal::Dimension::Type::Double;
     case Id::InwardVectorZ:
         return pdal::Dimension::Type::Double;
-    case Id::Eigenvalue0:
-        return pdal::Dimension::Type::Double;
-    case Id::Eigenvalue1:
-        return pdal::Dimension::Type::Double;
-    case Id::Eigenvalue2:
-        return pdal::Dimension::Type::Double;
-    case Id::Planarity:
-        return pdal::Dimension::Type::Double;
-    case Id::Linearity:
-        return pdal::Dimension::Type::Double;
-    case Id::Sphericity:
-        return pdal::Dimension::Type::Double;
-    case Id::Omnivariance:
-        return pdal::Dimension::Type::Double;
-    case Id::Anisotropy:
-        return pdal::Dimension::Type::Double;
-    case Id::Eigenentropy:
-        return pdal::Dimension::Type::Double;
-    case Id::SurfaceVariation:
-        return pdal::Dimension::Type::Double;
-    case Id::Verticality:
-        return pdal::Dimension::Type::Double;
-    case Id::Horizontality:
-        return pdal::Dimension::Type::Double;
     case Id::MaxVerticalDiff:
         return pdal::Dimension::Type::Double;
     case Id::MinVerticalDiff:
         return pdal::Dimension::Type::Double;
-    case Id::RoofLikelihood:
-        return pdal::Dimension::Type::Unsigned8;
     case Id::IsRoofEdge:
         return pdal::Dimension::Type::Unsigned8;
     case Id::IsFootEdge:
@@ -218,6 +165,14 @@ inline pdal::Dimension::Type type(Id id) {
         return pdal::Dimension::Type::Unsigned8;
     case Id::IsFacade:
         return pdal::Dimension::Type::Unsigned8;
+    case Id::ScannerPositionX:
+        return pdal::Dimension::Type::Double;
+    case Id::ScannerPositionY:
+        return pdal::Dimension::Type::Double;
+    case Id::ScannerPositionZ:
+        return pdal::Dimension::Type::Double;
+    case Id::CorrespondingBuildingId:
+        return pdal::Dimension::Type::Unsigned64;
     default:
         throw std::runtime_error("Unknown custom dimension ID");
     }

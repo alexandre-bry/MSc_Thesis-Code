@@ -22,8 +22,8 @@
 #include <ogr_geometry.h>
 #include <ogr_spatialref.h>
 
-#include "geometry.hpp"
 #include "utils/cgal.hpp"
+#include "utils/ogc_simple_features.hpp"
 #include "utils/pbar.hpp"
 
 struct TestParquetOptions {

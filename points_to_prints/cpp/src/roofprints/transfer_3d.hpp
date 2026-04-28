@@ -2,9 +2,6 @@
 #include <random>
 #include <vector>
 
-#include "../las/reader.hpp"
-#include "../parquet.hpp"
-#include "../parquet/reader.hpp"
 #include "../points.hpp"
 #include "../utils/cgal.hpp"
 

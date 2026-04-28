@@ -13,11 +13,11 @@
 #include <pdal/Dimension.hpp>
 #include <pdal/PointView.hpp>
 
-#include "geometry.hpp"
 #include "las/enums.hpp"
 #include "las/trajectory.hpp"
 #include "utils/cgal.hpp"
 #include "utils/kd_tree.hpp"
+#include "utils/ogc_simple_features.hpp"
 #include "utils/strong_types.hpp"
 
 const double NEIGHBOUR_MAX_GPS_TIME = 1e-5;
