@@ -714,7 +714,7 @@ struct Segment2DSpace {
         empty_spaces = new_empty_spaces;
     }
 
-    void get_final_segments(std::vector<Segment_3> &segments_3d) const {
+    void get_final_connected_segments(std::vector<Point_3> &segments_3d) const {
         // std::cout << "Extending segments to fill empty spaces..." <<
         // std::endl; std::cout << "Current segments: " << std::endl; for
         // (std::size_t i = 0; i < current_segments.size(); ++i) {
@@ -884,19 +884,46 @@ struct Segment2DSpace {
 
         // std::cout << "Done extending segments" << std::endl;
 
+        if (extended_segments.empty()) {
+            return;
+        }
+
+        // Sort the segments by their minimum X coordinate
+        std::sort(extended_segments.begin(), extended_segments.end(),
+                  [](const std::pair<Point_2, Point_2> &a,
+                     const std::pair<Point_2, Point_2> &b) {
+                      double a_min_x = std::min(a.first.x(), a.second.x());
+                      double b_min_x = std::min(b.first.x(), b.second.x());
+                      return a_min_x < b_min_x;
+                  });
+
         // Export the segments back in 3D in the main space
-        for (const auto &[proj_start, proj_end] : extended_segments) {
+        // If two consecutive segments are disconnected, we connect them with a
+        // vertical segment
+        segments_3d.clear();
+        segments_3d.reserve(extended_segments.size() + 1);
+        for (std::size_t i = 0; i < extended_segments.size(); ++i) {
+            const auto &[proj_start, proj_end] = extended_segments[i];
             Point_3 seg_start = origin + horizontal_direction * proj_start.x() +
                                 vertical_direction * proj_start.y();
             Point_3 seg_end = origin + horizontal_direction * proj_end.x() +
                               vertical_direction * proj_end.y();
-            segments_3d.emplace_back(seg_start, seg_end);
+            if (segments_3d.size() > 0) {
+                double distance =
+                    CGAL::squared_distance(segments_3d.back(), seg_start);
+                if (distance > 1e-6) {
+                    segments_3d.push_back(seg_start);
+                }
+            } else {
+                segments_3d.push_back(seg_start);
+            }
+            segments_3d.push_back(seg_end);
         }
     }
 };
 
-void SimpleRANSAC3D::get_final_segments(
-    std::vector<Segment_3> &segments_3d) const {
+void SimpleRANSAC3D::get_final_connected_segments(
+    std::vector<Point_3> &segments_3d) const {
 
     Segment2DSpace segment_2d_space(base_segment);
 
@@ -907,8 +934,8 @@ void SimpleRANSAC3D::get_final_segments(
             continue;
         }
 
-        // Crop the 3D line into a 3D segment based on the first and last
-        // inliers
+        // Crop the 3D line into a 3D segment based on the first and
+        // last inliers
         const std::size_t first_inlier_idx = segment.inliers_indices.front();
         const std::size_t last_inlier_idx = segment.inliers_indices.back();
         const Point_3 &first_inlier = points[first_inlier_idx];
@@ -919,11 +946,11 @@ void SimpleRANSAC3D::get_final_segments(
         segment_2d_space.add_segment(Segment_3(source, target));
     }
 
-    segment_2d_space.get_final_segments(segments_3d);
+    segment_2d_space.get_final_connected_segments(segments_3d);
 }
 
 void one_edge_to_3d(const PtsStructs::StoragePtr &storage,
-                    const Segment_2 &edge, std::vector<Segment_3> &edge_3d) {
+                    const Segment_2 &edge, std::vector<Point_3> &edge_3d) {
     // std::cout << "Processing edge: " << edge.source() << " - " <<
     // edge.target()
     //           << std::endl;
@@ -951,13 +978,14 @@ void one_edge_to_3d(const PtsStructs::StoragePtr &storage,
         return;
     }
     // std::cout << "Found " << points_3d.size()
-    //           << " points in the bounding box of the edge" << std::endl;
+    //           << " points in the bounding box of the edge" <<
+    //           std::endl;
 
     // Perform RANSAC in 3D to identify the dominant lines and their
     // inliers
     SimpleRANSAC3D ransac(points_3d, edge, 1000, 0.3);
     ransac.run();
-    ransac.get_final_segments(edge_3d);
+    ransac.get_final_connected_segments(edge_3d);
 }
 
 arrow::Status roofprints_to_3d(const std::string &input_roofprints_file,
@@ -971,9 +999,11 @@ arrow::Status roofprints_to_3d(const std::string &input_roofprints_file,
                                  output_roofprints_3d_file);
     }
 
-    /* ---------------------------------------------------------------------- */
-    /*                           Load the roofprints                          */
-    /* ---------------------------------------------------------------------- */
+    /* ----------------------------------------------------------------------
+     */
+    /*                           Load the roofprints */
+    /* ----------------------------------------------------------------------
+     */
 
     // Read the roofprints data from the Parquet file using the
     // ParquetReader
@@ -1047,17 +1077,21 @@ arrow::Status roofprints_to_3d(const std::string &input_roofprints_file,
     std::cout << "Loaded " << roofprints.size() << " MultiPolygonZ roofprints"
               << std::endl;
 
-    /* ---------------------------------------------------------------------- */
-    /*                          Load the point cloud                          */
-    /* ---------------------------------------------------------------------- */
+    /* ----------------------------------------------------------------------
+     */
+    /*                          Load the point cloud */
+    /* ----------------------------------------------------------------------
+     */
 
     NewLasReader las_reader(edge_points_file);
     auto storage = las_reader.points;
     storage->build_kd_tree_2d();
 
-    /* ---------------------------------------------------------------------- */
-    /*                            Process each edge                           */
-    /* ---------------------------------------------------------------------- */
+    /* ----------------------------------------------------------------------
+     */
+    /*                            Process each edge */
+    /* ----------------------------------------------------------------------
+     */
 
     std::cout << "Processing roofprints to extract 3D edges..." << std::endl;
     std::vector<MultiLineStringZWithAttributes> roofprints_3D;
@@ -1094,18 +1128,24 @@ arrow::Status roofprints_to_3d(const std::string &input_roofprints_file,
                         0.5) {
                         continue;
                     }
-                    std::vector<Segment_3> edge_3d;
+                    std::vector<Point_3> edge_3d;
                     one_edge_to_3d(storage, edge, edge_3d);
-                    for (const Segment_3 &seg_3d : edge_3d) {
-                        OGRLineString line_3d;
-                        line_3d.addPoint(seg_3d.source().x(),
-                                         seg_3d.source().y(),
-                                         seg_3d.source().z());
-                        line_3d.addPoint(seg_3d.target().x(),
-                                         seg_3d.target().y(),
-                                         seg_3d.target().z());
-                        multi_line_string_raw->addGeometry(&line_3d);
+                    if (edge_3d.size() == 0) {
+                        continue;
                     }
+                    if (edge_3d.size() == 1) {
+                        std::cerr << "Only one 3D point found for edge from ("
+                                  << seg_start.x() << ", " << seg_start.y()
+                                  << ") to (" << seg_end.x() << ", "
+                                  << seg_end.y() << ")" << std::endl;
+                        continue;
+                    }
+                    OGRLineString line_3d;
+                    for (const Point_3 &point_3d : edge_3d) {
+                        line_3d.addPoint(point_3d.x(), point_3d.y(),
+                                         point_3d.z());
+                    }
+                    multi_line_string_raw->addGeometry(&line_3d);
                 }
                 OGRMultiLineStringPtr multi_line_string(multi_line_string_raw);
                 roofprints_3D.emplace_back(std::move(multi_line_string),
@@ -1117,9 +1157,11 @@ arrow::Status roofprints_to_3d(const std::string &input_roofprints_file,
     }
     progress_bar.finish();
 
-    /* ---------------------------------------------------------------------- */
-    /*                       Write the output roofprints                      */
-    /* ---------------------------------------------------------------------- */
+    /* ----------------------------------------------------------------------
+     */
+    /*                       Write the output roofprints */
+    /* ----------------------------------------------------------------------
+     */
 
     std::filesystem::create_directories(
         std::filesystem::path(output_roofprints_3d_file).parent_path());

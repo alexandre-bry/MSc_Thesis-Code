@@ -1,5 +1,6 @@
 #include "footprints.hpp"
 
+#include <algorithm>
 #include <cstddef>
 #include <filesystem>
 #include <ogr_geometry.h>
@@ -11,7 +12,13 @@
 #include "../points.hpp"
 #include "../utils/cgal.hpp"
 #include "../utils/pbar.hpp"
+#include "simple_scorer.hpp"
 
+/**
+ * A vertical plane in 3D space, defined by a segment in the XY plane.
+ * In its local space, the X axis is along the segment, the Y axis is vertical,
+ * and the Z axis is normal to the plane (and therefore horizontal).
+ */
 struct VerticalPlane {
   protected:
     UnitVector_3 segment_direction;
@@ -105,10 +112,9 @@ struct Vertical2DCroppedPlane : VerticalPlane {
     Vertical2DCroppedPlane(const Segment_2 &segment,
                            const std::vector<Point_3> &limits,
                            double horizontal_buffer, double vertical_buffer,
-                           double max_extrusion_outside,
-                           double max_extrusion_inside)
+                           double min_extrusion, double max_extrusion)
         : VerticalPlane(segment), vertical_buffer(vertical_buffer),
-          min_z(-max_extrusion_inside), max_z(max_extrusion_outside) {
+          min_z(-max_extrusion), max_z(-min_extrusion) {
         // The Z axis points outwards if the segments are ordered
         // counterclockwise, which is assumed here
         min_x = min_proj_x + horizontal_buffer;
@@ -163,8 +169,18 @@ struct Vertical2DCroppedPlane : VerticalPlane {
     }
 };
 
-const double OUTSIDE_BUFFER = 0.3;
-const double INSIDE_BUFFER = 1.5;
+const double MIN_TRANSLATION = 0.0;
+const double MAX_TRANSLATION = 1.5;
+const uint TRANSLATION_STEPS = 21;
+const double OPTIMIZATION_DISTANCE_THRESHOLD = 0.3;
+const double OPTIMIZATION_PENALTY_DISTANCE = 1.0;
+
+const double MIN_EXTRUSION =
+    MIN_TRANSLATION - OPTIMIZATION_DISTANCE_THRESHOLD; // Pointing inwards
+const double MAX_EXTRUSION =
+    MAX_TRANSLATION + OPTIMIZATION_DISTANCE_THRESHOLD; // Pointing inwards
+const double MIN_BUFFER = MIN_EXTRUSION;
+const double MAX_BUFFER = MAX_EXTRUSION + OPTIMIZATION_PENALTY_DISTANCE;
 const double HORIZONTAL_MARGIN = 0.5;
 const double VERTICAL_MARGIN = 0.5;
 
@@ -193,12 +209,14 @@ void one_facade_to_footprint(const PtsStructs::StoragePtr &storage,
     UnitVector_2 direction_inwards(
         (end_2d - start_2d).perpendicular(CGAL::COUNTERCLOCKWISE));
 
-    double outside_buffer = OUTSIDE_BUFFER;
-    double inside_buffer = INSIDE_BUFFER;
-    Segment_2 outside_boundary(start_2d - outside_buffer * direction_inwards,
-                               end_2d - outside_buffer * direction_inwards);
-    Segment_2 inside_boundary(start_2d + inside_buffer * direction_inwards,
-                              end_2d + inside_buffer * direction_inwards);
+    // double min_extrusion = MIN_EXTRUSION;
+    // double max_extrusion = MAX_EXTRUSION;
+    double min_buffer = MIN_BUFFER;
+    double max_buffer = MAX_BUFFER;
+    Segment_2 outside_boundary(start_2d + min_buffer * direction_inwards,
+                               end_2d + min_buffer * direction_inwards);
+    Segment_2 inside_boundary(start_2d + max_buffer * direction_inwards,
+                              end_2d + max_buffer * direction_inwards);
     Bbox_2 area_of_interest = outside_boundary.bbox() + inside_boundary.bbox();
 
     // Prepare the vertical plane
@@ -206,7 +224,7 @@ void one_facade_to_footprint(const PtsStructs::StoragePtr &storage,
     double vertical_margin = VERTICAL_MARGIN;
     Vertical2DCroppedPlane segment_2d_space(
         Segment_2(start_2d, end_2d), facade_roof_edges, horizontal_margin,
-        vertical_margin, outside_buffer, inside_buffer);
+        vertical_margin, min_buffer, max_buffer);
 
     // Get the points in the area of interest
     auto kd_tree = storage->get_kd_tree_2d();
@@ -228,6 +246,45 @@ void one_facade_to_footprint(const PtsStructs::StoragePtr &storage,
 
         footprint_points.push_back(idx);
     }
+
+    footprint_edge = Segment_2(start_2d, end_2d);
+    // If no points are found, we cannot optimize the footprint edge
+    if (footprint_points.empty()) {
+        return;
+    }
+
+    // Prepare the translations to test for optimizing the footprint edge
+    std::vector<double> translations(TRANSLATION_STEPS);
+    double step_factor =
+        (MAX_TRANSLATION - MIN_TRANSLATION) / (TRANSLATION_STEPS - 1);
+    for (uint i = 0; i < TRANSLATION_STEPS; ++i) {
+        translations[i] = MIN_TRANSLATION + step_factor * i;
+    }
+
+    // Prepare the points
+    std::vector<Point_3> points;
+    points.reserve(footprint_points.size());
+    for (std::size_t idx : footprint_points) {
+        points.push_back(storage->get_point(PtsStructs::PointId(idx)));
+    }
+
+    // Score the translations and keep the best one
+    std::vector<double> scores;
+    score_line_translations(footprint_edge.supporting_line(), points,
+                            direction_inwards, translations,
+                            OPTIMIZATION_DISTANCE_THRESHOLD,
+                            OPTIMIZATION_PENALTY_DISTANCE, scores);
+    double best_score = -std::numeric_limits<double>::infinity();
+    std::size_t best_translation_idx = 0;
+    for (std::size_t i = 0; i < translations.size(); ++i) {
+        if (scores[i] > best_score) {
+            best_score = scores[i];
+            best_translation_idx = i;
+        }
+    }
+    double best_translation = translations[best_translation_idx];
+    footprint_edge = Segment_2(start_2d + best_translation * direction_inwards,
+                               end_2d + best_translation * direction_inwards);
 }
 
 arrow::Status roofprints_3d_to_footprints(
@@ -334,8 +391,8 @@ arrow::Status roofprints_3d_to_footprints(
     NewLasReader las_reader(points_file);
     auto storage = las_reader.points;
     storage->build_kd_tree_2d();
-    Trajectory trajectory = read_trajectory(trajectory_file);
-    PtsStructs::Topology3D topo(storage, trajectory);
+    // Trajectory trajectory = read_trajectory(trajectory_file);
+    // PtsStructs::Topology3D topo(storage, trajectory);
 
     /* ----------------------------------------------------------------------
      */

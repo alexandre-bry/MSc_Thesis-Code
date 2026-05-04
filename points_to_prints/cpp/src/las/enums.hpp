@@ -172,7 +172,7 @@ inline pdal::Dimension::Type type(Id id) {
     case Id::ScannerPositionZ:
         return pdal::Dimension::Type::Double;
     case Id::CorrespondingBuildingId:
-        return pdal::Dimension::Type::Unsigned64;
+        return pdal::Dimension::Type::Unsigned32;
     default:
         throw std::runtime_error("Unknown custom dimension ID");
     }

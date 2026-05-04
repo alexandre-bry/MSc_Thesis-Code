@@ -88,11 +88,11 @@ class SimpleRANSAC3D {
 
     void process_line(const Line_3 &line);
     void run();
-    void get_final_segments(std::vector<Segment_3> &segments_3d) const;
+    void get_final_connected_segments(std::vector<Point_3> &segments_3d) const;
 };
 
 void one_edge_to_3d(const PtsStructs::StoragePtr &storage,
-                    const Segment_2 &edge, std::vector<Segment_3> &edge_3d);
+                    const Segment_2 &edge, std::vector<Point_3> &edge_3d);
 
 struct RooprintsTo3DOptions {
     std::string input_roofprints_file;
