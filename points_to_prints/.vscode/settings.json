@@ -24,5 +24,7 @@
   "clangd.fallbackFlags": ["-I${workspaceFolder}/include"],
 
   "comment-divider.length": 80,
-  "comment-divider.shouldLengthIncludeIndent": true
+  "comment-divider.shouldLengthIncludeIndent": true,
+
+  "autoDocstring.docstringFormat": "numpy"
 }

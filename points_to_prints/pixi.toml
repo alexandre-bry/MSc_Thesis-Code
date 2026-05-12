@@ -29,9 +29,9 @@ fastquadtree = ">=2.1.1, <3"
 
 [feature.python.tasks]
 py = { cmd = "cd \"$INIT_CWD\" && PYTHONPATH=\"$PIXI_PROJECT_ROOT\" PYTHONNOUSERSITE=1 python" }
-py-run = { cmd = "cd \"$INIT_CWD\" && PYTHONPATH=\"$PIXI_PROJECT_ROOT\" PYTHONNOUSERSITE=1 python -m python.lidarhd.main" }
-py-edge-run = { cmd = "cd \"$INIT_CWD\" && PYTHONPATH=\"$PIXI_PROJECT_ROOT\" PYTHONNOUSERSITE=1 python -m python.edge_matching.main" }
-py-roof-run = { cmd = "cd \"$INIT_CWD\" && PYTHONPATH=\"$PIXI_PROJECT_ROOT\" PYTHONNOUSERSITE=1 python -m python.roof.main" }
+py-run = { args = [
+    "command", # Name of the command, currently either `lidarhd`, `edge_matching` or `roof`
+], cmd = "cd \"$INIT_CWD\" && PYTHONPATH=\"$PIXI_PROJECT_ROOT\" PYTHONNOUSERSITE=1 python -m python.{{ command }}.main", description = "Run a Python command with subcommands and arguments.\nThe available commands are: lidarhd, edge_matching, roof.\nTo run a command, use `pixi run py-run <command> -- <argument1> <argument2> ...`." }
 
 [feature.cpp.dependencies]
 just = ">=1.50.0,<2"
@@ -47,7 +47,7 @@ eigen = ">=3.4.0,<4"
 cpp = { args = [
     "command",
     { arg = "mode", "default" = "" },
-], cmd = "cd \"$INIT_CWD\" && just {{ command }} {{ mode }}", description = "Run the C++ code of the project. You can use `pixi run just --list` to get a list of commands that you need to transform from `<name> <arg_1> ... <arg_n> *ARGS` into `pixi run <name> <arg_1> ... <arg_n> -- *ARGS`." }
+], cmd = "cd \"$INIT_CWD\" && just {{ command }} {{ mode }}", description = "Run the C++ code of the project.\nYou can use `pixi run just --list` to get a list of available commands.\nYou need to transform from them `<name> <arg_1> ... <arg_n> *ARGS` into `pixi run <name> <arg_1> ... <arg_n> -- *ARGS`." }
 
 [tasks]
 traj-estimation = { cmd = "cd \"$INIT_CWD\" && $PIXI_PROJECT_ROOT/LiDARHD_Traj_Estimation/build/SensorLiDARHD", description = "Compute the trajectories of each flight line in a LAS file." }

@@ -20,31 +20,4 @@ Commands are given for Ubuntu.
 ## Usage
 
 To list the available commands, run `pixi task list`.
-
-### C++ scripts
-
-1. Find the commands of the C++ scripts:
-
-    ```bash
-    pixi run cpp run release -- --help
-    ```
-
-2. Find the arguments of a given command:
-
-    ```bash
-    pixi run cpp run release -- <command> --help
-    ```
-
-### Python scripts
-
-1. Find the commands of the Python scripts:
-
-    ```bash
-    pixi run py-run --help
-    ```
-
-2. Find the arguments of a given command:
-
-    ```bash
-    pixi run py-run <command> --help
-    ```
+See the [documentation](./Documentation.md) for information about the expected pipeline to produce the roofprints and the footprints.
