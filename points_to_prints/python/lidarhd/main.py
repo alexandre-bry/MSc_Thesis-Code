@@ -187,12 +187,12 @@ def download_lidar_hd(
     help="Run the pipeline.",
 )
 def run_pipeline_command(
-    other_data_dir: Annotated[
+    bd_topo_dir: Annotated[
         Path,
         typer.Option(
-            "-d",
-            "--other_data_dir",
-            help="Directory containing the other data files (BD TOPO parquet file, etc.) needed for the pipeline.",
+            "-b",
+            "--bd_topo_dir",
+            help="Directory containing the BD TOPO data needed for the pipeline.",
             exists=True,
             file_okay=False,
             dir_okay=True,
@@ -229,7 +229,7 @@ def run_pipeline_command(
     num_workers: Annotated[Optional[int], typer.Option("--num_workers")] = None,
 ):
     run_pipeline_call(
-        other_data_dir=other_data_dir,
+        bd_topo_dir=bd_topo_dir,
         tile_dir=tile_dir,
         overwrite=overwrite,
         skip_existing=skip_existing,

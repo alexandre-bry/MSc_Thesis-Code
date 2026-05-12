@@ -68,8 +68,7 @@ def load_bd_topo_to_duckdb(con: DuckDBConnector, bd_topo_file: Path):
 
 def unnest_multipoly_to_poly(con: DuckDBConnector):
     logging.info("Unnesting MultiPolygons into Polygons...")
-    con.execute(
-        f"""
+    con.execute(f"""
         CREATE OR REPLACE TABLE {SCHEMA_NAME}.{POLY_TABLE_NAME} AS
         SELECT
             cleabs,
@@ -79,8 +78,7 @@ def unnest_multipoly_to_poly(con: DuckDBConnector):
             SELECT cleabs, UNNEST(ST_Dump({GEOMETRY_COLUMN_NAME}), recursive := true)
             FROM {SCHEMA_NAME}.{MULTIPOLY_TABLE_NAME}
         );
-        """
-    )
+        """)
 
     # Get the number of rows in the poly table
     result = con.execute(
@@ -92,8 +90,7 @@ def unnest_multipoly_to_poly(con: DuckDBConnector):
 
 def unnest_poly_to_rings(con: DuckDBConnector):
     logging.info("Unnesting polygons into rings...")
-    con.execute(
-        f"""
+    con.execute(f"""
         CREATE OR REPLACE TABLE {SCHEMA_NAME}.{RINGS_TABLE_NAME} AS
         SELECT 
             cleabs,
@@ -105,8 +102,7 @@ def unnest_poly_to_rings(con: DuckDBConnector):
             END AS {GEOMETRY_COLUMN_NAME}
         FROM {SCHEMA_NAME}.{POLY_TABLE_NAME}
         CROSS JOIN generate_series(0, ST_NInteriorRings({GEOMETRY_COLUMN_NAME})) AS i({IDX_RING['name']});
-        """
-    )
+        """)
 
     # Get the number of rows in the rings table
     result = con.execute(
@@ -119,8 +115,7 @@ def unnest_poly_to_rings(con: DuckDBConnector):
 def unnest_rings_to_edges(con: DuckDBConnector):
     logging.info("Unnesting rings into edges...")
     # Unnest the LinearRingZ into LineStringZ (edges):
-    con.execute(
-        f"""
+    con.execute(f"""
         CREATE OR REPLACE TABLE {SCHEMA_NAME}.{EDGES_TABLE_NAME} AS
         SELECT
             cleabs,
@@ -136,17 +131,14 @@ def unnest_rings_to_edges(con: DuckDBConnector):
         FROM {SCHEMA_NAME}.{RINGS_TABLE_NAME}
         CROSS JOIN generate_series(1, ST_NPoints({GEOMETRY_COLUMN_NAME}) - 1) AS i(idx_point)
         ORDER BY cleabs, {IDX_POLYGON['name']}, {IDX_RING['name']}, {IDX_EDGE['name']};
-        """
-    )
+        """)
 
     # Create an incremental key on the edges table
-    con.execute(
-        f"""
+    con.execute(f"""
         CREATE OR REPLACE SEQUENCE seq_edges_ids START 1;
         ALTER TABLE {SCHEMA_NAME}.{EDGES_TABLE_NAME} ADD COLUMN {EDGE_KEY['name']} {EDGE_KEY['type']};
         UPDATE {SCHEMA_NAME}.{EDGES_TABLE_NAME} SET {EDGE_KEY['name']} = nextval('seq_edges_ids');
-        """
-    )
+        """)
 
     # # Create a r-tree index on the geometry column of the edges table
     # con.execute(
@@ -165,8 +157,7 @@ def unnest_rings_to_edges(con: DuckDBConnector):
 
 def compute_intersections(con: DuckDBConnector):
     logging.info("Computing intersections between edges...")
-    con.execute(
-        f"""
+    con.execute(f"""
         CREATE OR REPLACE TABLE {SCHEMA_NAME}.{INTERSECTIONS_TABLE_NAME}_temp AS
         SELECT
             a.{EDGE_KEY['name']} AS {EDGE_KEY['name']}_a,
@@ -176,16 +167,13 @@ def compute_intersections(con: DuckDBConnector):
         JOIN {SCHEMA_NAME}.{EDGES_TABLE_NAME} b
             ON a.{EDGE_KEY['name']} < b.{EDGE_KEY['name']}
         AND ST_Intersects(a.{GEOMETRY_COLUMN_NAME}, b.{GEOMETRY_COLUMN_NAME});
-        """
-    )
-    con.execute(
-        f"""
+        """)
+    con.execute(f"""
         CREATE OR REPLACE TABLE {SCHEMA_NAME}.{INTERSECTIONS_TABLE_NAME} AS
         SELECT *
         FROM {SCHEMA_NAME}.{INTERSECTIONS_TABLE_NAME}_temp
         WHERE ST_GeometryType({GEOMETRY_COLUMN_NAME}) = 'LINESTRING';
-        """
-    )
+        """)
 
     # Get the number of rows in the intersections table
     result = con.execute(

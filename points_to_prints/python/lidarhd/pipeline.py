@@ -520,7 +520,7 @@ def _merge_output_files(
     skip_existing : bool
         Whether to skip merging if merged files already exist.
     """
-    logging.info("\n\nO----- Merging files -----O\n")
+    logging.info("Merging files")
 
     merge_files(
         input_files=distances_files,
@@ -611,7 +611,7 @@ def _compute_roofprints(
 
 
 def run_pipeline_implementation(
-    other_data_dir: Path,
+    bd_topo_dir: Path,
     tile_dir: Path,
     overwrite: bool,
     skip_existing: bool,
@@ -620,7 +620,7 @@ def run_pipeline_implementation(
     """Execute the complete pipeline to compute roofprints from LiDAR HD data.
 
     Args:
-        other_data_dir: Directory containing BD TOPO data
+        bd_topo_dir: Directory containing BD TOPO data
         tile_dir: Working directory for intermediate and output files
         bd_topo_file: Path to BD TOPO shapefile
         overwrite: Whether to overwrite existing files
@@ -636,7 +636,6 @@ def run_pipeline_implementation(
     #                                BD TOPO                               #
     # -------------------------------------------------------------------- #
 
-    bd_topo_dir = other_data_dir / "bd_topo"
     edges_file = bd_topo_dir / "edges.parquet"
     intersections_file = bd_topo_dir / "intersections.parquet"
     groups_file = bd_topo_dir / "building_groups.parquet"
@@ -734,7 +733,7 @@ def run_pipeline_implementation(
 
 
 def run_pipeline_call(
-    other_data_dir: Path,
+    bd_topo_dir: Path,
     tile_dir: Path,
     overwrite: bool,
     skip_existing: bool,
@@ -745,7 +744,7 @@ def run_pipeline_call(
 
     Parameters
     ----------
-    other_data_dir: Path
+    bd_topo_dir: Path
         Directory containing BD TOPO data
     tile_dir: Path
         Working directory for intermediate and output files
@@ -760,7 +759,7 @@ def run_pipeline_call(
     """
     with LoggingContext(verbose=verbose_int):
         run_pipeline_implementation(
-            other_data_dir=other_data_dir,
+            bd_topo_dir=bd_topo_dir,
             tile_dir=tile_dir,
             overwrite=overwrite,
             skip_existing=skip_existing,

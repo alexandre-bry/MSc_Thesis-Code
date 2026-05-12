@@ -13,7 +13,7 @@ pixi run entwine build -i <input_laz> -o <output_ept_folder> --deep --srs EPSG:2
 1. Rename the geometry layer from `geometrie` to `geom`
 
     ```bash
-    pixi run ogr2ogr -overwrite data/input/BD_TOPO/2026-03-15-renamed.gpkg data/input/BD_TOPO/2026-03-15.gpkg -nln batiment -nlt GEOMETRY -sql "SELECT CAST(SUBSTR(cleabs, 8, 16) AS INTEGER) AS cleabs_int, ST_ForcePolygonCCW(geometrie) AS geom, * FROM batiment"
+    pixi run ogr2ogr -overwrite data/input/BD_TOPO/2026-03-15-renamed.gpkg data/input/BD_TOPO/2026-03-15.gpkg -nln batiment -nlt GEOMETRY -sql "SELECT ST_ForcePolygonCCW(geometrie) AS geom, * FROM batiment"
     ```
 
 2. Extract an integer ID from the `cleabs` column (which is a string) and put it in a new `cleabs_int` column:
