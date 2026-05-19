@@ -112,12 +112,38 @@ def _compute_trajectory(
     overwrite: bool,
     skip_existing: bool,
     display: bool,
-):
+) -> bool:
+    """
+    Compute the trajectory for a given flight strip using the traj-estimation command.
+
+    Parameters
+    ----------
+    input_las_path : Path
+        Path to the input flight strip LAZ file.
+    output_trajectory_path : Path
+        Path to the output trajectory file.
+    overwrite : bool
+        Whether to overwrite existing files.
+    skip_existing : bool
+        Whether to skip existing files.
+    display : bool
+        Whether to display the command output.
+
+    Returns
+    -------
+    bool
+        True if the trajectory was computed successfully, False otherwise.
+
+    Raises
+    ------
+    FileExistsError
+        If the output file already exists and overwrite is False.
+    """
     logging.info(f"Computing the trajectory for {input_las_path}...")
     if output_trajectory_path.exists():
         if skip_existing:
             logging.info(f"{output_trajectory_path} already exists. Skipping.")
-            return
+            return True
         if overwrite:
             logging.info(f"Overwriting {output_trajectory_path}.")
         else:
@@ -132,6 +158,7 @@ def _compute_trajectory(
     return_code = run_command_with_tqdm_logging(command, display=display)
     if return_code != 0:
         logging.error(f"Failed to compute trajectory for {input_las_path.name}.")
+        return False
     else:
         logging.info(f"Successfully computed trajectory for {input_las_path.name}.")
 
@@ -140,6 +167,7 @@ def _compute_trajectory(
         logging.error(
             f"Could not find the expected output ({command_trajectory_file_1}) for the trajectory of {input_las_path.name}."
         )
+        return False
 
     # Rename it to match the expected format for the next steps
     command_trajectory_file_1.rename(output_trajectory_path)
@@ -149,13 +177,15 @@ def _compute_trajectory(
         logging.error(
             f"Second trajectory file found for {input_las_path.name}: {command_trajectory_file_2}. This means that the initial point cloud was not split properly between the different flight axes."
         )
-
+        return False
     # Remove the other output file if it exists, since it is not needed
     other_output_file = (
         input_las_path.parent / f"{input_las_path.stem}_center_refine.txt"
     )
     if other_output_file.exists():
         other_output_file.unlink()
+
+    return True
 
 
 def _check_file_exist(file_path: Path) -> bool:
@@ -165,10 +195,10 @@ def _check_file_exist(file_path: Path) -> bool:
     return file_exists
 
 
-def _compute_single_trajectory(args: Tuple[Path, Path, bool, bool, bool]) -> None:
+def _compute_single_trajectory(args: Tuple[Path, Path, bool, bool, bool]) -> bool:
     """Helper function for multiprocessing trajectory computation."""
     input_las_path, output_trajectory_path, overwrite, skip_existing, display = args
-    _compute_trajectory(
+    return _compute_trajectory(
         input_las_path=input_las_path,
         output_trajectory_path=output_trajectory_path,
         overwrite=overwrite,
@@ -285,15 +315,26 @@ def _compute_trajectories_parallel(
     overwrite: bool,
     skip_existing: bool,
     num_workers: Optional[int] = None,
-) -> None:
+) -> List[bool]:
     """Compute trajectories for all flight strips in parallel.
 
-    Args:
-        flight_strip_files: List of flight strip LAZ file paths
-        trajectory_files: List of trajectory file paths
-        overwrite: Whether to overwrite existing files
-        skip_existing: Whether to skip if files exist
-        num_workers: Number of worker processes (None = CPU count)
+    Parameters
+    ----------
+    flight_strip_files : List[Path]
+        List of flight strip LAZ file paths.
+    trajectory_files : List[Path]
+        List of output trajectory file paths corresponding to each flight strip.
+    overwrite : bool
+        Whether to overwrite existing files.
+    skip_existing : bool
+        Whether to skip if files exist.
+    num_workers : Optional[int], optional
+        Number of worker processes (None = CPU count), by default None
+
+    Returns
+    -------
+    List[bool]
+        List of boolean values indicating success or failure for each flight strip.
     """
     logging.info(
         f"Computing trajectories for {len(flight_strip_files)} flight strips in parallel..."
@@ -313,9 +354,10 @@ def _compute_trajectories_parallel(
 
     # Use multiprocessing pool to compute trajectories in parallel
     with Pool(processes=num_workers) as pool:
-        pool.map(_compute_single_trajectory, trajectory_args)
+        results = pool.map(_compute_single_trajectory, trajectory_args)
 
     logging.info("Trajectory computation completed.")
+    return results
 
 
 def _compute_distances_and_edges(
@@ -676,13 +718,21 @@ def run_pipeline_implementation(
         tile_dir / f"{laz_file.stem}-trajectory.txt"
         for laz_file in all_flight_strip_files
     ]
-    _compute_trajectories_parallel(
+    successes = _compute_trajectories_parallel(
         flight_strip_files=all_flight_strip_files,
         trajectory_files=trajectory_files,
         overwrite=overwrite,
         skip_existing=skip_existing,
         num_workers=num_workers,
     )
+
+    # Only keep files for which the trajectory computation was successful
+    all_flight_strip_files = [
+        laz for laz, success in zip(all_flight_strip_files, successes) if success
+    ]
+    trajectory_files = [
+        traj for traj, success in zip(trajectory_files, successes) if success
+    ]
 
     # Process flight strips with C++ pipeline in parallel
     distances_files = [
