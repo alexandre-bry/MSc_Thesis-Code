@@ -12,6 +12,9 @@ from ..utils.utils import Box2154, Point2154
 
 BASE_URL = "https://api.stac.teledetection.fr"
 COLLECTION_ID = "lidarhd"
+WFS_BASE_URL = "https://data.geopf.fr/wfs"
+WFS_TYPENAME = "IGNF_LIDAR-HD_METADONNEE:metadata"
+WFS_MIN_QUERY_INTERVAL_SECONDS = 1.1
 DEFAULT_CONCURRENCY = 10
 MAX_DOWNLOAD_RETRIES = 4
 RETRY_BASE_DELAY_SECONDS = 1.5
@@ -26,25 +29,24 @@ async def _fetch_tiles_by_bbox(
     semaphore: asyncio.Semaphore,
     tile_box: Box2154,
 ) -> List[Tuple[str, Optional[str]]]:
-    """Fetch STAC items intersecting a bbox around the center point and return list of (tile_name, data_href|None)."""
-    small_box_size = 10
-    small_box_margin = Point2154(small_box_size, small_box_size)
-    tile_center_small_box = Box2154(
-        tile_box.p_center - small_box_margin, tile_box.p_center + small_box_margin
-    )
+    """Fetch WFS metadata intersecting a tile bbox and return list of (tile_name, data_href|None)."""
+    # Use the full tile extent instead of a tiny box around the center to avoid
+    # empty responses caused by precision/coverage edge cases.
     bbox_str = ",".join(
         map(
             str,
             [
-                tile_center_small_box.p_min.lon_4326,
-                tile_center_small_box.p_min.lat_4326,
-                tile_center_small_box.p_max.lon_4326,
-                tile_center_small_box.p_max.lat_4326,
+                tile_box.p_min.lon_4326,
+                tile_box.p_min.lat_4326,
+                tile_box.p_max.lon_4326,
+                tile_box.p_max.lat_4326,
             ],
         )
     )
     search_url = (
-        f"{BASE_URL}/collections/{COLLECTION_ID}/items?bbox={bbox_str}&limit=100"
+        f"{WFS_BASE_URL}?SERVICE=WFS&REQUEST=GetFeature&VERSION=2.0.0"
+        f"&TYPENAMES={WFS_TYPENAME}&OUTPUTFORMAT=application/json"
+        f"&SRSNAME=CRS:84&BBOX={bbox_str},CRS:84&COUNT=100"
     )
 
     logging.debug(
@@ -61,8 +63,9 @@ async def _fetch_tiles_by_bbox(
             data = resp.json()
             results = []
             for feature in data.get("features", []):
-                tile_name = feature.get("id")
-                data_href = feature.get("assets", {}).get("data", {}).get("href")
+                properties = feature.get("properties", {})
+                tile_name = properties.get("coordonnees_nw") or feature.get("id")
+                data_href = properties.get("url_npl")
                 results.append((tile_name, data_href))
             return results
         except (httpx.HTTPError, asyncio.TimeoutError) as e:
@@ -195,8 +198,10 @@ async def collect_existing_tiles(
     tiles: List[Box2154],
     concurrency: int = DEFAULT_CONCURRENCY,
 ) -> Dict[str, Optional[str]]:
-    """Fetch all existing tiles in parallel by querying with bbox around center points. Returns tile_name -> data URL (or None if not found)."""
-    semaphore = asyncio.Semaphore(concurrency)
+    """Fetch all existing metadata tiles intersecting requested tile bboxes."""
+    # The WFS endpoint enforces a strict per-second rate limit; querying
+    # sequentially avoids silent partial/empty responses.
+    semaphore = asyncio.Semaphore(1)
     timeout = httpx.Timeout(timeout=60.0, connect=30.0)
     limits = httpx.Limits(
         max_connections=concurrency, max_keepalive_connections=concurrency
@@ -206,19 +211,17 @@ async def collect_existing_tiles(
     async with httpx.AsyncClient(
         timeout=timeout, limits=limits, headers=STAC_HEADERS
     ) as client:
-        tasks: List[asyncio.Task[List[Tuple[str, Optional[str]]]]] = []
-        for tile_box in tiles:
-            logging.debug(f"Checking existence of tile: {tile_box}")
-            tasks.append(
-                asyncio.create_task(_fetch_tiles_by_bbox(client, semaphore, tile_box))
-            )
+        with tqdm(total=len(tiles), desc="Checking tiles", unit="tile") as pbar:
+            for i, tile_box in enumerate(tiles):
+                logging.debug(f"Checking existence of tile: {tile_box}")
+                tile_results = await _fetch_tiles_by_bbox(client, semaphore, tile_box)
 
-        with tqdm(total=len(tasks), desc="Checking tiles", unit="tile") as pbar:
-            for task in asyncio.as_completed(tasks):
-                tile_results = await task
                 for tile_name, tile_url in tile_results:
                     name_to_url[tile_name] = tile_url
+
                 pbar.update(1)
+                if i < len(tiles) - 1:
+                    await asyncio.sleep(WFS_MIN_QUERY_INTERVAL_SECONDS)
 
     return name_to_url
 
