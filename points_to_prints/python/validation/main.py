@@ -78,12 +78,73 @@ def clean_polygon_topology_command(
     )
 
 
+@app.command("prepare_validation_dataset")
+def prepare_validation_dataset_command(
+    input_path: Annotated[
+        Path,
+        typer.Argument(
+            help="Path to the raw validation ground-truth polygon dataset (.parquet or .gpkg)",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ],
+    individual_output_path: Annotated[
+        Path,
+        typer.Argument(
+            help="Path where the individual-building validation dataset will be written (.parquet or .gpkg)"
+        ),
+    ],
+    aggregated_output_path: Annotated[
+        Path,
+        typer.Argument(
+            help="Path where the aggregated validation dataset will be written (.parquet or .gpkg)"
+        ),
+    ],
+    id_column: Annotated[
+        str,
+        typer.Option(
+            "--id-column",
+            "-i",
+            help="Column name containing the unique building id in the raw validation dataset.",
+        ),
+    ] = "cleabs",
+    overwrite: Annotated[
+        bool,
+        typer.Option(
+            "--overwrite",
+            "-f",
+            help="Overwrite the output files if they exist",
+        ),
+    ] = False,
+    verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
+) -> None:
+    from .processing import build_validation_datasets
+
+    build_validation_datasets(
+        input_ground_truth_path=input_path,
+        id_column=id_column,
+        individual_output_path=individual_output_path,
+        aggregated_output_path=aggregated_output_path,
+        overwrite=overwrite,
+    )
+    typer.echo(
+        "\n".join(
+            [
+                f"Validation dataset written to: {individual_output_path}",
+                f"Aggregated validation dataset written to: {aggregated_output_path}",
+            ]
+        )
+    )
+
+
 @app.command("compare")
 def compare_polygon_datasets_command(
     ground_truth_path: Annotated[
         Path,
         typer.Argument(
-            help="Path to the ground-truth polygon dataset (.parquet or .gpkg)",
+            help="Path to the aggregated validation polygon dataset (.parquet or .gpkg)",
             exists=True,
             file_okay=True,
             dir_okay=False,
@@ -111,27 +172,9 @@ def compare_polygon_datasets_command(
         typer.Option(
             "--id-column",
             "-i",
-            help="Column name used to pair polygons between datasets.",
+            help="Column name used to match scored polygons against aggregate source ids.",
         ),
     ] = "cleabs",
-    keep_columns: Annotated[
-        list[str],
-        typer.Option(
-            "--keep-column",
-            "-k",
-            help="Ground-truth columns to keep in the output. Can be used multiple times.",
-        ),
-    ] = [],
-    aggregate_touching: Annotated[
-        bool,
-        typer.Option(
-            "--aggregate-touching/--no-aggregate-touching",
-            help=(
-                "First dissolve touching polygons in the ground-truth dataset into "
-                "aggregates before computing the metrics."
-            ),
-        ),
-    ] = False,
     spacing_m: Annotated[
         float,
         typer.Option(
@@ -149,8 +192,7 @@ def compare_polygon_datasets_command(
         scored_path=scored_path,
         id_column=id_column,
         spacing_m=spacing_m,
-        keep_columns=keep_columns,
-        aggregate_touching=aggregate_touching,
+        keep_columns=None,
         verbose_int=verbose_int,
     )
     write_comparison_results(result.paired_results, output_path)

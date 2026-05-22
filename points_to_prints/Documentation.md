@@ -56,7 +56,7 @@ pixi run py-run lidarhd -- download_lidar_hd \
 # Example:
 pixi run py-run lidarhd -- download_lidar_hd \
     --bbox "668000,6859000,670000,6861000" \
-    -o "data/tiles/{xmin_km}_{ymin_km}/lidarhd.copc.laz" \
+    -o "data/tiles/{xmin_km}_{ymin_km}/lidarhd/lidarhd.copc.laz" \
     -vv
 ```
 

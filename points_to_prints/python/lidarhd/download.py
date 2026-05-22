@@ -10,18 +10,82 @@ from tqdm import tqdm
 
 from ..utils.utils import Box2154, Point2154
 
-BASE_URL = "https://api.stac.teledetection.fr"
-COLLECTION_ID = "lidarhd"
 WFS_BASE_URL = "https://data.geopf.fr/wfs"
 WFS_TYPENAME = "IGNF_LIDAR-HD_METADONNEE:metadata"
 WFS_MIN_QUERY_INTERVAL_SECONDS = 1.1
 DEFAULT_CONCURRENCY = 10
 MAX_DOWNLOAD_RETRIES = 4
 RETRY_BASE_DELAY_SECONDS = 1.5
+DOWNLOAD_CHUNK_SIZE = 8 * 1024 * 1024
 STAC_HEADERS = {
     "Accept": "application/geo+json",
     "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0",
 }
+
+
+def _tile_box_to_name(tile_box: Box2154) -> str:
+    """Build a 1 km tile identifier from the tile lower-left corner.
+
+    Parameters
+    ----------
+    tile_box
+        Tile extent in EPSG:2154.
+
+    Returns
+    -------
+    str
+        Tile name in ``xxxx-yyyy`` format.
+    """
+    return f"{tile_box.p_min.x // 1000:04d}-{tile_box.p_min.y // 1000:04d}"
+
+
+def _coordonnees_nw_to_tile_box(tile_name: str) -> Optional[Box2154]:
+    """Convert a LiDAR HD north-west tile code to its 1 km bounding box.
+
+    Parameters
+    ----------
+    tile_name
+        Tile code such as ``0676-6853``.
+
+    Returns
+    -------
+    Box2154 or None
+        Bounding box of the tile in EPSG:2154, or ``None`` if the tile code
+        is malformed.
+    """
+    try:
+        x_str, y_str = tile_name.split("-")
+        x = int(x_str) * 1000
+        north_y = int(y_str) * 1000
+    except (ValueError, AttributeError):
+        return None
+
+    return Box2154(Point2154(x, north_y - 1000), Point2154(x + 1000, north_y))
+
+
+def _intersection_area(tile_a: Box2154, tile_b: Box2154) -> int:
+    """Compute the overlap area between two EPSG:2154 tile boxes.
+
+    Parameters
+    ----------
+    tile_a
+        First tile box.
+    tile_b
+        Second tile box.
+
+    Returns
+    -------
+    int
+        Overlap area in square meters.
+    """
+    overlap_x_min = max(tile_a.p_min.x, tile_b.p_min.x)
+    overlap_y_min = max(tile_a.p_min.y, tile_b.p_min.y)
+    overlap_x_max = min(tile_a.p_max.x, tile_b.p_max.x)
+    overlap_y_max = min(tile_a.p_max.y, tile_b.p_max.y)
+
+    overlap_width = max(0, overlap_x_max - overlap_x_min)
+    overlap_height = max(0, overlap_y_max - overlap_y_min)
+    return overlap_width * overlap_height
 
 
 async def _fetch_tiles_by_bbox(
@@ -29,7 +93,22 @@ async def _fetch_tiles_by_bbox(
     semaphore: asyncio.Semaphore,
     tile_box: Box2154,
 ) -> List[Tuple[str, Optional[str]]]:
-    """Fetch WFS metadata intersecting a tile bbox and return list of (tile_name, data_href|None)."""
+    """Fetch WFS metadata intersecting a tile bbox.
+
+    Parameters
+    ----------
+    client
+        Shared HTTP client.
+    semaphore
+        Concurrency gate for the WFS endpoint.
+    tile_box
+        Tile bbox used to build the search request.
+
+    Returns
+    -------
+    list[tuple[str, str | None]]
+        Pairs of tile code and download URL from the WFS response.
+    """
     # Use the full tile extent instead of a tiny box around the center to avoid
     # empty responses caused by precision/coverage edge cases.
     bbox_str = ",".join(
@@ -82,9 +161,32 @@ async def _download_single_tile(
     output_path: Path,
     position: int,
     progress_lock: asyncio.Lock,
-    chunk_size: int = 1024 * 1024,
+    chunk_size: int = DOWNLOAD_CHUNK_SIZE,
 ) -> Tuple[str, bool, Optional[str], Optional[Path]]:
-    """Download a tile file. Returns (tile_name, success, error_message)."""
+    """Download one LAZ tile with retries and progress reporting.
+
+    Parameters
+    ----------
+    client
+        Shared HTTP client.
+    tile_name
+        Tile identifier.
+    tile_url
+        Download URL for the tile.
+    output_path
+        Destination path for the downloaded file.
+    position
+        tqdm row position.
+    progress_lock
+        Lock used to serialize progress bar updates.
+    chunk_size
+        Streaming chunk size in bytes.
+
+    Returns
+    -------
+    tuple[str, bool, str | None, pathlib.Path | None]
+        Tile name, success flag, error message, and output path.
+    """
     output_path.parent.mkdir(parents=True, exist_ok=True)
     last_error: Optional[Exception] = None
 
@@ -102,15 +204,10 @@ async def _download_single_tile(
                     if content_length_header and content_length_header.isdigit()
                     else None
                 )
-                desc = (
-                    tile_name
-                    if MAX_DOWNLOAD_RETRIES == 1
-                    else f"{tile_name} ({attempt}/{MAX_DOWNLOAD_RETRIES})"
-                )
                 async with progress_lock:
                     progress_bar = tqdm(
                         total=total_bytes,
-                        desc=desc,
+                        desc=tile_name,
                         unit="B",
                         unit_scale=True,
                         unit_divisor=1024,
@@ -170,7 +267,25 @@ async def _download_worker(
     overall_bar: tqdm,
     results: List[Tuple[str, bool, Optional[str], Optional[Path]]],
 ) -> None:
-    """Download worker bound to one tqdm line position."""
+    """Consume queued downloads on a dedicated tqdm line.
+
+    Parameters
+    ----------
+    worker_id
+        Worker index used to assign the tqdm row.
+    queue
+        Queue of tile name and URL pairs.
+    client
+        Shared HTTP client.
+    name_to_path
+        Mapping of tile names to output paths.
+    progress_lock
+        Lock guarding progress bar updates.
+    overall_bar
+        Aggregate download progress bar.
+    results
+        Collected download results.
+    """
     position = worker_id + 1
     while True:
         item = await queue.get()
@@ -198,7 +313,20 @@ async def collect_existing_tiles(
     tiles: List[Box2154],
     concurrency: int = DEFAULT_CONCURRENCY,
 ) -> Dict[str, Optional[str]]:
-    """Fetch all existing metadata tiles intersecting requested tile bboxes."""
+    """Collect the best matching WFS tile for each requested tile box.
+
+    Parameters
+    ----------
+    tiles
+        Requested tiles in EPSG:2154.
+    concurrency
+        Maximum HTTP concurrency for the client.
+
+    Returns
+    -------
+    dict[str, str | None]
+        Mapping from requested tile name to the matched download URL.
+    """
     # The WFS endpoint enforces a strict per-second rate limit; querying
     # sequentially avoids silent partial/empty responses.
     semaphore = asyncio.Semaphore(1)
@@ -206,7 +334,9 @@ async def collect_existing_tiles(
     limits = httpx.Limits(
         max_connections=concurrency, max_keepalive_connections=concurrency
     )
-    name_to_url: Dict[str, Optional[str]] = {}
+    name_to_url: Dict[str, Optional[str]] = {
+        _tile_box_to_name(tile_box): None for tile_box in tiles
+    }
 
     async with httpx.AsyncClient(
         timeout=timeout, limits=limits, headers=STAC_HEADERS
@@ -215,9 +345,35 @@ async def collect_existing_tiles(
             for i, tile_box in enumerate(tiles):
                 logging.debug(f"Checking existence of tile: {tile_box}")
                 tile_results = await _fetch_tiles_by_bbox(client, semaphore, tile_box)
+                requested_tile_name = _tile_box_to_name(tile_box)
 
+                matched_url: Optional[str] = None
+                matched_tile_name: Optional[str] = None
+                best_overlap = -1
                 for tile_name, tile_url in tile_results:
-                    name_to_url[tile_name] = tile_url
+                    candidate_box = _coordonnees_nw_to_tile_box(tile_name)
+                    if candidate_box is None:
+                        continue
+
+                    overlap = _intersection_area(tile_box, candidate_box)
+                    if overlap > best_overlap:
+                        best_overlap = overlap
+                        matched_url = tile_url
+                        matched_tile_name = tile_name
+
+                if matched_url is None and tile_results:
+                    logging.debug(
+                        f"No overlapping tile match for {requested_tile_name}; available tiles: {[tile_name for tile_name, _ in tile_results]}"
+                    )
+                elif (
+                    matched_tile_name is not None
+                    and matched_tile_name != requested_tile_name
+                ):
+                    logging.debug(
+                        f"Requested {requested_tile_name} matched WFS tile {matched_tile_name} with overlap {best_overlap}"
+                    )
+
+                name_to_url[requested_tile_name] = matched_url
 
                 pbar.update(1)
                 if i < len(tiles) - 1:
@@ -231,7 +387,22 @@ async def download_tiles(
     name_to_path: Dict[str, Path],
     concurrency: int = DEFAULT_CONCURRENCY,
 ) -> Tuple[int, List[Tuple[str, str]], List[Path]]:
-    """Download tiles in parallel. Returns (downloaded_count, failed list)."""
+    """Download the selected tiles in parallel.
+
+    Parameters
+    ----------
+    name_to_url
+        Mapping from tile name to download URL.
+    name_to_path
+        Mapping from tile name to output path.
+    concurrency
+        Maximum number of concurrent download workers.
+
+    Returns
+    -------
+    tuple[int, list[tuple[str, str]], list[pathlib.Path]]
+        Downloaded count, failures, and successfully written files.
+    """
     timeout = httpx.Timeout(timeout=None, connect=30.0, write=60.0)
     limits = httpx.Limits(
         max_connections=concurrency, max_keepalive_connections=concurrency
@@ -297,7 +468,18 @@ async def download_tiles(
 def validate_downloaded_files(
     downloaded_files: List[Path],
 ) -> Tuple[int, List[Tuple[str, str]]]:
-    """Validate produced LAZ files using PDAL."""
+    """Validate downloaded LAZ files using PDAL.
+
+    Parameters
+    ----------
+    downloaded_files
+        Paths to files that were downloaded successfully.
+
+    Returns
+    -------
+    tuple[int, list[tuple[str, str]]]
+        Number of valid files and the invalid file/error pairs.
+    """
     valid_count = 0
     invalid_files: List[Tuple[str, str]] = []
 
@@ -332,21 +514,6 @@ def validate_downloaded_files(
     return valid_count, invalid_files
 
 
-async def check_tile_exists_async(
-    client: httpx.AsyncClient,
-    semaphore: asyncio.Semaphore,
-    tile_name: str,
-) -> bool:
-    """Check if a specific tile exists via direct item GET."""
-    url = f"{BASE_URL}/collections/{COLLECTION_ID}/items/{tile_name}"
-    async with semaphore:
-        try:
-            resp = await client.get(url)
-            return resp.status_code == 200
-        except httpx.HTTPError:
-            return False
-
-
 async def download_lidar_hd_data(
     xmin: int,
     xmax: int,
@@ -356,8 +523,19 @@ async def download_lidar_hd_data(
     overwrite: bool,
     concurrency: int = DEFAULT_CONCURRENCY,
 ) -> None:
-    """Main function to download LIDAR HD data for a given EPSG:2154 bounding box."""
-    # Extract tile boxes covering the specified bounding box
+    """Download LIDAR HD tiles covering a requested EPSG:2154 bounding box.
+
+    Parameters
+    ----------
+    xmin, xmax, ymin, ymax
+        Requested bounding box in EPSG:2154.
+    output_path_template
+        Output path template supporting the tile placeholders.
+    overwrite
+        Whether existing files should be replaced.
+    concurrency
+        Maximum HTTP concurrency for tile discovery and downloading.
+    """
     bbox = Box2154(Point2154(xmin, ymin), Point2154(xmax, ymax))
     tiles_boxes = bbox.get_tiles_boxes()
 
@@ -368,7 +546,7 @@ async def download_lidar_hd_data(
             f"  EPSG:2154({tile_box.p_min.x}, {tile_box.p_min.y}) -> EPSG:4326({tile_box.p_min.lon_4326}, {tile_box.p_min.lat_4326})"
         )
 
-    # Find the tiles that exist by querying the STAC API with bbox around tile centers
+    # Discover WFS tiles intersecting the requested area.
     name_to_url_with_nones = await collect_existing_tiles(
         tiles=tiles_boxes, concurrency=concurrency
     )
@@ -379,11 +557,16 @@ async def download_lidar_hd_data(
         f"Found {len(name_to_url)} existing tiles out of {len(name_to_url_with_nones)} candidates."
     )
 
-    # Remove files that already exist if overwrite is disabled
+    # Build the download path map, skipping files that already exist when requested.
     name_to_path: Dict[str, Path] = {}
     if not overwrite:
         existing_files: List[str] = []
-        for (tile_name, tile_url), tile_box in zip(name_to_url.items(), tiles_boxes):
+        for tile_box in tiles_boxes:
+            tile_name = _tile_box_to_name(tile_box)
+            tile_url = name_to_url.get(tile_name)
+            if tile_url is None:
+                continue
+
             file_name = tile_url.split("/")[-1]
 
             output_path_template_str = str(output_path_template)

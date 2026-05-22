@@ -669,7 +669,19 @@ def run_pipeline_implementation(
         skip_existing: Whether to skip processing if output files exist
         num_workers: Number of worker processes for multiprocessing (None = CPU count)
     """
+    tile_bd_topo_dir = tile_dir / "bdtopo"
+    tile_bd_topo_dir.mkdir(exist_ok=True)
+    tile_lidar_hd_dir = tile_dir / "lidarhd"
+    tile_lidar_hd_dir.mkdir(exist_ok=True)
+    tile_axes_dir = tile_lidar_hd_dir / "axes"
+    tile_axes_dir.mkdir(exist_ok=True)
+    tile_roofprints_dir = tile_dir / "roofprints"
+    tile_roofprints_dir.mkdir(exist_ok=True)
+
     initial_laz_file = tile_dir / "lidarhd.copc.laz"
+    if initial_laz_file.exists():
+        initial_laz_file.move(tile_lidar_hd_dir / initial_laz_file.name)
+    initial_laz_file = tile_lidar_hd_dir / initial_laz_file.name
 
     # Build the C++ tools
     _build_cpp_tool()
@@ -681,9 +693,9 @@ def run_pipeline_implementation(
     edges_file = bd_topo_dir / "edges.parquet"
     intersections_file = bd_topo_dir / "intersections.parquet"
     groups_file = bd_topo_dir / "building_groups.parquet"
-    cropped_edges_file = tile_dir / "bd_topo-edges.parquet"
-    cropped_intersections_file = tile_dir / "bd_topo-intersections.parquet"
-    cropped_groups_file = tile_dir / "bd_topo-building_groups.parquet"
+    cropped_edges_file = tile_bd_topo_dir / "edges.parquet"
+    cropped_intersections_file = tile_bd_topo_dir / "intersections.parquet"
+    cropped_groups_file = tile_bd_topo_dir / "building_groups.parquet"
 
     _process_bd_topo_data(
         initial_laz_file=initial_laz_file,
@@ -702,8 +714,8 @@ def run_pipeline_implementation(
     # -------------------------------------------------------------------- #
 
     # Process LiDAR HD: compute inward directions and split by flight strips
-    las_with_inwards_roof_file = tile_dir / "lidarhd-with_inwards_roof.laz"
-    template_flight_strip_file = tile_dir / "axis_#.laz"
+    las_with_inwards_roof_file = tile_lidar_hd_dir / "lidarhd-with_inwards_roof.laz"
+    template_flight_strip_file = tile_axes_dir / "axis_#.laz"
 
     all_flight_strip_files = _process_lidar_hd_data(
         initial_laz_file=initial_laz_file,
@@ -715,7 +727,7 @@ def run_pipeline_implementation(
 
     # Compute trajectories in parallel
     trajectory_files = [
-        tile_dir / f"{laz_file.stem}-trajectory.txt"
+        tile_axes_dir / f"{laz_file.stem}-trajectory.txt"
         for laz_file in all_flight_strip_files
     ]
     successes = _compute_trajectories_parallel(
@@ -736,11 +748,12 @@ def run_pipeline_implementation(
 
     # Process flight strips with C++ pipeline in parallel
     distances_files = [
-        tile_dir / f"{laz_file.stem}-distances.laz"
+        tile_axes_dir / f"{laz_file.stem}-distances.laz"
         for laz_file in all_flight_strip_files
     ]
     edges_files = [
-        tile_dir / f"{laz_file.stem}-edges.laz" for laz_file in all_flight_strip_files
+        tile_axes_dir / f"{laz_file.stem}-edges.laz"
+        for laz_file in all_flight_strip_files
     ]
     _compute_distances_and_edges_parallel(
         flight_strip_files=all_flight_strip_files,
@@ -753,8 +766,8 @@ def run_pipeline_implementation(
     )
 
     # Merge output files
-    merged_distances_file = tile_dir / "merged_distances.laz"
-    merged_edges_file = tile_dir / "merged_edges.laz"
+    merged_distances_file = tile_lidar_hd_dir / "merged_distances.laz"
+    merged_edges_file = tile_lidar_hd_dir / "merged_edges.laz"
     _merge_output_files(
         distances_files=distances_files,
         edges_files=edges_files,
@@ -768,18 +781,25 @@ def run_pipeline_implementation(
     #                              Roofprints                              #
     # -------------------------------------------------------------------- #
 
-    # roofprints_file = tile_dir / "roofprints.parquet"
-    # _compute_roofprints(
-    #     merged_edges_file=merged_edges_file,
-    #     bd_topo_edges_file=cropped_edges_file,
-    #     bd_topo_intersections_file=cropped_intersections_file,
-    #     output_roofprints_file=roofprints_file,
-    #     max_iterations=1,
-    #     overwrite=overwrite,
-    #     skip_existing=skip_existing,
-    # )
+    iterations_to_try = [1, 2, 3]
+    for max_iterations in iterations_to_try:
+        logging.info(
+            f"\n\nO----- Attempting roofprint computation with max_iterations={max_iterations} -----O\n"
+        )
+        roofprints_file = (
+            tile_roofprints_dir / f"roofprints-{max_iterations}_iterations.parquet"
+        )
+        _compute_roofprints(
+            merged_edges_file=merged_edges_file,
+            bd_topo_edges_file=cropped_edges_file,
+            bd_topo_intersections_file=cropped_intersections_file,
+            output_roofprints_file=roofprints_file,
+            max_iterations=max_iterations,
+            overwrite=overwrite,
+            skip_existing=skip_existing,
+        )
 
-    logging.info("\n\nPipeline completed successfully.")
+    logging.info("Pipeline completed successfully.")
 
 
 def run_pipeline_call(

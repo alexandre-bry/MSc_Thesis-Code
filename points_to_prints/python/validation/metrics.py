@@ -25,7 +25,15 @@ from ..utils.custom_logging import LoggingContext
 
 @dataclass(slots=True)
 class PolygonMetricsResult:
-    """Container for the per-pair metrics and global summary."""
+    """Container for the per-pair metrics and global summary.
+
+    Parameters
+    ----------
+    paired_results : pandas.DataFrame
+        GeoDataFrame with per-pair (or per-aggregate) metrics and geometries.
+    summary : dict
+        Dictionary with aggregated summary statistics (counts, means).
+    """
 
     paired_results: pd.DataFrame
     summary: dict[str, float | int]
@@ -209,6 +217,35 @@ def _build_scored_aggregate(
         return None
     scored_geometry = unary_union(list(scored_subset.geometry))
     return scored_subset[id_column].tolist(), scored_geometry
+
+
+def _validate_aggregated_ground_truth_dataset(
+    dataset: gpd.GeoDataFrame,
+) -> None:
+    if "ground_truth_aggregate_id" not in dataset.columns:
+        raise ValueError(
+            "Column 'ground_truth_aggregate_id' is missing from the aggregated ground-truth dataset."
+        )
+    if "ground_truth_ids" not in dataset.columns:
+        raise ValueError(
+            "Column 'ground_truth_ids' is missing from the aggregated ground-truth dataset."
+        )
+    if dataset["ground_truth_aggregate_id"].isna().any():
+        raise ValueError(
+            "Column 'ground_truth_aggregate_id' contains missing values in the aggregated ground-truth dataset."
+        )
+    if dataset["ground_truth_aggregate_id"].duplicated().any():
+        raise ValueError(
+            "Column 'ground_truth_aggregate_id' must contain unique IDs in the aggregated ground-truth dataset."
+        )
+    if dataset["ground_truth_ids"].isna().any():
+        raise ValueError(
+            "Column 'ground_truth_ids' contains missing values in the aggregated ground-truth dataset."
+        )
+    if dataset.geometry.isna().any():
+        raise ValueError(
+            "The aggregated ground-truth dataset contains missing geometries."
+        )
 
 
 def _ensure_polygonal_geometry(geometry, label: str, row_id) -> None:
@@ -438,6 +475,20 @@ def clean_polygon_topology_implementation(
     input_path: Path,
     threshold_m: float,
 ) -> gpd.GeoDataFrame:
+    """Clean polygon topology by snapping nearby vertices and rebuilding rings.
+
+    Parameters
+    ----------
+    input_path : Path
+        Path to the input polygon dataset (.parquet or .gpkg).
+    threshold_m : float
+        Distance threshold in metres used to merge nearby vertices.
+
+    Returns
+    -------
+    geopandas.GeoDataFrame
+        A new GeoDataFrame with cleaned polygon geometries.
+    """
     if threshold_m <= 0:
         raise ValueError("The merge threshold must be strictly positive.")
 
@@ -531,6 +582,22 @@ def clean_polygon_topology_call(
     threshold_m: float,
     verbose_int: int,
 ) -> gpd.GeoDataFrame:
+    """Call wrapper for :func:`clean_polygon_topology_implementation`.
+
+    Parameters
+    ----------
+    input_path : Path
+        Path to the input polygon dataset.
+    threshold_m : float
+        Vertex merge threshold in metres.
+    verbose_int : int
+        Verbosity level forwarded to the logging context.
+
+    Returns
+    -------
+    geopandas.GeoDataFrame
+        The cleaned polygon dataset.
+    """
     with LoggingContext(verbose=verbose_int):
         return clean_polygon_topology_implementation(
             input_path=input_path,
@@ -543,6 +610,17 @@ def write_polygon_topology_results(
     output_path: Path,
     overwrite: bool,
 ) -> None:
+    """Persist cleaned polygon topology results to disk.
+
+    Parameters
+    ----------
+    results : geopandas.GeoDataFrame
+        Cleaned geometries to persist.
+    output_path : Path
+        Destination path (.parquet or .gpkg supported).
+    overwrite : bool
+        If True, overwrite existing file.
+    """
     output_path.parent.mkdir(parents=True, exist_ok=True)
     suffix = output_path.suffix.lower()
     if output_path.exists() and not overwrite:
@@ -566,145 +644,39 @@ def compare_polygon_datasets_implementation(
     scored_path: Path,
     id_column: str,
     spacing_m: float,
-    keep_columns: list[str],
+    keep_columns: list[str] | None = None,
 ) -> PolygonMetricsResult:
+    """Compute metrics against a prebuilt aggregated ground-truth dataset.
+
+    Parameters
+    ----------
+    ground_truth_path : Path
+        Path to the aggregated ground-truth polygon dataset.
+    scored_path : Path
+        Path to the scored polygon dataset.
+    id_column : str
+        Column name of unique IDs in the scored dataset.
+    spacing_m : float
+        Sampling spacing in metres used for boundary distances.
+    keep_columns : list[str] | None
+        Present for compatibility; ignored by the aggregated workflow.
+
+    Returns
+    -------
+    PolygonMetricsResult
+        Container with aggregate-level paired results and summary statistics.
+    """
+    _ = keep_columns
+
     ground_truth_dataset = _read_polygon_dataset(ground_truth_path)
     scored_dataset = _read_polygon_dataset(scored_path)
 
-    _validate_input_columns(ground_truth_dataset, id_column, "ground-truth")
+    _validate_aggregated_ground_truth_dataset(ground_truth_dataset)
     _validate_input_columns(scored_dataset, id_column, "scored")
     _validate_matching_crs(ground_truth_dataset, scored_dataset)
-    normalized_keep_columns = _normalize_keep_columns(
-        ground_truth_dataset, id_column, keep_columns
-    )
-
-    ground_truth_table = pd.DataFrame(
-        {
-            id_column: ground_truth_dataset[id_column],
-            "ground_truth_geometry": ground_truth_dataset.geometry,
-        }
-    )
-    for column_name in normalized_keep_columns:
-        ground_truth_table[column_name] = ground_truth_dataset[column_name]
-    scored_table = pd.DataFrame(
-        {
-            id_column: scored_dataset[id_column],
-            "scored_geometry": scored_dataset.geometry,
-        }
-    )
-
-    matched_pairs = ground_truth_table.merge(
-        scored_table, on=id_column, how="inner", validate="one_to_one"
-    )
-
-    logging.info(
-        "Matched %d polygon pairs out of %d ground-truth and %d scored polygons.",
-        len(matched_pairs),
-        len(ground_truth_table),
-        len(scored_table),
-    )
-
-    rows: list[dict[str, float | int | str]] = []
-    for _, pair in matched_pairs.iterrows():
-        ground_truth_geometry = pair["ground_truth_geometry"]
-        scored_geometry = pair["scored_geometry"]
-        row_id = pair[id_column]
-        _ensure_polygonal_geometry(ground_truth_geometry, "ground-truth", row_id)
-        _ensure_polygonal_geometry(scored_geometry, "scored", row_id)
-        metrics = _compare_polygon_pair(
-            ground_truth_geometry, scored_geometry, spacing_m
-        )
-        row = {
-            id_column: row_id,
-            "geometry": scored_geometry,
-            "ground_truth_area_m2": float(ground_truth_geometry.area),
-            **metrics,
-        }
-        for column_name in normalized_keep_columns:
-            row[column_name] = pair[column_name]
-        rows.append(row)
-
-    ordered_columns = [
-        id_column,
-        *normalized_keep_columns,
-        "geometry",
-        "ground_truth_area_m2",
-        "iou",
-        "ground_truth_to_scored_boundary_distance_m",
-        "scored_to_ground_truth_boundary_distance_m",
-        "symmetric_boundary_distance_m",
-    ]
-    paired_results = pd.DataFrame(rows)
-    for column_name in ordered_columns:
-        if column_name not in paired_results.columns:
-            paired_results[column_name] = pd.Series(dtype="object")
-    paired_results = paired_results.reindex(columns=ordered_columns)
-    paired_results = gpd.GeoDataFrame(
-        paired_results,
-        geometry="geometry",
-        crs=scored_dataset.crs,
-    )
-    summary: dict[str, float | int] = {
-        "ground_truth_count": len(ground_truth_table),
-        "scored_count": len(scored_table),
-        "matched_count": len(paired_results),
-        "ignored_ground_truth_count": len(ground_truth_table) - len(paired_results),
-        "ignored_scored_count": len(scored_table) - len(paired_results),
-    }
-
-    if not paired_results.empty:
-        summary.update(
-            {
-                "mean_iou": float(paired_results["iou"].mean()),
-                "mean_ground_truth_to_scored_boundary_distance_m": float(
-                    paired_results["ground_truth_to_scored_boundary_distance_m"].mean()
-                ),
-                "mean_scored_to_ground_truth_boundary_distance_m": float(
-                    paired_results["scored_to_ground_truth_boundary_distance_m"].mean()
-                ),
-                "mean_symmetric_boundary_distance_m": float(
-                    paired_results["symmetric_boundary_distance_m"].mean()
-                ),
-            }
-        )
-    else:
-        summary.update(
-            {
-                "mean_iou": 0.0,
-                "mean_ground_truth_to_scored_boundary_distance_m": 0.0,
-                "mean_scored_to_ground_truth_boundary_distance_m": 0.0,
-                "mean_symmetric_boundary_distance_m": 0.0,
-            }
-        )
-
-    return PolygonMetricsResult(paired_results=paired_results, summary=summary)
-
-
-def compare_polygon_datasets_aggregated_implementation(
-    ground_truth_path: Path,
-    scored_path: Path,
-    id_column: str,
-    spacing_m: float,
-    keep_columns: list[str],
-) -> PolygonMetricsResult:
-    ground_truth_dataset = _read_polygon_dataset(ground_truth_path)
-    scored_dataset = _read_polygon_dataset(scored_path)
-
-    _validate_input_columns(ground_truth_dataset, id_column, "ground-truth")
-    _validate_input_columns(scored_dataset, id_column, "scored")
-    _validate_matching_crs(ground_truth_dataset, scored_dataset)
-    normalized_keep_columns = _normalize_keep_columns(
-        ground_truth_dataset, id_column, keep_columns
-    )
-
-    ground_truth_aggregates = _aggregate_touching_ground_truth(
-        ground_truth_dataset,
-        id_column=id_column,
-        keep_columns=normalized_keep_columns,
-    )
 
     rows: list[dict[str, object]] = []
-    for _, aggregate_row in ground_truth_aggregates.iterrows():
+    for _, aggregate_row in ground_truth_dataset.iterrows():
         source_ids = aggregate_row["ground_truth_ids"]
         scored_aggregate = _build_scored_aggregate(
             scored_dataset, source_ids, id_column
@@ -722,22 +694,19 @@ def compare_polygon_datasets_aggregated_implementation(
             spacing_m,
         )
         row: dict[str, object] = {
-            "aggregate_id": aggregate_id,
+            "ground_truth_aggregate_id": aggregate_id,
             "ground_truth_ids": source_ids,
             "scored_ids": scored_ids,
             "geometry": scored_geometry,
             "ground_truth_area_m2": float(aggregate_row["ground_truth_area_m2"]),
             **metrics,
         }
-        for column_name in normalized_keep_columns:
-            row[column_name] = aggregate_row[column_name]
         rows.append(row)
 
     ordered_columns = [
-        "aggregate_id",
+        "ground_truth_aggregate_id",
         "ground_truth_ids",
         "scored_ids",
-        *normalized_keep_columns,
         "geometry",
         "ground_truth_area_m2",
         "iou",
@@ -757,11 +726,10 @@ def compare_polygon_datasets_aggregated_implementation(
     )
 
     summary: dict[str, float | int] = {
-        "ground_truth_count": len(ground_truth_aggregates),
+        "ground_truth_count": len(ground_truth_dataset),
         "scored_count": len(scored_dataset),
         "matched_count": len(paired_results),
-        "ignored_ground_truth_count": len(ground_truth_aggregates)
-        - len(paired_results),
+        "ignored_ground_truth_count": len(ground_truth_dataset) - len(paired_results),
         "ignored_scored_count": len(scored_dataset)
         - len(
             pd.Index(scored_dataset[id_column]).intersection(
@@ -811,19 +779,36 @@ def compare_polygon_datasets_call(
     scored_path: Path,
     id_column: str,
     spacing_m: float,
-    keep_columns: list[str],
-    aggregate_touching: bool,
-    verbose_int: int,
+    keep_columns: list[str] | None = None,
+    aggregate_touching: bool = False,
+    verbose_int: int = 0,
 ) -> PolygonMetricsResult:
+    """Entry-point wrapper for dataset comparison with logging context.
+
+    Parameters
+    ----------
+    ground_truth_path : Path
+        Path to the aggregated ground-truth dataset.
+    scored_path : Path
+        Path to the scored dataset.
+    id_column : str
+        Column name used for matching IDs.
+    spacing_m : float
+        Sampling spacing in metres.
+    keep_columns : list[str] | None
+        Present for compatibility; ignored by the aggregated workflow.
+    aggregate_touching : bool
+        Present for compatibility; ignored by the aggregated workflow.
+    verbose_int : int
+        Verbosity level for logging.
+
+    Returns
+    -------
+    PolygonMetricsResult
+        The computed paired metrics and summary statistics.
+    """
+    _ = aggregate_touching
     with LoggingContext(verbose=verbose_int):
-        if aggregate_touching:
-            return compare_polygon_datasets_aggregated_implementation(
-                ground_truth_path=ground_truth_path,
-                scored_path=scored_path,
-                id_column=id_column,
-                spacing_m=spacing_m,
-                keep_columns=keep_columns,
-            )
         return compare_polygon_datasets_implementation(
             ground_truth_path=ground_truth_path,
             scored_path=scored_path,
@@ -834,6 +819,17 @@ def compare_polygon_datasets_call(
 
 
 def write_comparison_results(results: pd.DataFrame, output_path: Path) -> None:
+    """Write comparison results to CSV or GeoParquet.
+
+    Parameters
+    ----------
+    results : pandas.DataFrame
+        DataFrame or GeoDataFrame containing results. If a GeoDataFrame is
+        supplied or a `geometry` column exists it will be written as GeoParquet
+        when the output extension is ``.parquet``.
+    output_path : Path
+        Destination path. Supported extensions: ``.csv`` and ``.parquet``.
+    """
     output_path.parent.mkdir(parents=True, exist_ok=True)
     suffix = output_path.suffix.lower()
     if suffix == ".csv":
