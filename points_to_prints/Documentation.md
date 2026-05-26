@@ -74,8 +74,8 @@ pixi run py-run lidarhd -- bd_topo_convert \
     -o <output_parquet>
 # Example:
 pixi run py-run lidarhd -- bd_topo_convert \
-    -i data/input/bd_topo/BDTOPO_3-5_TOUSTHEMES_GPKG_LAMB93_D077_2026-03-15/BDTOPO/1_DONNEES_LIVRAISON_2026-03-00146/BDT_3-5_GPKG_LAMB93_D077_ED2026-03-15/BDT_3-5_GPKG_LAMB93_D077-ED2026-03-15.gpkg \
-    -o data/formatted/bd_topo/D077-2026_03_15/bd_topo.parquet \
+    -i data/input/bd_topo/BDTOPO_3-5_TOUSTHEMES_GPKG_LAMB93_R11_2026-03-15/BDTOPO/1_DONNEES_LIVRAISON_2026-03-00147/BDT_3-5_GPKG_LAMB93_R11_ED2026-03-15/BDT_3-5_GPKG_LAMB93_R11-ED2026-03-15.gpkg \
+    -o data/formatted/bd_topo/R11-2026_03_15/bd_topo.parquet \
     -vv
 ```
 
@@ -94,10 +94,10 @@ pixi run py-run lidarhd -- bd_topo_intersections \
     -g <output_building_groups_parquet>
 # Example:
 pixi run py-run lidarhd -- bd_topo_intersections \
-    -b data/formatted/bd_topo/D077-2026_03_15/bd_topo.parquet \
-    -e data/formatted/bd_topo/D077-2026_03_15/edges.parquet \
-    -i data/formatted/bd_topo/D077-2026_03_15/intersections.parquet \
-    -g data/formatted/bd_topo/D077-2026_03_15/building_groups.parquet \
+    -b data/formatted/bd_topo/R11-2026_03_15/bd_topo.parquet \
+    -e data/formatted/bd_topo/R11-2026_03_15/edges.parquet \
+    -i data/formatted/bd_topo/R11-2026_03_15/intersections.parquet \
+    -g data/formatted/bd_topo/R11-2026_03_15/building_groups.parquet \
     -vv
 ```
 
@@ -113,7 +113,7 @@ pixi run py-run lidarhd -- run_pipeline \
 # Example:
 pixi run py-run lidarhd -- run_pipeline \
     -b data/formatted/bd_topo/D077-2026_03_15/ \
-    -t data/tiles/668_6859/ \
+    -t data/tiles/676_6852/ \
     -vv
 ```
 
@@ -134,10 +134,10 @@ pixi run cpp run release -- compute_roofprints \
     --iterations <number_of_iterations>
 # Example:
 pixi run cpp run release -- compute_roofprints \
-    -l data/tiles/668_6859/merged_edges.laz \
-    -e data/tiles/668_6859/bd_topo-edges.parquet \
-    -i data/tiles/668_6859/bd_topo-intersections.parquet \
-    -o data/tiles/668_6859/roofprints-iter_1.parquet \
+    -l data/tiles/676_6852/lidarhd/merged_edges.laz \
+    -e data/tiles/676_6852/bdtopo/edges.parquet \
+    -i data/tiles/676_6852/bdtopo/intersections.parquet \
+    -o data/tiles/668_6859/roofprints/roofprints-1_iteration.parquet \
     --iterations 1
 ```
 
@@ -146,7 +146,24 @@ The number of iterations can be increased but the results are not always better,
 ### 6. Compute the 3D roof model
 
 Finally, to compute the 3D roof model, you need to have [`roofer`](https://github.com/3DBAG/roofer) and [`cjseq`](https://github.com/cityjson/cjseq) installed.
-Then, you can use the following command:
+Then, there are multiple steps.
+First, if necessary, you should map all the classification codes that you want to use in the point cloud to the "Building" class (code 6) using the `classification_mapping` command:
+
+```bash
+# General command:
+pixi run py-run lidarhd -- classification_mapping \
+    -i <input_laz> \
+    -o <output_laz> \
+    --mapping "<old_class_1>:<new_class_1>,<old_class_2>:<new_class_2>,..."
+# Example:
+pixi run py-run lidarhd -- classification_mapping \
+    -i data/tiles/676_6852/lidarhd/lidarhd.copc.laz \
+    -o data/tiles/676_6852/lidarhd/lidarhd-reclassified.laz \
+    --mapping "1:6,64:6,65:6,67:6" \
+    -vv
+```
+
+Then, you can use this point cloud with roofer:
 
 ```bash
 # General command:
@@ -156,8 +173,8 @@ pixi run py-run roof -- roofprints_to_lod22 \
     -o <output_lod22_cityjson>
 # Example:
 pixi run py-run roof -- roofprints_to_lod22 \
-    data/tiles/668_6859/lidarhd.copc.laz \
-    data/tiles/668_6859/roofprints-iter_1.parquet \
-    data/tiles/668_6859/lod_2_2.city.json \
+    data/tiles/676_6852/lidarhd/lidarhd-reclassified.laz \
+    data/tiles/676_6852/roofprints/roofprints-1_iterations.parquet \
+    data/tiles/676_6852/roofprints/lod_2_2.city.json \
     -vv
 ```

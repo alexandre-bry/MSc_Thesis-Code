@@ -14,6 +14,7 @@ from .bd_topo_intersections import (
 )
 from .download import download_lidar_hd_data
 from .las_manipulations import (
+    classification_mapping_call,
     get_las_bounds,
     identity_convert,
     merge_files,
@@ -131,6 +132,70 @@ def merge_las(
             skip_existing=skip_existing,
         )
         logging.info(f"Successfully merged files into {output_file}")
+
+
+@app.command(
+    "classification_mapping",
+    help="A simple command to map the classification values in a LAS file to a new set of values based on a provided mapping.",
+)
+def classification_mapping(
+    input_file: Annotated[
+        Path,
+        typer.Option(
+            "-i",
+            "--input",
+            help="Path to the input .laz file.",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ],
+    output_file: Annotated[
+        Path,
+        typer.Option(
+            "-o",
+            "--output",
+            help="Path to the output .laz file.",
+        ),
+    ],
+    mapping: Annotated[
+        str,
+        typer.Option(
+            "-m",
+            "--mapping",
+            help="Mapping of old classification values to new values, in the format 'old1:new1,old2:new2,...'.",
+        ),
+    ],
+    overwrite: Annotated[
+        bool,
+        typer.Option(
+            "--overwrite",
+            help="Whether to overwrite the files.",
+        ),
+    ] = False,
+    skip_existing: Annotated[
+        bool,
+        typer.Option(
+            "--skip_existing",
+            help="Whether to skip processing files that already exist.",
+        ),
+    ] = False,
+    verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
+):
+    with LoggingContext(verbose=verbose_int):
+        mapping_dict = {}
+        for pair in mapping.split(","):
+            old, new = pair.split(":")
+            mapping_dict[int(old)] = int(new)
+        classification_mapping_call(
+            input_file=input_file,
+            output_file=output_file,
+            mapping=mapping_dict,
+            skip_existing=skip_existing,
+            overwrite=overwrite,
+            verbose_int=verbose_int,
+        )
 
 
 @app.command(

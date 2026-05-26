@@ -6,6 +6,7 @@
 #include "distances.hpp"
 #include "edge_matching/topology.hpp"
 #include "footprints/footprints.hpp"
+#include "footprints/points_selection.hpp"
 #include "las_filter.hpp"
 #include "parquet.hpp"
 #include "roofprints/transfer_3d.hpp"
@@ -219,15 +220,15 @@ void setup_roofprints_to_3d(CLI::App &app) {
 }
 
 void setup_roofprints_3d_to_footprints(CLI::App &app) {
-    auto opt = std::make_shared<Roofprints3DToFootprintsOptions>();
+    auto opt = std::make_shared<RoofsToFootprintsOptions>();
 
     CLI::App *sub =
         app.add_subcommand("roofprints_3d_to_footprints",
                            "Convert 3D roofprints to 2D footprints");
-    sub->add_option("-i,--input", opt->input_roofprints_file,
-                    "Input Parquet file with 3D roofprints")
+    sub->add_option("-i,--input", opt->input_roofs_file,
+                    "Input CityJSON file with LoD 2.2 building models")
         ->required();
-    sub->add_option("-p,--points", opt->points_file,
+    sub->add_option("-p,--points", opt->input_points_file,
                     "Input LAS file with points for footprint computation")
         ->required();
     sub->add_option("-f,--output-footprints", opt->output_footprints_file,
@@ -241,14 +242,48 @@ void setup_roofprints_3d_to_footprints(CLI::App &app) {
         ->default_val(false);
 
     sub->callback([opt]() {
-        auto status = roofprints_3d_to_footprints(
-            opt->input_roofprints_file, opt->points_file,
-            opt->output_footprints_file, opt->output_points_file,
-            opt->overwrite);
+        auto status =
+            roofs_to_footprints(opt->input_roofs_file, opt->input_points_file,
+                                opt->output_footprints_file,
+                                opt->output_points_file, opt->overwrite);
         if (!status.ok()) {
-            std::cerr << "Error in roofprints_3d_to_footprints: "
-                      << status.ToString() << std::endl;
+            std::cerr << "Error in roof_to_footprints: " << status.ToString()
+                      << std::endl;
         }
+    });
+}
+
+void setup_select_points_under_roofs(CLI::App &app) {
+    auto opt =
+        std::make_shared<PointSelection::SelectPointsUnderRoofsOptions>();
+
+    CLI::App *sub = app.add_subcommand(
+        "select_points_under_roofs",
+        "Keep only LAS/LAZ points that are under at least one CityJSON roof");
+    sub->add_option("-i,--input-points", opt->input_points_file,
+                    "Input LAS/LAZ file")
+        ->required();
+    sub->add_option("-r,--input-roofs", opt->input_roofs_file,
+                    "Input CityJSON file with building roofs")
+        ->required();
+    sub->add_option("-o,--output-points", opt->output_points_file,
+                    "Output LAS/LAZ file with selected points")
+        ->required();
+    sub->add_option("-v,--vertical-buffer", opt->vertical_buffer,
+                    "Vertical tolerance below roof surfaces")
+        ->default_val(0.2);
+    sub->add_option("-x,--horizontal-buffer", opt->horizontal_buffer,
+                    "Horizontal halo around roof boundaries")
+        ->default_val(0.2);
+    sub->add_flag("-f,--overwrite", opt->overwrite,
+                  "Overwrite the output file if it exists")
+        ->default_val(false);
+
+    sub->callback([opt]() {
+        PointSelection::select_points_under_roofs(
+            opt->input_points_file, opt->input_roofs_file,
+            opt->output_points_file, opt->vertical_buffer,
+            opt->horizontal_buffer, opt->overwrite);
     });
 }
 
@@ -277,6 +312,7 @@ int main(int argc, char **argv) {
     setup_add_inward_directions(app);
     setup_roofprints_to_3d(app);
     setup_roofprints_3d_to_footprints(app);
+    setup_select_points_under_roofs(app);
     setup_test_parquet(app);
     setup_add_hello_world(app);
     app.require_subcommand(1);

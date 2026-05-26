@@ -286,3 +286,56 @@ def split_point_cloud_call(
         )
 
     return all_output_files
+
+
+def classification_mapping_implementation(
+    input_file: Path,
+    output_file: Path,
+    mapping: Dict[int, int],
+    skip_existing: bool,
+    overwrite: bool,
+):
+    if not input_file.exists():
+        raise FileNotFoundError(f"Input file not found: {input_file}")
+
+    output_path = Path(output_file)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Check if the output file already exists
+    if output_path.exists() and not overwrite:
+        if skip_existing:
+            logging.info(f"Skipping existing output file: {output_path}")
+            return
+        raise FileExistsError(f"Output file already exists: {output_path}")
+
+    # Create pipeline
+    reader = Reader(str(input_file))
+    filter_reclassify = Filter(
+        "filters.assign",
+        value=[
+            f"Classification = {new} WHERE Classification == {old}"
+            for old, new in mapping.items()
+        ],
+    )
+    writer = Writer(str(output_file), extra_dims="all")
+
+    pipeline = Pipeline([reader, filter_reclassify, writer])
+    pipeline.execute()
+
+
+def classification_mapping_call(
+    input_file: Path,
+    output_file: Path,
+    mapping: Dict[int, int],
+    skip_existing: bool,
+    overwrite: bool,
+    verbose_int: int,
+):
+    with LoggingContext(verbose=verbose_int):
+        classification_mapping_implementation(
+            input_file=input_file,
+            output_file=output_file,
+            mapping=mapping,
+            skip_existing=skip_existing,
+            overwrite=overwrite,
+        )

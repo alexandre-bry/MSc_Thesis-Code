@@ -9,8 +9,8 @@ version = "0.1.0"
 entwine = ">=3.2.1,<4"
 duckdb = ">=1.5.2,<2"
 
-# [feature.general.pypi-dependencies]
-# geoparquet-io = ">=0.8.0,<0.9"
+[feature.general.pypi-dependencies]
+geoparquet-io = ">=0.8.0,<0.9"
 
 
 [feature.python.dependencies]

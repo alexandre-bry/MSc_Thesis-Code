@@ -293,10 +293,11 @@ void one_facade_to_footprint(const PtsStructs::StoragePtr &storage,
                                end_2d + best_translation * direction_inwards);
 }
 
-arrow::Status roofprints_3d_to_footprints(
-    const std::string &input_roofprints_file, const std::string &points_file,
-    const std::string &output_footprints_file,
-    const std::string &output_points_file, bool overwrite) {
+arrow::Status roofs_to_footprints(const std::string &input_roofprints_file,
+                                  const std::string &input_points_file,
+                                  const std::string &output_footprints_file,
+                                  const std::string &output_points_file,
+                                  bool overwrite) {
     arrow::Status status;
 
     if (std::filesystem::exists(output_footprints_file) && !overwrite) {
@@ -393,7 +394,7 @@ arrow::Status roofprints_3d_to_footprints(
     /* ----------------------------------------------------------------------
      */
 
-    NewLasReader las_reader(points_file);
+    NewLasReader las_reader(input_points_file);
     auto storage = las_reader.points;
     storage->build_kd_tree_2d();
     // Trajectory trajectory = read_trajectory(trajectory_file);
