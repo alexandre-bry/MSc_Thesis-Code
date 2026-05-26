@@ -23,6 +23,9 @@ tqdm = ">=4.67.3,<5"
 typer = ">=0.24.1,<0.25"
 matplotlib = ">=3.10.8,<4"
 imageio-ffmpeg = ">=0.6.0,<0.7"
+geopandas = ">=1.1.1,<2"
+shapely = ">=2.1.1,<3"
+pyarrow = ">=22.0.0,<23"
 
 [feature.python.pypi-dependencies]
 fastquadtree = ">=2.1.1, <3"
@@ -30,8 +33,8 @@ fastquadtree = ">=2.1.1, <3"
 [feature.python.tasks]
 py = { cmd = "cd \"$INIT_CWD\" && PYTHONPATH=\"$PIXI_PROJECT_ROOT\" PYTHONNOUSERSITE=1 python" }
 py-run = { args = [
-    "command", # Name of the command, currently either `lidarhd`, `edge_matching` or `roof`
-], cmd = "cd \"$INIT_CWD\" && PYTHONPATH=\"$PIXI_PROJECT_ROOT\" PYTHONNOUSERSITE=1 python -m python.{{ command }}.main", description = "Run a Python command with subcommands and arguments.\nThe available commands are: lidarhd, edge_matching, roof.\nTo run a command, use `pixi run py-run <command> -- <argument1> <argument2> ...`." }
+    "command", # Name of the command, currently either `lidarhd`, `edge_matching`, `roof`, or `metrics`
+], cmd = "cd \"$INIT_CWD\" && PYTHONPATH=\"$PIXI_PROJECT_ROOT\" PYTHONNOUSERSITE=1 python -m python.{{ command }}.main", description = "Run a Python command with subcommands and arguments.\nThe available commands are: lidarhd, edge_matching, roof, metrics.\nTo run a command, use `pixi run py-run <command> -- <argument1> <argument2> ...`." }
 
 [feature.cpp.dependencies]
 just = ">=1.50.0,<2"
