@@ -264,14 +264,20 @@ void one_facade_to_footprint(const PtsStructs::StoragePtr &storage,
     // Prepare the points
     std::vector<Point_3> points;
     points.reserve(footprint_points.size());
+    std::vector<LASclassification::Value> classifications;
+    classifications.reserve(footprint_points.size());
     for (std::size_t idx : footprint_points) {
-        points.push_back(storage->get_point(PtsStructs::PointId(idx)));
+        PtsStructs::PointId p_id(idx);
+        points.push_back(storage->get_point(p_id));
+        classifications.push_back(static_cast<LASclassification::Value>(
+            storage->get_field_as<uint8_t>(pdal::Dimension::Id::Classification,
+                                           p_id)));
     }
 
     // Score the translations and keep the best one
     std::vector<double> scores;
     score_line_translations(footprint_edge.supporting_line(), points,
-                            direction_inwards, translations,
+                            classifications, direction_inwards, translations,
                             OPTIMIZATION_DISTANCE_THRESHOLD,
                             OPTIMIZATION_PENALTY_DISTANCE, scores);
     double best_score = -std::numeric_limits<double>::infinity();
@@ -289,7 +295,6 @@ void one_facade_to_footprint(const PtsStructs::StoragePtr &storage,
 
 arrow::Status roofprints_3d_to_footprints(
     const std::string &input_roofprints_file, const std::string &points_file,
-    const std::string &trajectory_file,
     const std::string &output_footprints_file,
     const std::string &output_points_file, bool overwrite) {
     arrow::Status status;
@@ -359,7 +364,7 @@ arrow::Status roofprints_3d_to_footprints(
         OutlineSource::Id outline_source =
             OutlineSource::from_string(origine_du_batiment);
 
-        // if (cleabs != "BATIMENT0000000337020997") {
+        // if (cleabs != "BATIMENT0000000337020548") {
         //     continue;
         // }
 

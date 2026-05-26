@@ -230,9 +230,6 @@ void setup_roofprints_3d_to_footprints(CLI::App &app) {
     sub->add_option("-p,--points", opt->points_file,
                     "Input LAS file with points for footprint computation")
         ->required();
-    sub->add_option("-t,--trajectory", opt->trajectory_file,
-                    "Input trajectory file for footprint computation")
-        ->required();
     sub->add_option("-f,--output-footprints", opt->output_footprints_file,
                     "Output Parquet file for 2D footprints")
         ->required();
@@ -245,7 +242,7 @@ void setup_roofprints_3d_to_footprints(CLI::App &app) {
 
     sub->callback([opt]() {
         auto status = roofprints_3d_to_footprints(
-            opt->input_roofprints_file, opt->points_file, opt->trajectory_file,
+            opt->input_roofprints_file, opt->points_file,
             opt->output_footprints_file, opt->output_points_file,
             opt->overwrite);
         if (!status.ok()) {

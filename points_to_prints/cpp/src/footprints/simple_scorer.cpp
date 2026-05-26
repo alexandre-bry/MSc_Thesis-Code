@@ -1,4 +1,5 @@
 #include "simple_scorer.hpp"
+#include <cstddef>
 
 /**
  * A simple scorer that counts positively points in a small buffer around the
@@ -18,35 +19,59 @@ class Scorer {
           distance_penalty(distance_penalty),
           translation_factor(translation_factor) {}
 
-    double compute_score(double signed_horizontal_distance,
-                         double translation) const {
+    double compute_score(const double signed_horizontal_distance,
+                         const double translation,
+                         const LASclassification::Value classification) const {
         double distance_after_translation =
             signed_horizontal_distance - translation * translation_factor;
 
-        if (std::abs(distance_after_translation) < distance_threshold) {
-            return 1.0 -
-                   std::abs(distance_after_translation) / distance_threshold;
-        } else if (distance_threshold < distance_after_translation &&
-                   distance_after_translation <
-                       distance_threshold + distance_penalty) {
-            // Penalty that is at 0 when the point is at the distance threshold
-            // and increases linearly to 1 when the point is at
-            // distance_threshold + distance_penalty or more
-            double penalty = (distance_after_translation - distance_threshold) /
-                             distance_penalty;
-            return -penalty;
-        } else {
-            return 0.0;
+        double score = 0.0;
+
+        // Penalty that is at 0 when the point is at 0 and increases
+        // linearly to 1 when the point is at distance_penalty in the
+        // direction of the translation
+        if (0 < distance_after_translation &&
+            distance_after_translation < distance_penalty) {
+            double penalty_score =
+                -distance_after_translation / distance_penalty;
+            if (classification == LASclassification::Value::Ground) {
+                penalty_score *= 1.0;
+            } else {
+                penalty_score *= 0.3;
+            }
+            score += penalty_score;
         }
+
+        // Score that is at 1 when the point is at 0 and decreases linearly
+        // to 0 when the point is at distance_threshold on both sides
+        if (std::abs(distance_after_translation) < distance_threshold) {
+            double point_score =
+                1.0 - std::abs(distance_after_translation) / distance_threshold;
+            if (classification == LASclassification::Value::Ground) {
+                point_score *= 0.3;
+            } else {
+                point_score *= 1.0;
+            }
+            score += point_score;
+        }
+
+        return score;
     }
 };
 
-void score_line_translations(const Line_2 &line,
-                             const std::vector<Point_3> &points,
-                             const UnitVector_2 &translation_direction,
-                             const std::vector<double> &translations,
-                             double distance_threshold, double distance_penalty,
-                             std::vector<double> &scores) {
+void score_line_translations(
+    const Line_2 &line, const std::vector<Point_3> &points,
+    const std::vector<LASclassification::Value> &classifications,
+    const UnitVector_2 &translation_direction,
+    const std::vector<double> &translations, double distance_threshold,
+    double distance_penalty, std::vector<double> &scores) {
+
+    // Check if points and classifications have the same size
+    if (points.size() != classifications.size()) {
+        throw std::invalid_argument(
+            "Points and classifications must have the same size");
+    }
+
     scores.clear();
 
     // Get the normal direction of the line in the direction of the translation
@@ -74,12 +99,21 @@ void score_line_translations(const Line_2 &line,
     // For each translation, compute a score based on the horizontal distances
     Scorer scorer(distance_threshold, distance_penalty, translation_factor);
     scores.reserve(translations.size());
-    for (const auto &translation : translations) {
+    for (std::size_t i = 0; i < translations.size(); ++i) {
         double score = 0.0;
+        // Print the classifications
 
-        for (const auto &signed_distance : horizontal_distances) {
-            score += scorer.compute_score(signed_distance, translation);
+        int point_count = 0;
+        for (std::size_t j = 0; j < points.size(); ++j) {
+            double point_score = scorer.compute_score(
+                horizontal_distances[j], translations[i], classifications[j]);
+            score += point_score;
+            point_count++;
         }
+
+        // std::cout << "Translation: " << translations[i] << ", score: " <<
+        // score
+        //           << ", point count: " << point_count << std::endl;
 
         scores.push_back(score);
     }
