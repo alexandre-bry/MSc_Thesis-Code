@@ -1,7 +1,9 @@
 #pragma once
 
+#include <arrow/status.h>
 #include <cstddef>
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <vector>
 
@@ -9,16 +11,15 @@
 #include "../utils/cgal.hpp"
 #include "../utils/strong_types.hpp"
 
-namespace AllLines {
+class ICriterion;
+
+namespace EdgeMatching {
 struct EdgeIdTag {};
 using EdgeId = StrongType<EdgeIdTag, std::size_t>;
 template <typename T> using EdgeVector = StrongTypedVector<EdgeId, T>;
 
-class AllOutlines;
-using AllOutlinesPtr = std::shared_ptr<AllOutlines>;
-
 class Edge {
-  private:
+  protected:
     uint32_t key;
     Point_3 initial_start;
     Point_3 initial_end;
@@ -82,7 +83,7 @@ struct OptimizationUnit {
 };
 
 class AllOutlines {
-  private:
+  protected:
     // The organization of the outlines for computations is the following:
     // - Edges are the basic elements, they all have a previous and next
     // neighbour because they are part of polygons with at least 3 edges.
@@ -110,6 +111,29 @@ class AllOutlines {
     OptimizationUnitVector<OptimizationUnit> optim_units;
     EdgeGroupVector<OptimizationUnitId> edge_group_id_to_optim_unit_id;
 
+    virtual void
+    compute_weights(PtsStructs::StoragePtr las_points,
+                    const std::vector<PtsStructs::PointId> &point_ids,
+                    std::vector<double> &weights,
+                    std::vector<Vector_2> &point_inward_dirs) const;
+
+    virtual std::unique_ptr<ICriterion>
+    create_criterion(std::vector<Point_2> points, std::vector<double> weights,
+                     std::vector<Vector_2> point_inward_dirs,
+                     std::vector<LASclassification::Value> point_classes) const;
+
+    void get_bbox_configs(const std::vector<std::map<EdgeId, double>> &configs,
+                          const std::set<EdgeId> edge_ids,
+                          const UnitVector_2 offset_direction,
+                          Bbox_2 &bbox) const;
+
+    virtual void
+    find_relevant_points(const std::vector<std::map<EdgeId, double>> &configs,
+                         const std::set<EdgeMatching::EdgeId> edge_ids,
+                         const UnitVector_2 offset_direction,
+                         const PtsStructs::StoragePtr las_points,
+                         std::vector<std::size_t> &las_indices) const;
+
   public:
     AllOutlines() = default;
     AllOutlines(const EdgeVector<Edge> &edges,
@@ -122,6 +146,9 @@ class AllOutlines {
                 const OptimizationUnitVector<OptimizationUnit> &optim_units,
                 const EdgeGroupVector<OptimizationUnitId>
                     &edge_group_id_to_optim_unit_id);
+    AllOutlines(const EdgeVector<Edge> &edges,
+                const OutlineVector<OutlineAsEdges> &outlines,
+                const std::vector<std::pair<EdgeId, EdgeId>> &intersections);
 
     const Edge &get_edge(EdgeId edge_id) const;
     const EdgeGroup &get_edge_group(EdgeGroupId edge_group_id) const;
@@ -148,6 +175,8 @@ class AllOutlines {
                          std::vector<double> &metrics,
                          std::vector<std::map<EdgeId, double>> &configs) const;
 
+    virtual void prepare_offsets(std::vector<double> &offsets) const;
+
     /**
      * @brief Computes the optimal offset for an edge group by evaluating the
      * given offsets and selecting the one with the best metric. The best metric
@@ -155,52 +184,30 @@ class AllOutlines {
      *
      * @param edge_group_id ID of the edge group for which to compute the
      * optimal offset
-     * @param max_absolute_offset Maximum absolute value of the offset to
-     * evaluate (the function will evaluate offsets in the range
-     * [-max_absolute_offset, max_absolute_offset])
-     * @param offset_step Step size for evaluating offsets (the function will
-     * evaluate offsets at intervals of offset_step within the range defined by
-     * max_absolute_offset)
      * @param offset_direction Direction in which to apply the offsets
      * @param las_points Pointer to the LAS points storage
      * @param best_offset Reference to the best offset found
      * @param best_config Reference to the configuration of shifts for the edges
      * corresponding to the best offset found
      */
-    void compute_optimal_offset(EdgeGroupId edge_group_id,
-                                double max_absolute_offset,
-                                uint initial_samples_one_side,
-                                UnitVector_2 offset_direction,
-                                PtsStructs::StoragePtr las_points,
-                                double &best_offset,
-                                std::map<EdgeId, double> &best_config) const;
+    void compute_optimal_offset(
+        EdgeGroupId edge_group_id, UnitVector_2 offset_direction,
+        PtsStructs::StoragePtr las_points, double &best_offset,
+        std::map<EdgeMatching::EdgeId, double> &best_config) const;
 
     void optimize_unit(const PtsStructs::StoragePtr las_points,
                        const OptimizationUnitId &optim_unit_id);
     void optimize_all_units(const PtsStructs::StoragePtr las_points);
 
-    void get_multipolygons(std::vector<OutlineAsEdges> &outline_as_edges,
-                           std::vector<MultiPolygonZ> &multi_polygons) const;
+    void
+    get_multipolygons(const OutlineVector<OutlineAsEdges> &outline_as_edges,
+                      OutlineVector<MultiPolygonZ> &multi_polygons) const;
+
+    arrow::Status
+    export_outlines(const OutlineVector<OutlineAsEdges> &outlines,
+                    const OutlineVector<std::string> &building_ids,
+                    const std::string &output_footprints_file,
+                    bool overwrite) const;
 };
 
-AllOutlines
-make_all_outlines(const EdgeVector<Edge> &edges,
-                  const OutlineVector<OutlineAsEdges> &outlines,
-                  const std::vector<std::pair<EdgeId, EdgeId>> &intersections);
-
-struct ComputeRoofprintsOptions {
-    std::string input_las_file;
-    std::string input_bd_topo_edges_file;
-    std::string input_bd_topo_intersections_file;
-    std::string output_roofprints_file;
-    uint iterations;
-    bool overwrite;
-};
-
-void compute_roofprints(const std::string &input_las_file,
-                        const std::string &input_bd_topo_edges_file,
-                        const std::string &input_bd_topo_intersections_file,
-                        const std::string &output_roofprints_file,
-                        uint iterations, bool overwrite);
-
-} // namespace AllLines
+} // namespace EdgeMatching

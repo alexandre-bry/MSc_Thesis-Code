@@ -1,7 +1,7 @@
-from glob import glob
 import logging
-from pathlib import Path
 import subprocess
+from glob import glob
+from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from ..utils.custom_logging import LoggingContext, run_command_with_tqdm_logging
@@ -46,6 +46,14 @@ def roofprints_to_lod22_implementation(
         else:
             logging.warning(f"Output file {roof_path} already exists. Overwriting it.")
 
+    if not point_cloud_path.exists():
+        logging.error(f"Point cloud file {point_cloud_path} does not exist.")
+        return
+
+    if not roofprints_path.exists():
+        logging.error(f"Roofprints file {roofprints_path} does not exist.")
+        return
+
     with TemporaryDirectory() as temp_dir:
         # ----------------- Convert roofprints to GeoPackage ----------------- #
         if roofprints_path.suffix.lower() != ".gpkg":
@@ -79,6 +87,8 @@ def roofprints_to_lod22_implementation(
             str(roofprints_gpkg_path),
             str(roofer_output_path),
             "--no-clip-terrain",
+            "--id-attribute",
+            "cleabs",
         ]
 
         return_code = run_command_with_tqdm_logging(command_roofer, display=True)

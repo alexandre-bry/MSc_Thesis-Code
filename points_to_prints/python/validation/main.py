@@ -110,6 +110,14 @@ def prepare_validation_dataset_command(
             help="Column name containing the unique building id in the raw validation dataset.",
         ),
     ] = "cleabs",
+    keep_columns: Annotated[
+        list[str],
+        typer.Option(
+            "--keep-columns",
+            "-k",
+            help="Additional columns to keep in the aggregated validation dataset.",
+        ),
+    ] = [],
     overwrite: Annotated[
         bool,
         typer.Option(
@@ -127,6 +135,7 @@ def prepare_validation_dataset_command(
         id_column=id_column,
         individual_output_path=individual_output_path,
         aggregated_output_path=aggregated_output_path,
+        keep_columns=keep_columns,
         overwrite=overwrite,
     )
     typer.echo(
@@ -144,7 +153,7 @@ def compare_polygon_datasets_command(
     ground_truth_path: Annotated[
         Path,
         typer.Argument(
-            help="Path to the aggregated validation polygon dataset (.parquet or .gpkg)",
+            help="Path to the validation polygon dataset (.parquet or .gpkg)",
             exists=True,
             file_okay=True,
             dir_okay=False,
@@ -164,7 +173,7 @@ def compare_polygon_datasets_command(
     output_path: Annotated[
         Path,
         typer.Argument(
-            help="Path where the per-pair metrics table will be written (.csv or .parquet)"
+            help="Path where the per-pair metrics table will be written (.csv, .parquet or .json)"
         ),
     ],
     id_column: Annotated[
@@ -172,7 +181,7 @@ def compare_polygon_datasets_command(
         typer.Option(
             "--id-column",
             "-i",
-            help="Column name used to match scored polygons against aggregate source ids.",
+            help="Column name used to match scored polygons against validation source ids.",
         ),
     ] = "cleabs",
     spacing_m: Annotated[
@@ -183,6 +192,16 @@ def compare_polygon_datasets_command(
             help="Sampling spacing along polygon boundaries, in metres.",
         ),
     ] = 1.0,
+    keep_columns: Annotated[
+        list[str],
+        typer.Option(
+            "--keep-columns",
+            "-k",
+            help=(
+                "Additional columns from the ground-truth and scored datasets to keep in the output results."
+            ),
+        ),
+    ] = [],
     verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
 ) -> None:
     from .metrics import compare_polygon_datasets_call, write_comparison_results
@@ -192,7 +211,7 @@ def compare_polygon_datasets_command(
         scored_path=scored_path,
         id_column=id_column,
         spacing_m=spacing_m,
-        keep_columns=None,
+        keep_columns=keep_columns,
         verbose_int=verbose_int,
     )
     write_comparison_results(result.paired_results, output_path)

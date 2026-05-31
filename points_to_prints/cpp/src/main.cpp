@@ -6,9 +6,11 @@
 #include "distances.hpp"
 #include "edge_matching/topology.hpp"
 #include "footprints/footprints.hpp"
+#include "footprints/footprints_new.hpp"
 #include "footprints/points_selection.hpp"
 #include "las_filter.hpp"
 #include "parquet.hpp"
+#include "roofprints/roofprints.hpp"
 #include "roofprints/transfer_3d.hpp"
 
 void setup_sort_by_gps_time(CLI::App &app) {
@@ -20,7 +22,7 @@ void setup_sort_by_gps_time(CLI::App &app) {
         ->required();
     sub->add_option("-o,--output", opt->output_file, "Output LAS file")
         ->required();
-    sub->add_flag("-f,--overwrite", opt->overwrite,
+    sub->add_flag("--overwrite", opt->overwrite,
                   "Overwrite the output file if it exists")
         ->default_val(false);
 
@@ -45,7 +47,7 @@ void setup_distances_in_order(CLI::App &app) {
     sub->add_option("-e,--edges", opt->output_edges_file,
                     "Output LAS file for points on edges")
         ->required();
-    sub->add_flag("-f,--overwrite", opt->overwrite,
+    sub->add_flag("--overwrite", opt->overwrite,
                   "Overwrite the output file if it exists")
         ->default_val(false);
 
@@ -68,7 +70,7 @@ void setup_extract_random_lines(CLI::App &app) {
     sub->add_option("-l,--lines", opt->lines_count,
                     "Number of lines to extract")
         ->required();
-    sub->add_flag("-f,--overwrite", opt->overwrite,
+    sub->add_flag("--overwrite", opt->overwrite,
                   "Overwrite the output folder if it exists")
         ->default_val(false);
 
@@ -87,7 +89,7 @@ void setup_split_flight_axes(CLI::App &app) {
         ->required();
     sub->add_option("-o,--output", opt->output_folder, "Output folder")
         ->required();
-    sub->add_flag("-f,--overwrite", opt->overwrite,
+    sub->add_flag("--overwrite", opt->overwrite,
                   "Overwrite the output folder if it exists")
         ->default_val(false);
 
@@ -119,7 +121,7 @@ void setup_read_write_bd_topo(CLI::App &app) {
     sub->add_option("-o,--output", opt->output_parquet_file,
                     "Output Parquet file for building outlines")
         ->required();
-    sub->add_flag("-f,--overwrite", opt->overwrite,
+    sub->add_flag("--overwrite", opt->overwrite,
                   "Overwrite the output file if it exists")
         ->default_val(false);
 
@@ -134,7 +136,7 @@ void setup_read_write_bd_topo(CLI::App &app) {
 }
 
 void setup_compute_roofprints(CLI::App &app) {
-    auto opt = std::make_shared<AllLines::ComputeRoofprintsOptions>();
+    auto opt = std::make_shared<EdgeMatching::ComputeRoofprintsOptions>();
 
     CLI::App *sub =
         app.add_subcommand("compute_roofprints", "Compute roofprints");
@@ -147,21 +149,29 @@ void setup_compute_roofprints(CLI::App &app) {
                     opt->input_bd_topo_intersections_file,
                     "Input BD TOPO Parquet file with building intersections")
         ->required();
-    sub->add_option("-o,--output-roofprints", opt->output_roofprints_file,
-                    "Output Parquet file for roofprints")
+    sub->add_option(
+           "-o,--output-roofprints-template",
+           opt->output_roofprints_template_file,
+           "Output Parquet template file for roofprints which must contain "
+           "{iteration} as a substring to be replaced by the iteration number")
         ->required();
     sub->add_option("-n,--iterations", opt->iterations,
                     "Number of optimization iterations to perform")
         ->required();
-    sub->add_flag("-f,--overwrite", opt->overwrite,
+    sub->add_flag("--overwrite", opt->overwrite,
                   "Overwrite the output file if it exists")
         ->default_val(false);
 
     sub->callback([opt]() {
-        AllLines::compute_roofprints(
+        auto status = EdgeMatching::compute_roofprints(
             opt->input_las_file, opt->input_bd_topo_edges_file,
-            opt->input_bd_topo_intersections_file, opt->output_roofprints_file,
-            opt->iterations, opt->overwrite);
+            opt->input_bd_topo_intersections_file,
+            opt->output_roofprints_template_file, opt->iterations,
+            opt->overwrite);
+        if (!status.ok()) {
+            std::cerr << "Error in compute_roofprints: " << status.ToString()
+                      << std::endl;
+        }
     });
 }
 
@@ -179,7 +189,7 @@ void setup_add_inward_directions(CLI::App &app) {
     sub->add_option("-t,--type", opt->type,
                     "Type of inward direction to compute: 'roof' or 'facade'")
         ->required();
-    sub->add_flag("-f,--overwrite", opt->overwrite,
+    sub->add_flag("--overwrite", opt->overwrite,
                   "Overwrite the output file if it exists")
         ->default_val(false);
 
@@ -204,7 +214,7 @@ void setup_roofprints_to_3d(CLI::App &app) {
     sub->add_option("-o,--output", opt->output_roofprints_3d_file,
                     "Output Parquet file for 3D roofprints")
         ->required();
-    sub->add_flag("-f,--overwrite", opt->overwrite,
+    sub->add_flag("--overwrite", opt->overwrite,
                   "Overwrite the output file if it exists")
         ->default_val(false);
 
@@ -219,20 +229,22 @@ void setup_roofprints_to_3d(CLI::App &app) {
     });
 }
 
-void setup_roofprints_3d_to_footprints(CLI::App &app) {
-    auto opt = std::make_shared<RoofsToFootprintsOptions>();
+void setup_roofprints_to_footprints(CLI::App &app) {
+    auto opt = std::make_shared<RoofprintsAndLod22ToFootprintsOptions>();
 
-    CLI::App *sub =
-        app.add_subcommand("roofprints_3d_to_footprints",
-                           "Convert 3D roofprints to 2D footprints");
-    sub->add_option("-i,--input", opt->input_roofs_file,
-                    "Input CityJSON file with LoD 2.2 building models")
+    CLI::App *sub = app.add_subcommand("roofprints_to_footprints",
+                                       "Convert roofprints to footprints");
+    sub->add_option("-i,--input", opt->input_roofprints_file,
+                    "Input Parquet file with roofprints")
+        ->required();
+    sub->add_option("-l,--lod22", opt->input_lod22_file,
+                    "Input Parquet file with LoD2.2 data")
         ->required();
     sub->add_option("-p,--points", opt->input_points_file,
                     "Input LAS file with points for footprint computation")
         ->required();
     sub->add_option("-f,--output-footprints", opt->output_footprints_file,
-                    "Output Parquet file for 2D footprints")
+                    "Output Parquet file for footprints")
         ->required();
     sub->add_option("-o,--output-points", opt->output_points_file,
                     "Output LAS file for points with corresponding building ID")
@@ -242,13 +254,13 @@ void setup_roofprints_3d_to_footprints(CLI::App &app) {
         ->default_val(false);
 
     sub->callback([opt]() {
-        auto status =
-            roofs_to_footprints(opt->input_roofs_file, opt->input_points_file,
-                                opt->output_footprints_file,
-                                opt->output_points_file, opt->overwrite);
+        auto status = roofprints_and_lod22_to_footprints(
+            opt->input_roofprints_file, opt->input_lod22_file,
+            opt->input_points_file, opt->output_footprints_file,
+            opt->output_points_file, opt->overwrite);
         if (!status.ok()) {
-            std::cerr << "Error in roof_to_footprints: " << status.ToString()
-                      << std::endl;
+            std::cerr << "Error in roofprints_and_lod22_to_footprints: "
+                      << status.ToString() << std::endl;
         }
     });
 }
@@ -271,11 +283,11 @@ void setup_select_points_under_roofs(CLI::App &app) {
         ->required();
     sub->add_option("-v,--vertical-buffer", opt->vertical_buffer,
                     "Vertical tolerance below roof surfaces")
-        ->default_val(0.2);
+        ->default_val(0.5);
     sub->add_option("-x,--horizontal-buffer", opt->horizontal_buffer,
                     "Horizontal halo around roof boundaries")
-        ->default_val(0.2);
-    sub->add_flag("-f,--overwrite", opt->overwrite,
+        ->default_val(0.3);
+    sub->add_flag("--overwrite", opt->overwrite,
                   "Overwrite the output file if it exists")
         ->default_val(false);
 
@@ -284,6 +296,45 @@ void setup_select_points_under_roofs(CLI::App &app) {
             opt->input_points_file, opt->input_roofs_file,
             opt->output_points_file, opt->vertical_buffer,
             opt->horizontal_buffer, opt->overwrite);
+    });
+}
+
+void setup_compute_footprints(CLI::App &app) {
+    auto opt = std::make_shared<EdgeMatching::ComputeFootprintsOptions>();
+
+    CLI::App *sub =
+        app.add_subcommand("compute_footprints", "Compute footprints");
+    sub->add_option("-r,--input-roofprints", opt->input_roofprints_file,
+                    "Input Parquet file with roofprints")
+        ->required();
+    sub->add_option("-p,--input-points", opt->input_points_file,
+                    "Input LAS file")
+        ->required();
+    sub->add_option("-l,--input-lod22", opt->input_lod22_file,
+                    "Input Parquet file with LoD2.2 data")
+        ->required();
+    sub->add_option("-o,--output-footprints-template",
+                    opt->output_footprints_template_file,
+                    "Output Parquet template file for footprints which must "
+                    "contain {iteration} as a substring to be replaced by the "
+                    "iteration number")
+        ->required();
+    sub->add_option("-n,--iterations", opt->iterations,
+                    "Number of optimization iterations to perform")
+        ->required();
+    sub->add_flag("--overwrite", opt->overwrite,
+                  "Overwrite the output file if it exists")
+        ->default_val(false);
+
+    sub->callback([opt]() {
+        auto status = EdgeMatching::compute_footprints(
+            opt->input_roofprints_file, opt->input_lod22_file,
+            opt->input_points_file, opt->output_footprints_template_file,
+            opt->iterations, opt->overwrite);
+        if (!status.ok()) {
+            std::cerr << "Error in compute_footprints: " << status.ToString()
+                      << std::endl;
+        }
     });
 }
 
@@ -311,8 +362,9 @@ int main(int argc, char **argv) {
     setup_compute_roofprints(app);
     setup_add_inward_directions(app);
     setup_roofprints_to_3d(app);
-    setup_roofprints_3d_to_footprints(app);
+    setup_roofprints_to_footprints(app);
     setup_select_points_under_roofs(app);
+    setup_compute_footprints(app);
     setup_test_parquet(app);
     setup_add_hello_world(app);
     app.require_subcommand(1);

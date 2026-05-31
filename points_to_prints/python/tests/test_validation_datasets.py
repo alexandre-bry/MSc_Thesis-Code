@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
-import unittest
 
 import geopandas as gpd
 from shapely.geometry import Polygon
@@ -29,6 +29,11 @@ class ValidationDatasetTests(unittest.TestCase):
             crs="EPSG:2154",
         )
 
+    def _normalize_sequence_values(self, values):
+        return [
+            list(value) if hasattr(value, "tolist") else list(value) for value in values
+        ]
+
     def test_build_validation_datasets_persists_individual_and_aggregated_outputs(
         self,
     ) -> None:
@@ -45,6 +50,7 @@ class ValidationDatasetTests(unittest.TestCase):
                 id_column="cleabs",
                 individual_output_path=individual_path,
                 aggregated_output_path=aggregated_path,
+                keep_columns=["name"],
                 overwrite=False,
             )
 
@@ -62,12 +68,18 @@ class ValidationDatasetTests(unittest.TestCase):
                 [
                     "ground_truth_aggregate_id",
                     "ground_truth_ids",
+                    "name",
                     "geometry",
                     "ground_truth_area_m2",
                 ],
             )
             self.assertEqual(aggregated_dataset.crs, sample_polygons.crs)
             self.assertEqual(len(aggregated_dataset), 2)
+
+            self.assertEqual(
+                self._normalize_sequence_values(aggregated_dataset["name"]),
+                [["left", "middle"], ["right"]],
+            )
 
             aggregate_id_by_source_ids = {
                 tuple(row.ground_truth_ids): row.ground_truth_aggregate_id
@@ -141,6 +153,7 @@ class ValidationDatasetTests(unittest.TestCase):
                 id_column="cleabs",
                 individual_output_path=individual_path,
                 aggregated_output_path=aggregated_path,
+                keep_columns=["name"],
             )
             sample_polygons.to_parquet(scored_path, index=False)
 
@@ -149,6 +162,7 @@ class ValidationDatasetTests(unittest.TestCase):
                 scored_path=scored_path,
                 id_column="cleabs",
                 spacing_m=1.0,
+                keep_columns=["name"],
                 verbose_int=0,
             )
 
@@ -161,6 +175,54 @@ class ValidationDatasetTests(unittest.TestCase):
             self.assertEqual(
                 list(result.paired_results["ground_truth_aggregate_id"]),
                 list(gpd.read_parquet(aggregated_path)["ground_truth_aggregate_id"]),
+            )
+            self.assertEqual(
+                self._normalize_sequence_values(result.paired_results["name"]),
+                [["left", "middle"], ["right"]],
+            )
+
+    def test_compare_polygon_datasets_uses_persisted_individual_validation_dataset(
+        self,
+    ) -> None:
+        sample_polygons = self._sample_polygons()
+        with TemporaryDirectory() as temp_dir:
+            temp_dir_path = Path(temp_dir)
+            input_path = temp_dir_path / "input.parquet"
+            individual_path = temp_dir_path / "individual.parquet"
+            aggregated_path = temp_dir_path / "aggregated.parquet"
+            scored_path = temp_dir_path / "scored.parquet"
+            sample_polygons.to_parquet(input_path, index=False)
+
+            build_validation_datasets(
+                input_ground_truth_path=input_path,
+                id_column="cleabs",
+                individual_output_path=individual_path,
+                aggregated_output_path=aggregated_path,
+            )
+            sample_polygons.to_parquet(scored_path, index=False)
+
+            result = compare_polygon_datasets_call(
+                ground_truth_path=individual_path,
+                scored_path=scored_path,
+                id_column="cleabs",
+                spacing_m=1.0,
+                keep_columns=["name"],
+                verbose_int=0,
+            )
+
+            self.assertEqual(result.summary["ground_truth_count"], 3)
+            self.assertEqual(result.summary["scored_count"], 3)
+            self.assertEqual(result.summary["matched_count"], 3)
+            self.assertEqual(result.summary["ignored_ground_truth_count"], 0)
+            self.assertEqual(result.summary["ignored_scored_count"], 0)
+            self.assertTrue((result.paired_results["iou"] == 1.0).all())
+            self.assertEqual(
+                list(result.paired_results["ground_truth_ids"]),
+                [["a"], ["b"], ["c"]],
+            )
+            self.assertEqual(
+                list(result.paired_results["name"]),
+                [["left"], ["middle"], ["right"]],
             )
 
 

@@ -4,7 +4,7 @@
 #include "constants.hpp"
 #include <CGAL/enum.h>
 
-double LinearCriterion::evaluate_segments(
+double CriterionRoofprints::evaluate_segments(
     const std::vector<Segment_2> &segments,
     const std::vector<double> &segments_initial_length,
     const std::vector<UnitVector_2> &segments_inward_normals) const {
@@ -97,35 +97,9 @@ double LinearCriterion::evaluate_segments(
     }
     proximity_value =
         -std::accumulate(point_best_score.begin(), point_best_score.end(), 0.0);
-    // proximity_value /= current_perimeter;
     proximity_value *= EDGE_CRITERION_POINT_DENSITY;
 
-    // // Compute the perimeter ratio value
-    // double perimeter_ratio_value;
-    // if (current_perimeter > initial_perimeter) {
-    //     perimeter_ratio_value =
-    //         (current_perimeter / initial_perimeter) * initial_perimeter;
-    // } else {
-    //     perimeter_ratio_value =
-    //         (initial_perimeter / current_perimeter) * initial_perimeter;
-    // }
-    // perimeter_ratio_value *= this->alpha_ratio;
-
-    // Compute the mean edge length ratio value
-    double mean_edge_length_ratio_value = 0.0;
-    for (size_t i = 0; i < segments.size(); ++i) {
-        double current_length =
-            std::max(0.1, std::sqrt(segments.at(i).squared_length()));
-        double initial_length = std::max(0.1, segments_initial_length.at(i));
-        if (current_length > initial_length) {
-            mean_edge_length_ratio_value += (current_length / initial_length);
-        } else {
-            mean_edge_length_ratio_value += (initial_length / current_length);
-        }
-    }
-    mean_edge_length_ratio_value /= segments.size();
-    mean_edge_length_ratio_value *= this->alpha_mean_edges_ratio;
-
+    // Compute the mean edge length difference value
     double mean_edge_length_difference_value = 0.0;
     for (size_t i = 0; i < segments.size(); ++i) {
         double current_length =
@@ -136,19 +110,6 @@ double LinearCriterion::evaluate_segments(
     }
     mean_edge_length_difference_value *= this->alpha_mean_edges_difference;
 
-    // Compute the perimeter absolute value
-    double perimeter_abs_value =
-        this->alpha_perimeter_absolute * current_perimeter;
-
-    // std::cout << "Proximity value: " << proximity_value
-    //           << ", Mean edge length ratio value: "
-    //           << mean_edge_length_ratio_value
-    //           << ", Perimeter absolute value: " << perimeter_abs_value
-    //           << std::endl;
-
-    double total_value = proximity_value +
-                         //  mean_edge_length_ratio_value +
-                         mean_edge_length_difference_value +
-                         perimeter_abs_value;
+    double total_value = proximity_value + mean_edge_length_difference_value;
     return total_value;
 }

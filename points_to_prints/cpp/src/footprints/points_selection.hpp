@@ -37,6 +37,14 @@ struct RoofFace {
      */
     bool contains_xy(const Point_2 &point) const;
 
+    /** @brief Compute the distance from a point to the roof face in the
+     * xy-plane. The distance is 0 if the point is within the 2D projection of
+     * the roof, otherwise it is the distance to the closest edge.
+     *  @param point XY point to evaluate
+     *  @return distance in the xy-plane from the point to the face
+     */
+    double distance_xy(const Point_2 &point) const;
+
     /** @brief Compute the roof height at the given XY point using the cached
      * face plane.
      *  @param point XY point to evaluate
@@ -57,6 +65,17 @@ struct RoofFace {
     std::optional<double>
     roof_height_at_closest_boundary_point(const Point_2 &point,
                                           double horizontal_buffer) const;
+
+    std::optional<double>
+    roof_height_in_or_closest(const Point_2 &point,
+                              double horizontal_buffer) const {
+        if (contains_xy(point)) {
+            return roof_height_at(point);
+        } else {
+            return roof_height_at_closest_boundary_point(point,
+                                                         horizontal_buffer);
+        }
+    }
 };
 
 struct RoofBuilding {
@@ -80,6 +99,19 @@ struct RoofBuilding {
      */
     bool contains(const Point_3 &point, double vertical_buffer,
                   double horizontal_buffer) const;
+
+    /** @brief Find the roof faces that correspond to the given 2D segment.
+     *  This is used to perform the relevant tests for points given a certain
+     * edge of a 2D roofprint.
+     *  @param segment 2D segment to find faces for
+     *  @param overlap_threshold maximum distance in the xy-plane for a face to
+     * be considered a match to the segment
+     *  @param matching_faces output vector to populate with references to the
+     */
+    void find_faces_for_segment(
+        const Segment_2 &segment, const double overlap_threshold,
+        std::vector<std::reference_wrapper<const RoofFace>> &matching_faces)
+        const;
 };
 
 class RoofSelectionStore {

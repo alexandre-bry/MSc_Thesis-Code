@@ -569,6 +569,11 @@ struct Storage {
         return cached_points[point_id];
     }
 
+    LASclassification::Value get_classification(PointId point_id) const {
+        return static_cast<LASclassification::Value>(view->getFieldAs<uint8_t>(
+            pdal::Dimension::Id::Classification, point_id));
+    }
+
     void cache_points();
 
     void build_kd_tree_2d();

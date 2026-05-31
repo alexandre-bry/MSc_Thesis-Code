@@ -79,17 +79,17 @@
 // typedef StrongType<LineIdTag, pdal::PointId> LineId;
 
 // // Structure to store all the edges as lines and refer to them by their IDs
-// struct AllLines {
+// struct EdgeMatching {
 //     std::vector<MovableLine> lines;
 
-//     AllLines(const std::vector<MovableLine> &lines);
+//     EdgeMatching(const std::vector<MovableLine> &lines);
 
 //     MovableLine get(LineId line_id) const;
 //     void set(LineId line_id, MovableLine line);
 // };
 
-// // We use shared pointers to the AllLines structure to avoid copying it
-// typedef std::shared_ptr<AllLines> AllLinesPtr;
+// // We use shared pointers to the EdgeMatching structure to avoid copying it
+// typedef std::shared_ptr<EdgeMatching> EdgeMatchingPtr;
 
 // struct Polygon {
 //     std::vector<PointId> point_ids;
@@ -119,12 +119,13 @@
 
 //     LineId get_first_line_id() const;
 //     LineId get_last_line_id() const;
-//     Point_2 get_first_point(Line_2 prev_line, AllLinesPtr all_lines) const;
-//     Point_2 get_last_point(Line_2 next_line, AllLinesPtr all_lines) const;
-//     Point_2 get_first_point(EdgeSequence prev_edge_sequence,
-//                             AllLinesPtr all_lines) const;
+//     Point_2 get_first_point(Line_2 prev_line, EdgeMatchingPtr all_lines)
+//     const; Point_2 get_last_point(Line_2 next_line, EdgeMatchingPtr
+//     all_lines) const; Point_2 get_first_point(EdgeSequence
+//     prev_edge_sequence,
+//                             EdgeMatchingPtr all_lines) const;
 //     Point_2 get_last_point(EdgeSequence next_edge_sequence,
-//                            AllLinesPtr all_lines) const;
+//                            EdgeMatchingPtr all_lines) const;
 
 //     // void compute_updated_points(Point_2 new_start, Point_2 new_end,
 //     //                             AllPointsPtr all_points,
@@ -132,8 +133,9 @@
 //     // void update_points(const std::vector<Point_2> &new_points,
 //     //                    AllPointsPtr all_points) const;
 //     void compute_updated_lines(Line_2 new_prev_line, Line_2 new_next_line,
-//                                Vector_2 translation, AllLinesPtr all_lines,
-//                                std::vector<MovableLine> &new_lines) const;
+//                                Vector_2 translation, EdgeMatchingPtr
+//                                all_lines, std::vector<MovableLine>
+//                                &new_lines) const;
 // };
 
 // struct EdgeSequenceIdTag {};
@@ -219,7 +221,7 @@
 //     std::vector<EdgeSequenceGroupId> edge_groups_ordered_by_initial_length;
 //     std::vector<Vector_2> edge_group_to_moving_direction;
 //     // AllPointsPtr all_points;
-//     AllLinesPtr all_lines;
+//     EdgeMatchingPtr all_lines;
 
 //     SuperOutline(
 //         const std::vector<EdgeSequence> &edges,
@@ -228,7 +230,7 @@
 //         const std::vector<std::vector<EdgeSequenceId>>
 //             &edge_index_to_neighbour_edge_indices,
 //         // AllPointsPtr all_points,
-//         AllLinesPtr all_lines);
+//         EdgeMatchingPtr all_lines);
 
 //     void optimize_edges(const KdTree_2 &las_kd_tree,
 //                         PtsStructs::StoragePtr las_points) const;

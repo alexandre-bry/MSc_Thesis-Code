@@ -9,7 +9,7 @@ import pandas as pd
 
 from shapely.ops import unary_union
 
-from .metrics import _read_polygon_dataset, _validate_input_columns
+from .metrics import _normalize_keep_columns, _read_polygon_dataset, _validate_input_columns
 
 
 def _deterministic_aggregate_id(source_ids: Iterable[object]) -> str:
@@ -64,6 +64,7 @@ def _build_touching_components(dataset: gpd.GeoDataFrame) -> list[list[int]]:
 def _build_aggregated_ground_truth_rows(
     ground_truth_dataset: gpd.GeoDataFrame,
     id_column: str,
+    keep_columns: list[str],
 ) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     for component_indices in _build_touching_components(ground_truth_dataset):
@@ -78,21 +79,27 @@ def _build_aggregated_ground_truth_rows(
                 "ground_truth_area_m2": float(dissolved_geometry.area),
             }
         )
+        for column_name in keep_columns:
+            rows[-1][column_name] = subset[column_name].tolist()
     return rows
 
 
 def _build_aggregated_ground_truth_dataset(
     ground_truth_dataset: gpd.GeoDataFrame,
     id_column: str,
+    keep_columns: list[str],
 ) -> gpd.GeoDataFrame:
     ordered_columns = [
         "ground_truth_aggregate_id",
         "ground_truth_ids",
+        *keep_columns,
         "geometry",
         "ground_truth_area_m2",
     ]
     aggregated = pd.DataFrame(
-        _build_aggregated_ground_truth_rows(ground_truth_dataset, id_column)
+        _build_aggregated_ground_truth_rows(
+            ground_truth_dataset, id_column, keep_columns
+        )
     )
     for column_name in ordered_columns:
         if column_name not in aggregated.columns:
@@ -134,6 +141,7 @@ def build_validation_datasets(
     id_column: str,
     individual_output_path: Path,
     aggregated_output_path: Path,
+    keep_columns: list[str] | None = None,
     overwrite: bool = False,
 ) -> None:
     """Persist both the raw validation dataset and the dissolved aggregate dataset."""
@@ -144,6 +152,9 @@ def build_validation_datasets(
     _validate_input_columns(ground_truth, id_column, "ground-truth")
     if ground_truth.crs is None:
         raise ValueError("The ground-truth dataset is missing CRS information.")
+    normalized_keep_columns = _normalize_keep_columns(
+        ground_truth, id_column, keep_columns or []
+    )
 
     if not overwrite:
         if individual_output_path.exists():
@@ -156,29 +167,11 @@ def build_validation_datasets(
             )
 
     individual_dataset = ground_truth.copy()
-    aggregated_dataset = _build_aggregated_ground_truth_dataset(ground_truth, id_column)
+    aggregated_dataset = _build_aggregated_ground_truth_dataset(
+        ground_truth,
+        id_column,
+        normalized_keep_columns,
+    )
 
     _write_polygon_dataset(individual_dataset, individual_output_path, overwrite)
     _write_polygon_dataset(aggregated_dataset, aggregated_output_path, overwrite)
-
-
-def build_aggregated_validation_dataset(
-    input_ground_truth_path: Path,
-    id_column: str,
-    keep_columns: list[str],
-    output_path: Path,
-    overwrite: bool = False,
-) -> None:
-    """Compatibility wrapper that persists only the aggregated validation dataset."""
-    _ = keep_columns
-
-    ground_truth = _read_polygon_dataset(input_ground_truth_path)
-    _validate_input_columns(ground_truth, id_column, "ground-truth")
-    if ground_truth.crs is None:
-        raise ValueError("The ground-truth dataset is missing CRS information.")
-
-    if output_path.exists() and not overwrite:
-        raise FileExistsError(f"Output file already exists: {output_path}")
-
-    aggregated_dataset = _build_aggregated_ground_truth_dataset(ground_truth, id_column)
-    _write_polygon_dataset(aggregated_dataset, output_path, overwrite)

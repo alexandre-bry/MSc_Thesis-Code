@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import json
 import logging
+from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-from collections import defaultdict
 
 import geopandas as gpd
 import pandas as pd
@@ -173,40 +173,6 @@ def _dissolve_dataset_rows(
     return row
 
 
-def _aggregate_touching_ground_truth(
-    ground_truth_dataset: gpd.GeoDataFrame,
-    id_column: str,
-    keep_columns: list[str],
-) -> gpd.GeoDataFrame:
-    components = _build_touching_components(ground_truth_dataset)
-    rows = [
-        _dissolve_dataset_rows(
-            ground_truth_dataset,
-            indices=component_indices,
-            id_column=id_column,
-            keep_columns=keep_columns,
-            label="ground_truth",
-        )
-        for component_indices in components
-    ]
-
-    ordered_columns = [
-        "ground_truth_aggregate_id",
-        "ground_truth_ids",
-        *keep_columns,
-        "geometry",
-        "ground_truth_area_m2",
-    ]
-    aggregated = pd.DataFrame(rows)
-    for column_name in ordered_columns:
-        if column_name not in aggregated.columns:
-            aggregated[column_name] = pd.Series(dtype="object")
-    aggregated = aggregated.reindex(columns=ordered_columns)
-    return gpd.GeoDataFrame(
-        aggregated, geometry="geometry", crs=ground_truth_dataset.crs
-    )
-
-
 def _build_scored_aggregate(
     scored_dataset: gpd.GeoDataFrame,
     source_ids: list,
@@ -246,6 +212,13 @@ def _validate_aggregated_ground_truth_dataset(
         raise ValueError(
             "The aggregated ground-truth dataset contains missing geometries."
         )
+
+
+def _is_aggregated_ground_truth_dataset(dataset: gpd.GeoDataFrame) -> bool:
+    return {
+        "ground_truth_aggregate_id",
+        "ground_truth_ids",
+    }.issubset(dataset.columns)
 
 
 def _ensure_polygonal_geometry(geometry, label: str, row_id) -> None:
@@ -340,6 +313,19 @@ def _compare_polygon_pair(
         )
         / 2.0,
     }
+
+
+def _coerce_keep_column_values(value) -> list:
+    if hasattr(value, "tolist") and not isinstance(value, str):
+        try:
+            value = value.tolist()
+        except Exception:
+            pass
+    if isinstance(value, list):
+        return value
+    if isinstance(value, tuple):
+        return list(value)
+    return [value]
 
 
 def _polygon_parts(geometry) -> list[Polygon]:
@@ -659,25 +645,39 @@ def compare_polygon_datasets_implementation(
     spacing_m : float
         Sampling spacing in metres used for boundary distances.
     keep_columns : list[str] | None
-        Present for compatibility; ignored by the aggregated workflow.
+        Additional columns from the ground-truth dataset to keep in the output.
 
     Returns
     -------
     PolygonMetricsResult
-        Container with aggregate-level paired results and summary statistics.
+        Container with paired results and summary statistics.
     """
-    _ = keep_columns
-
     ground_truth_dataset = _read_polygon_dataset(ground_truth_path)
     scored_dataset = _read_polygon_dataset(scored_path)
 
-    _validate_aggregated_ground_truth_dataset(ground_truth_dataset)
+    if _is_aggregated_ground_truth_dataset(ground_truth_dataset):
+        _validate_aggregated_ground_truth_dataset(ground_truth_dataset)
+    else:
+        _validate_input_columns(ground_truth_dataset, id_column, "ground-truth")
+
+    normalized_keep_columns = _normalize_keep_columns(
+        ground_truth_dataset, id_column, keep_columns or []
+    )
+
     _validate_input_columns(scored_dataset, id_column, "scored")
     _validate_matching_crs(ground_truth_dataset, scored_dataset)
 
     rows: list[dict[str, object]] = []
-    for _, aggregate_row in ground_truth_dataset.iterrows():
-        source_ids = aggregate_row["ground_truth_ids"]
+    for _, ground_truth_row in ground_truth_dataset.iterrows():
+        if _is_aggregated_ground_truth_dataset(ground_truth_dataset):
+            source_ids = ground_truth_row["ground_truth_ids"]
+            aggregate_id = ground_truth_row["ground_truth_aggregate_id"]
+            ground_truth_area_m2 = float(ground_truth_row["ground_truth_area_m2"])
+        else:
+            aggregate_id = ground_truth_row[id_column]
+            source_ids = [aggregate_id]
+            ground_truth_area_m2 = float(ground_truth_row.geometry.area)
+
         scored_aggregate = _build_scored_aggregate(
             scored_dataset, source_ids, id_column
         )
@@ -685,11 +685,8 @@ def compare_polygon_datasets_implementation(
             continue
 
         scored_ids, scored_geometry = scored_aggregate
-        ground_truth_geometry = aggregate_row.geometry
-        aggregate_id = aggregate_row["ground_truth_aggregate_id"]
-
         metrics = _compare_polygon_pair(
-            ground_truth_geometry,
+            ground_truth_row.geometry,
             scored_geometry,
             spacing_m,
         )
@@ -697,15 +694,22 @@ def compare_polygon_datasets_implementation(
             "ground_truth_aggregate_id": aggregate_id,
             "ground_truth_ids": source_ids,
             "scored_ids": scored_ids,
-            "geometry": scored_geometry,
-            "ground_truth_area_m2": float(aggregate_row["ground_truth_area_m2"]),
-            **metrics,
         }
+        for column_name in normalized_keep_columns:
+            row[column_name] = _coerce_keep_column_values(ground_truth_row[column_name])
+        row.update(
+            {
+                "geometry": scored_geometry,
+                "ground_truth_area_m2": ground_truth_area_m2,
+                **metrics,
+            }
+        )
         rows.append(row)
 
     ordered_columns = [
         "ground_truth_aggregate_id",
         "ground_truth_ids",
+        *normalized_keep_columns,
         "scored_ids",
         "geometry",
         "ground_truth_area_m2",
@@ -725,25 +729,21 @@ def compare_polygon_datasets_implementation(
         crs=scored_dataset.crs,
     )
 
+    matched_scored_ids = pd.Index(
+        [
+            scored_id
+            for scored_ids in paired_results.get("scored_ids", [])
+            for scored_id in (scored_ids if isinstance(scored_ids, list) else [])
+        ]
+    )
+
     summary: dict[str, float | int] = {
         "ground_truth_count": len(ground_truth_dataset),
         "scored_count": len(scored_dataset),
         "matched_count": len(paired_results),
         "ignored_ground_truth_count": len(ground_truth_dataset) - len(paired_results),
         "ignored_scored_count": len(scored_dataset)
-        - len(
-            pd.Index(scored_dataset[id_column]).intersection(
-                pd.Index(
-                    [
-                        scored_id
-                        for scored_ids in paired_results.get("scored_ids", [])
-                        for scored_id in (
-                            scored_ids if isinstance(scored_ids, list) else []
-                        )
-                    ]
-                )
-            )
-        ),
+        - len(pd.Index(scored_dataset[id_column]).intersection(matched_scored_ids)),
     }
 
     if not paired_results.empty:
@@ -780,7 +780,6 @@ def compare_polygon_datasets_call(
     id_column: str,
     spacing_m: float,
     keep_columns: list[str] | None = None,
-    aggregate_touching: bool = False,
     verbose_int: int = 0,
 ) -> PolygonMetricsResult:
     """Entry-point wrapper for dataset comparison with logging context.
@@ -796,9 +795,7 @@ def compare_polygon_datasets_call(
     spacing_m : float
         Sampling spacing in metres.
     keep_columns : list[str] | None
-        Present for compatibility; ignored by the aggregated workflow.
-    aggregate_touching : bool
-        Present for compatibility; ignored by the aggregated workflow.
+        Additional columns from the ground-truth dataset to keep in the output.
     verbose_int : int
         Verbosity level for logging.
 
@@ -807,7 +804,6 @@ def compare_polygon_datasets_call(
     PolygonMetricsResult
         The computed paired metrics and summary statistics.
     """
-    _ = aggregate_touching
     with LoggingContext(verbose=verbose_int):
         return compare_polygon_datasets_implementation(
             ground_truth_path=ground_truth_path,
@@ -819,7 +815,7 @@ def compare_polygon_datasets_call(
 
 
 def write_comparison_results(results: pd.DataFrame, output_path: Path) -> None:
-    """Write comparison results to CSV or GeoParquet.
+    """Write comparison results to CSV, GeoParquet or JSON.
 
     Parameters
     ----------
@@ -828,7 +824,7 @@ def write_comparison_results(results: pd.DataFrame, output_path: Path) -> None:
         supplied or a `geometry` column exists it will be written as GeoParquet
         when the output extension is ``.parquet``.
     output_path : Path
-        Destination path. Supported extensions: ``.csv`` and ``.parquet``.
+        Destination path. Supported extensions: ``.csv``, ``.parquet`` and ``.json``.
     """
     output_path.parent.mkdir(parents=True, exist_ok=True)
     suffix = output_path.suffix.lower()
@@ -843,6 +839,47 @@ def write_comparison_results(results: pd.DataFrame, output_path: Path) -> None:
                 )
             )
         csv_results.to_csv(output_path, index=False)
+        return
+    if suffix == ".json":
+        json_results = pd.DataFrame(results.copy())
+
+        def _serialize_value(v):
+            try:
+                if v is None or (isinstance(v, float) and pd.isna(v)):
+                    return None
+            except Exception:
+                pass
+            if hasattr(v, "wkt"):
+                return v.wkt
+            # numpy arrays and pandas arrays -> convert to list
+            if hasattr(v, "tolist") and not isinstance(v, str):
+                try:
+                    lst = v.tolist()
+                except Exception:
+                    lst = None
+                if lst is not None:
+                    return [_serialize_value(x) for x in lst]
+            if isinstance(v, (list, tuple)):
+                return [_serialize_value(x) for x in v]
+            if isinstance(v, dict):
+                return {k: _serialize_value(val) for k, val in v.items()}
+            # numpy scalar -> python native
+            if hasattr(v, "item") and not isinstance(v, str):
+                try:
+                    return v.item()
+                except Exception:
+                    pass
+            return v
+
+        records: list[dict] = []
+        for _, row in json_results.iterrows():
+            record: dict = {}
+            for column_name in json_results.columns:
+                record[column_name] = _serialize_value(row[column_name])
+            records.append(record)
+
+        with output_path.open("w", encoding="utf-8") as fh:
+            json.dump(records, fh, ensure_ascii=False, indent=2)
         return
     if suffix == ".parquet":
         if isinstance(results, gpd.GeoDataFrame):

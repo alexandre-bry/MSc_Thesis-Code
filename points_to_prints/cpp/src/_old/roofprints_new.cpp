@@ -189,14 +189,14 @@
 
 // //
 // =============================================================================
-// // Roofprints::AllLines
+// // Roofprints::EdgeMatching
 // //
 // =============================================================================
 
-// Roofprints::AllLines::AllLines(const std::vector<MovableLine> &lines)
+// Roofprints::EdgeMatching::EdgeMatching(const std::vector<MovableLine> &lines)
 //     : lines(lines) {}
 
-// Roofprints::MovableLine Roofprints::AllLines::get(LineId line_id) const {
+// Roofprints::MovableLine Roofprints::EdgeMatching::get(LineId line_id) const {
 //     if (line_id < 0 || line_id >= lines.size()) {
 //         throw std::out_of_range("Line ID out of range: " +
 //                                 std::to_string(line_id));
@@ -204,7 +204,7 @@
 //     return lines[line_id];
 // }
 
-// void Roofprints::AllLines::set(LineId line_id, MovableLine line) {
+// void Roofprints::EdgeMatching::set(LineId line_id, MovableLine line) {
 //     if (line_id < 0 || line_id >= lines.size()) {
 //         throw std::out_of_range("Line ID out of range: " +
 //                                 std::to_string(line_id));
@@ -258,7 +258,7 @@
 // }
 
 // Point_2 Roofprints::EdgeSequence::get_first_point(Line_2 prev_line,
-//                                                   AllLinesPtr all_lines)
+//                                                   EdgeMatchingPtr all_lines)
 //                                                   const {
 //     // The first point of the edge sequence is the intersection of the last
 //     line
@@ -269,7 +269,8 @@
 // }
 
 // Point_2 Roofprints::EdgeSequence::get_last_point(Line_2 next_line,
-//                                                  AllLinesPtr all_lines) const
+//                                                  EdgeMatchingPtr all_lines)
+//                                                  const
 //                                                  {
 //     // The last point of the edge sequence is the intersection of the last
 //     line
@@ -280,7 +281,8 @@
 // }
 
 // Point_2 Roofprints::EdgeSequence::get_first_point(
-//     Roofprints::EdgeSequence prev_edge_sequence, AllLinesPtr all_lines) const
+//     Roofprints::EdgeSequence prev_edge_sequence, EdgeMatchingPtr all_lines)
+//     const
 //     {
 //     // The first point of the edge sequence is the intersection of the last
 //     line
@@ -293,7 +295,8 @@
 // }
 
 // Point_2 Roofprints::EdgeSequence::get_last_point(
-//     Roofprints::EdgeSequence next_edge_sequence, AllLinesPtr all_lines) const
+//     Roofprints::EdgeSequence next_edge_sequence, EdgeMatchingPtr all_lines)
+//     const
 //     {
 //     // The last point of the edge sequence is the intersection of the last
 //     line
@@ -446,7 +449,7 @@
 
 // void Roofprints::EdgeSequence::compute_updated_lines(
 //     Line_2 new_prev_line, Line_2 new_next_line, Vector_2 translation,
-//     AllLinesPtr all_lines, std::vector<MovableLine> &new_lines) const {
+//     EdgeMatchingPtr all_lines, std::vector<MovableLine> &new_lines) const {
 //     // Compute the new lines of the edge sequence based on the translation of
 //     // the main edge and the positions of the neighbouring edges.
 
@@ -836,7 +839,7 @@
 //     const std::vector<std::vector<EdgeSequenceId>>
 //         &edge_index_to_neighbour_edge_indices,
 //     // AllPointsPtr all_points,
-//     AllLinesPtr all_lines)
+//     EdgeMatchingPtr all_lines)
 //     : edges(edges),
 //       // edge_index_to_outline_id(edge_index_to_outline_id),
 //       edge_index_to_edge_group_id(edge_index_to_edge_group_id),
@@ -1335,11 +1338,11 @@
 //     Roofprints::AllPointsPtr all_points_ptr =
 //         std::make_shared<Roofprints::AllPoints>(all_points);
 
-//     // Initialize the AllLines structure with the extracted lines
+//     // Initialize the EdgeMatching structure with the extracted lines
 //     std::cout << "Initializing lines structure..." << std::endl;
-//     Roofprints::AllLines all_lines(lines);
-//     Roofprints::AllLinesPtr all_lines_ptr =
-//         std::make_shared<Roofprints::AllLines>(all_lines);
+//     Roofprints::EdgeMatching all_lines(lines);
+//     Roofprints::EdgeMatchingPtr all_lines_ptr =
+//         std::make_shared<Roofprints::EdgeMatching>(all_lines);
 
 //     // Group the edge sequences with overlapping edges
 //     std::cout << "Grouping edge sequences with overlapping edges..."

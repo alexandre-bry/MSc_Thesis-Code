@@ -13,7 +13,7 @@ set(${PROJECT_NAME}_VERSION_MAJOR 0)
 set(${PROJECT_NAME}_VERSION_MINOR 1)
 
 # Code
-FILE(GLOB SRC_FILES src/*.cpp src/**/*.cpp)
+FILE(GLOB SRC_FILES CONFIGURE_DEPENDS src/*.cpp src/**/*.cpp)
 add_executable(${PROJECT_NAME} ${SRC_FILES})
 
 # CGAL

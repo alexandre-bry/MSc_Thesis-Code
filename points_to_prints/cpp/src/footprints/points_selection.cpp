@@ -8,6 +8,7 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -27,6 +28,7 @@ namespace PointSelection {
 namespace {
 
 constexpr double kGeometryEpsilon = 1e-9;
+constexpr double faceMatchTolerance = 0.2;
 
 struct CityObjectMeta {
     std::string type;
@@ -394,34 +396,20 @@ std::vector<Point_3> read_vertices(const json &root) {
 
 bool point_matches_roof_face(const RoofFace &face, const Point_3 &point,
                              double vertical_buffer, double horizontal_buffer) {
-    if (!face.is_valid()) {
-        return false;
-    }
-
-    if (face.bbox.has_value()) {
-        if (point.x() < face.bbox->xmin() - horizontal_buffer ||
-            point.x() > face.bbox->xmax() + horizontal_buffer ||
-            point.y() < face.bbox->ymin() - horizontal_buffer ||
-            point.y() > face.bbox->ymax() + horizontal_buffer) {
-            return false;
-        }
-    }
-
-    if (point.z() > face.max_z + vertical_buffer) {
-        return false;
-    }
-
     const Point_2 point_2d(point.x(), point.y());
+
+    // If the point is within the 2D projection of the face
     if (face.contains_xy(point_2d)) {
         const std::optional<double> roof_height = face.roof_height_at(point_2d);
         return roof_height.has_value() &&
-               point.z() <= *roof_height + vertical_buffer;
+               point.z() <= *roof_height - vertical_buffer;
     }
 
+    // If the point is outside the 2D projection
     const std::optional<double> roof_height =
         face.roof_height_at_closest_boundary_point(point_2d, horizontal_buffer);
     return roof_height.has_value() &&
-           point.z() <= *roof_height + vertical_buffer;
+           point.z() <= *roof_height - vertical_buffer;
 }
 
 } // namespace
@@ -446,6 +434,36 @@ bool RoofFace::contains_xy(const Point_2 &point) const {
     }
 
     return true;
+}
+
+double RoofFace::distance_xy(const Point_2 &point) const {
+    if (!is_valid()) {
+        return std::numeric_limits<double>::infinity();
+    }
+
+    if (contains_xy(point)) {
+        return 0.0;
+    }
+
+    double best_distance_sq = std::numeric_limits<double>::infinity();
+    for (const auto &segment_data : boundary_segments) {
+        const Bbox_2 &segment_bbox = segment_data.bbox;
+        if (point.x() < segment_bbox.xmin() - kGeometryEpsilon ||
+            point.x() > segment_bbox.xmax() + kGeometryEpsilon ||
+            point.y() < segment_bbox.ymin() - kGeometryEpsilon ||
+            point.y() > segment_bbox.ymax() + kGeometryEpsilon) {
+            continue;
+        }
+
+        const ProjectionResult pr =
+            project_point_to_segment(point, segment_data.segment.source(),
+                                     segment_data.segment.target());
+        if (pr.distance_sq < best_distance_sq) {
+            best_distance_sq = pr.distance_sq;
+        }
+    }
+
+    return std::sqrt(best_distance_sq);
 }
 
 std::optional<double> RoofFace::roof_height_at(const Point_2 &point) const {
@@ -551,11 +569,15 @@ bool RoofBuilding::contains(const Point_3 &point, double vertical_buffer,
         }
     }
 
-    if (point.z() > max_z + vertical_buffer) {
+    if (point.z() > max_z - vertical_buffer) {
         return false;
     }
 
+    // Find the faces that the point belongs to or that it is close to, and
+    // check the point against them
     const Point_2 point_2d(point.x(), point.y());
+    std::vector<RoofFace> faces_to_check;
+
     for (const auto &face : roof_faces) {
         if (!face.is_valid()) {
             continue;
@@ -570,30 +592,77 @@ bool RoofBuilding::contains(const Point_3 &point, double vertical_buffer,
             }
         }
 
-        if (point.z() > face.max_z + vertical_buffer) {
-            continue;
-        }
-
         if (face.contains_xy(point_2d)) {
-            const std::optional<double> roof_height =
-                face.roof_height_at(point_2d);
-            if (roof_height.has_value() &&
-                point.z() <= *roof_height + vertical_buffer) {
-                return true;
-            }
+            faces_to_check.push_back(face);
             continue;
         }
 
-        const std::optional<double> roof_height =
-            face.roof_height_at_closest_boundary_point(point_2d,
-                                                       horizontal_buffer);
-        if (roof_height.has_value() &&
-            point.z() <= *roof_height + vertical_buffer) {
+        const double distance = face.distance_xy(point_2d);
+        if (distance < horizontal_buffer) {
+            faces_to_check.push_back(face);
+        }
+    }
+
+    if (faces_to_check.empty()) {
+        return false;
+    }
+
+    for (const auto &face : faces_to_check) {
+        if (point_matches_roof_face(face, point, vertical_buffer,
+                                    horizontal_buffer)) {
             return true;
         }
     }
 
     return false;
+}
+
+void RoofBuilding::find_faces_for_segment(
+    const Segment_2 &segment, const double overlap_threshold,
+    std::vector<std::reference_wrapper<const RoofFace>> &matching_faces) const {
+    if (!is_valid()) {
+        return;
+    }
+
+    const double overlap_threshold_sq = overlap_threshold * overlap_threshold;
+
+    for (const auto &face : roof_faces) {
+        if (!face.is_valid()) {
+            continue;
+        }
+
+        // Find the closest point on the segment to the face's 2D projection
+        const Point_2 segment_start = segment.source();
+        const Point_2 segment_end = segment.target();
+        const Line_2 segment_line(segment_start, segment_end);
+
+        double smallest_distance_sq = std::numeric_limits<double>::infinity();
+        for (const auto &face_segment_data : face.boundary_segments) {
+            const Point_2 face_segment_start =
+                face_segment_data.segment.source();
+            const Point_2 face_segment_end = face_segment_data.segment.target();
+
+            const Point_2 face_segment_start_proj =
+                segment_line.projection(face_segment_start);
+            const Point_2 face_segment_end_proj =
+                segment_line.projection(face_segment_end);
+
+            const double distance_start_sq = CGAL::squared_distance(
+                face_segment_start_proj, face_segment_start);
+            const double distance_end_sq =
+                CGAL::squared_distance(face_segment_end_proj, face_segment_end);
+            const double max_distance_sq =
+                std::max(distance_start_sq, distance_end_sq);
+
+            if (max_distance_sq < smallest_distance_sq) {
+                smallest_distance_sq = max_distance_sq;
+            }
+        }
+
+        if (smallest_distance_sq < overlap_threshold_sq) {
+            matching_faces.push_back(std::cref(face));
+        }
+    }
 }
 
 RoofSelectionStore read_cityjson_roofs(const std::string &cityjson_path) {
@@ -767,8 +836,8 @@ void select_points_under_roofs(const std::string &input_points_file,
 
                 const Point_3 point = las_reader.points->get_point(
                     PtsStructs::PointId(initial_idx));
-                if (!point_matches_roof_face(face, point, vertical_buffer,
-                                             horizontal_buffer)) {
+                if (!point_is_under_roof(store, building_id, point,
+                                         vertical_buffer, horizontal_buffer)) {
                     continue;
                 }
 

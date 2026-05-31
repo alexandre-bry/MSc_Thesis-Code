@@ -12,6 +12,7 @@ from typing import Annotated, List, Optional, Tuple
 
 import typer
 
+from ..roof.roof import roofprints_to_lod22_implementation
 from ..utils.custom_logging import LoggingContext, run_command_with_tqdm_logging
 from .bd_topo_crop import crop_parquet_from_las
 from .bd_topo_intersections import (
@@ -20,6 +21,7 @@ from .bd_topo_intersections import (
 )
 from .download import download_lidar_hd_data
 from .las_manipulations import (
+    classification_mapping_implementation,
     get_las_bounds,
     identity_convert,
     merge_files,
@@ -34,6 +36,7 @@ def _build_cpp_tool():
     return_code = run_command_with_tqdm_logging(command_build)
     if return_code != 0:
         logging.error("C++ build failed.")
+        raise RuntimeError("C++ build failed.")
     else:
         logging.info("C++ tools built successfully.")
 
@@ -86,6 +89,7 @@ def _compute_inward_direction(
     return_code = run_command_with_tqdm_logging(command_inwards)
     if return_code != 0:
         logging.error(f"Failed to create {output_las_path}.")
+        raise RuntimeError(f"Failed to create {output_las_path}.")
     else:
         logging.info(f"Successfully created {output_las_path}.")
 
@@ -436,6 +440,7 @@ def _compute_distances_and_edges(
     return_code = run_command_with_tqdm_logging(command, display=display)
     if return_code != 0:
         logging.error(f"Failed to process {laz_file.name}.")
+        raise RuntimeError(f"Failed to process {laz_file.name}.")
     else:
         logging.info(f"Successfully processed {laz_file.name}.")
 
@@ -584,11 +589,11 @@ def _compute_roofprints(
     merged_edges_file: Path,
     bd_topo_edges_file: Path,
     bd_topo_intersections_file: Path,
-    output_roofprints_file: Path,
-    max_iterations: int,
+    output_roofprints_template_file: Path,
+    n_iterations: int,
     overwrite: bool,
     skip_existing: bool,
-) -> None:
+) -> List[Path]:
     """Compute roofprints from merged edges and BD TOPO data.
 
     Parameters
@@ -599,27 +604,57 @@ def _compute_roofprints(
         Path to cropped BD TOPO edges Parquet file.
     bd_topo_intersections_file : Path
         Path to cropped BD TOPO intersections Parquet file.
-    output_roofprints_file : Path
-        Output path for roofprints file.
-    max_iterations : int
-        Maximum number of iterations for roofprint computation.
+    output_roofprints_template_file : Path
+        Output path for roofprints template file, with one '{iteration}' placeholder which will be replaced with the n_iterations value.
+    n_iterations : int
+        Number of iterations for roofprint computation.
     overwrite : bool
         Whether to overwrite existing roofprints file.
     skip_existing : bool
         Whether to skip computation if roofprints file already exists.
+
+    Raises
+    ------
+    FileExistsError
+        If the output roofprints file already exists and overwrite is False.
     """
     logging.info("\n\nO----- Computing roofprints -----O\n")
 
-    if output_roofprints_file.exists():
-        if skip_existing:
-            logging.info(f"{output_roofprints_file} already exists. Skipping.")
-            return
-        if overwrite:
-            logging.info(f"Overwriting {output_roofprints_file}.")
-        else:
-            raise FileExistsError(
-                f"{output_roofprints_file} already exists. Use --overwrite to overwrite it or --skip_existing to skip creating it."
+    # Check the template
+    if str(output_roofprints_template_file).count("{iteration}") != 1:
+        logging.error(
+            f"The output roofprints template file name must contain exactly one '{{iteration}}' placeholder to be replaced with the iteration number. Provided file: {output_roofprints_template_file}"
+        )
+        return []
+
+    iterations = range(1, n_iterations + 1)
+    output_roofprints_files = [
+        Path(str(output_roofprints_template_file).replace("{iteration}", str(n)))
+        for n in iterations
+    ]
+
+    # Check if output files already exist
+    existing_files = []
+    for file_path in output_roofprints_files:
+        if file_path.exists():
+            existing_files.append(file_path)
+    if skip_existing:
+        if len(existing_files) == len(output_roofprints_files):
+            logging.info(
+                f"Output files for roofprints already exist. Skipping processing."
             )
+            return output_roofprints_files
+        if len(existing_files) > 0:
+            logging.warning(
+                f"Only some of the expected output files already exist for roofprints: {', '.join(str(f) for f in existing_files)}. This likely means that a previous run of the pipeline was interrupted."
+            )
+    if overwrite:
+        if len(existing_files) > 0:
+            logging.info(
+                f"Overwriting existing files for roofprints: {', '.join(str(f) for f in existing_files)}."
+            )
+
+    logging.info(f"Computing roofprints with n_iterations={n_iterations}...")
 
     command = [
         "pixi",
@@ -637,9 +672,9 @@ def _compute_roofprints(
         "-i",
         str(bd_topo_intersections_file),
         "-n",
-        str(max_iterations),
+        str(n_iterations),
         "-o",
-        str(output_roofprints_file),
+        str(output_roofprints_template_file),
     ]
 
     if overwrite:
@@ -648,8 +683,134 @@ def _compute_roofprints(
     return_code = run_command_with_tqdm_logging(command)
     if return_code != 0:
         logging.error("Failed to compute roofprints.")
+        raise RuntimeError("Failed to compute roofprints.")
     else:
         logging.info("Successfully computed roofprints.")
+
+    return output_roofprints_files
+
+
+def _compute_lod22(
+    lidar_hd_reclassified_file: Path,
+    roofprints_file: Path,
+    output_lod22_cj_file: Path,
+    overwrite: bool,
+    skip_existing: bool,
+):
+    # Compute the roof using roofer
+    roofprints_to_lod22_implementation(
+        point_cloud_path=lidar_hd_reclassified_file,
+        roofprints_path=roofprints_file,
+        roof_path=output_lod22_cj_file,
+        overwrite=overwrite,
+        skip_existing=skip_existing,
+    )
+
+
+def _compute_footprints(
+    lidar_hd_file: Path,
+    lod22_file: Path,
+    roofprints_file: Path,
+    output_footprints_template_file: Path,
+    n_iterations: int,
+    overwrite: bool,
+    skip_existing: bool,
+) -> List[Path]:
+    """
+    Compute the footprints using the C++ pipeline.
+
+    Parameters
+    ----------
+    lidar_hd_file : Path
+        Path to the LiDAR HD file.
+    lod22_file : Path
+        Path to the LoD22 file.
+    roofprints_file : Path
+        Path to the roofprints file.
+    output_footprints_template_file : Path
+        Path to the output footprints template file, with one '{iteration}' placeholder which will be replaced with the iteration number.
+    n_iterations : int
+        Number of iterations for footprint computation.
+    overwrite : bool
+        Whether to overwrite existing footprint file.
+    skip_existing : bool
+        Whether to skip computation if footprint file already exists.
+
+    Raises
+    ------
+    FileExistsError
+        If the output footprint file already exists and overwrite is False.
+    """
+    logging.info("\n\nO----- Computing footprints -----O\n")
+
+    # Check the template
+    if str(output_footprints_template_file).count("{iteration}") != 1:
+        logging.error(
+            f"The output footprints template file name must contain exactly one '{{iteration}}' placeholder to be replaced with the iteration number. Provided file: {output_footprints_template_file}"
+        )
+        return []
+
+    iterations = range(1, n_iterations + 1)
+    output_footprints_files = [
+        Path(str(output_footprints_template_file).replace("{iteration}", str(n)))
+        for n in iterations
+    ]
+
+    # Check if output files already exist
+    existing_files = []
+    for file_path in output_footprints_files:
+        if file_path.exists():
+            existing_files.append(file_path)
+    if skip_existing:
+        if len(existing_files) == len(output_footprints_files):
+            logging.info(
+                f"Output files for footprints already exist. Skipping processing."
+            )
+            return output_footprints_files
+        if len(existing_files) > 0:
+            logging.warning(
+                f"Only some of the expected output files already exist for footprints: {', '.join(str(f) for f in existing_files)}. This likely means that a previous run of the pipeline was interrupted."
+            )
+    if overwrite:
+        if len(existing_files) > 0:
+            logging.info(
+                f"Overwriting existing files for footprints: {', '.join(str(f) for f in existing_files)}."
+            )
+
+    logging.info(f"Computing footprints with n_iterations={n_iterations}...")
+
+    command = [
+        "pixi",
+        "run",
+        "--quiet",
+        "cpp",
+        "run-only",
+        "release",
+        "--",
+        "compute_footprints",
+        "-p",
+        str(lidar_hd_file),
+        "-l",
+        str(lod22_file),
+        "-r",
+        str(roofprints_file),
+        "-o",
+        str(output_footprints_template_file),
+        "-n",
+        str(n_iterations),
+    ]
+
+    if overwrite:
+        command.append("--overwrite")
+
+    return_code = run_command_with_tqdm_logging(command)
+    if return_code != 0:
+        logging.error("Failed to compute footprints.")
+        raise RuntimeError("Failed to compute footprints.")
+    else:
+        logging.info("Successfully computed footprints.")
+
+    return output_footprints_files
 
 
 def run_pipeline_implementation(
@@ -677,6 +838,10 @@ def run_pipeline_implementation(
     tile_axes_dir.mkdir(exist_ok=True)
     tile_roofprints_dir = tile_dir / "roofprints"
     tile_roofprints_dir.mkdir(exist_ok=True)
+    tile_roof_dir = tile_dir / "roof"
+    tile_roof_dir.mkdir(exist_ok=True)
+    tile_footprints_dir = tile_dir / "footprints"
+    tile_footprints_dir.mkdir(exist_ok=True)
 
     initial_laz_file = tile_dir / "lidarhd.copc.laz"
     if initial_laz_file.exists():
@@ -781,20 +946,62 @@ def run_pipeline_implementation(
     #                              Roofprints                              #
     # -------------------------------------------------------------------- #
 
-    iterations_to_try = [1, 2, 3]
-    for max_iterations in iterations_to_try:
-        logging.info(
-            f"\n\nO----- Attempting roofprint computation with max_iterations={max_iterations} -----O\n"
+    n_iterations_roofprints = 3
+    roofprints_template_file = tile_roofprints_dir / f"roofprints-{{iteration}}.parquet"
+
+    roofprints_files = _compute_roofprints(
+        merged_edges_file=merged_edges_file,
+        bd_topo_edges_file=cropped_edges_file,
+        bd_topo_intersections_file=cropped_intersections_file,
+        output_roofprints_template_file=roofprints_template_file,
+        n_iterations=n_iterations_roofprints,
+        overwrite=overwrite,
+        skip_existing=skip_existing,
+    )
+
+    # ------------------------------------------------------------------------ #
+    #                                   Roof                                   #
+    # ------------------------------------------------------------------------ #
+
+    # Reclassify the input LiDAR HD file to classify as building all the points which are potentially building points, as roofer only uses those
+    reclassified_lidar_hd_file = tile_lidar_hd_dir / "lidarhd-reclassified.laz"
+    classification_mapping_implementation(
+        input_file=initial_laz_file,
+        output_file=reclassified_lidar_hd_file,
+        mapping={1: 6, 64: 6, 65: 6, 67: 6},
+        overwrite=overwrite,
+        skip_existing=skip_existing,
+    )
+
+    # Compute the LoD22 models
+    lod22_files = []
+    for roofprints_file in roofprints_files:
+        lod22_file = tile_roof_dir / f"{roofprints_file.stem}-roof.city.json"
+        _compute_lod22(
+            lidar_hd_reclassified_file=reclassified_lidar_hd_file,
+            roofprints_file=roofprints_file,
+            output_lod22_cj_file=lod22_file,
+            overwrite=overwrite,
+            skip_existing=skip_existing,
         )
-        roofprints_file = (
-            tile_roofprints_dir / f"roofprints-{max_iterations}_iterations.parquet"
+        lod22_files.append(lod22_file)
+
+    # ------------------------------------------------------------------------ #
+    #                                Footprints                                #
+    # ------------------------------------------------------------------------ #
+
+    n_iterations_footprints = 3
+    for roofprints_file, lod22_file in zip(roofprints_files, lod22_files):
+        output_footprints_template_file = (
+            tile_footprints_dir
+            / f"{roofprints_file.stem.replace('roofprints', 'footprints')}-{{iteration}}.parquet"
         )
-        _compute_roofprints(
-            merged_edges_file=merged_edges_file,
-            bd_topo_edges_file=cropped_edges_file,
-            bd_topo_intersections_file=cropped_intersections_file,
-            output_roofprints_file=roofprints_file,
-            max_iterations=max_iterations,
+        _compute_footprints(
+            lidar_hd_file=initial_laz_file,
+            lod22_file=lod22_file,
+            roofprints_file=roofprints_file,
+            output_footprints_template_file=output_footprints_template_file,
+            n_iterations=n_iterations_footprints,
             overwrite=overwrite,
             skip_existing=skip_existing,
         )

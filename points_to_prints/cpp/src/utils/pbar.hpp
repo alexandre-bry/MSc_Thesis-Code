@@ -33,7 +33,7 @@ struct ProgressBarTotal {
 
     void finish() { indicators::show_console_cursor(true); }
 
-    void increment(size_t increment) {
+    void increment(size_t increment = 1) {
         progress += increment;
         uint8_t percentage =
             static_cast<uint8_t>((static_cast<double>(progress) / total) * 100);

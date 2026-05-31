@@ -102,7 +102,8 @@ enum class Id {
     ScannerPositionX,
     ScannerPositionY,
     ScannerPositionZ,
-    CorrespondingBuildingId
+    CorrespondingBuildingId,
+    CorrespondingEdgeId
 };
 inline std::string name(Id id) {
     switch (id) {
@@ -136,6 +137,8 @@ inline std::string name(Id id) {
         return "ScannerPositionZ";
     case Id::CorrespondingBuildingId:
         return "CorrespondingBuildingId";
+    case Id::CorrespondingEdgeId:
+        return "CorrespondingEdgeId";
     default:
         throw std::runtime_error("Unknown custom dimension ID");
     }
@@ -172,6 +175,8 @@ inline pdal::Dimension::Type type(Id id) {
     case Id::ScannerPositionZ:
         return pdal::Dimension::Type::Double;
     case Id::CorrespondingBuildingId:
+        return pdal::Dimension::Type::Unsigned32;
+    case Id::CorrespondingEdgeId:
         return pdal::Dimension::Type::Unsigned32;
     default:
         throw std::runtime_error("Unknown custom dimension ID");
