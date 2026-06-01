@@ -33,8 +33,8 @@ fastquadtree = ">=2.1.1, <3"
 [feature.python.tasks]
 py = { cmd = "cd \"$INIT_CWD\" && PYTHONPATH=\"$PIXI_PROJECT_ROOT\" PYTHONNOUSERSITE=1 python" }
 py-run = { args = [
-    "command", # Name of the command, currently either `lidarhd`, `edge_matching`, `roof`, or `metrics`
-], cmd = "cd \"$INIT_CWD\" && PYTHONPATH=\"$PIXI_PROJECT_ROOT\" PYTHONNOUSERSITE=1 python -m python.{{ command }}.main", description = "Run a Python command with subcommands and arguments.\nThe available commands are: lidarhd, edge_matching, roof, metrics.\nTo run a command, use `pixi run py-run <command> -- <argument1> <argument2> ...`." }
+    "command",
+], cmd = "cd \"$INIT_CWD\" && PYTHONPATH=\"$PIXI_PROJECT_ROOT\" PYTHONNOUSERSITE=1 python -m python.{{ command }}.main", description = "Run a Python command with subcommands and arguments.\nThe available commands are: pipeline, lidarhd, edge_matching, roof, metrics.\nTo run a command, use `pixi run py-run <command> -- <argument1> <argument2> ...`." }
 
 [feature.cpp.dependencies]
 just = ">=1.50.0,<2"

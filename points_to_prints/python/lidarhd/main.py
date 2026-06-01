@@ -20,7 +20,6 @@ from .las_manipulations import (
     merge_files,
     split_point_cloud_call,
 )
-from .pipeline import run_pipeline_call
 
 app = typer.Typer()
 
@@ -245,62 +244,6 @@ def download_lidar_hd(
                 overwrite=overwrite,
             )
         )
-
-
-@app.command(
-    "run_pipeline",
-    help="Run the pipeline.",
-)
-def run_pipeline_command(
-    bd_topo_dir: Annotated[
-        Path,
-        typer.Option(
-            "-b",
-            "--bd_topo_dir",
-            help="Directory containing the BD TOPO data needed for the pipeline.",
-            exists=True,
-            file_okay=False,
-            dir_okay=True,
-            readable=True,
-        ),
-    ],
-    tile_dir: Annotated[
-        Path,
-        typer.Option(
-            "-t",
-            "--tile_dir",
-            help="Directory containing the downloaded tile .laz files.",
-            exists=True,
-            file_okay=False,
-            dir_okay=True,
-            readable=True,
-        ),
-    ],
-    overwrite: Annotated[
-        bool,
-        typer.Option(
-            "--overwrite",
-            help="Whether to overwrite the output files.",
-        ),
-    ] = False,
-    skip_existing: Annotated[
-        bool,
-        typer.Option(
-            "--skip_existing",
-            help="Whether to skip processing files that already have output files.",
-        ),
-    ] = False,
-    verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
-    num_workers: Annotated[Optional[int], typer.Option("--num_workers")] = None,
-):
-    run_pipeline_call(
-        bd_topo_dir=bd_topo_dir,
-        tile_dir=tile_dir,
-        overwrite=overwrite,
-        skip_existing=skip_existing,
-        verbose_int=verbose_int,
-        num_workers=num_workers,
-    )
 
 
 @app.command(
