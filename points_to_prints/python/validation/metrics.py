@@ -50,6 +50,63 @@ def _read_polygon_dataset(input_path: Path) -> gpd.GeoDataFrame:
     )
 
 
+def _collect_ground_truth_source_ids(
+    ground_truth_dataset: gpd.GeoDataFrame,
+    id_column: str,
+) -> list:
+    def _flatten_source_ids(value):
+        if value is None:
+            return
+        if isinstance(value, str):
+            yield value
+            return
+        if isinstance(value, (list, tuple, set, pd.Series, pd.Index)):
+            for item in value:
+                yield from _flatten_source_ids(item)
+            return
+        if hasattr(value, "tolist"):
+            try:
+                converted_value = value.tolist()
+            except Exception:
+                converted_value = value
+            if converted_value is not value:
+                yield from _flatten_source_ids(converted_value)
+                return
+        yield value
+
+    if _is_aggregated_ground_truth_dataset(ground_truth_dataset):
+        source_ids: list = []
+        for ground_truth_ids in ground_truth_dataset["ground_truth_ids"]:
+            source_ids.extend(_flatten_source_ids(ground_truth_ids))
+        return pd.Index(source_ids).dropna().unique().tolist()
+
+    return pd.Index(ground_truth_dataset[id_column]).dropna().unique().tolist()
+
+
+def _read_filtered_scored_dataset(
+    scored_path: Path,
+    id_column: str,
+    source_ids: list,
+) -> gpd.GeoDataFrame:
+    suffix = scored_path.suffix.lower()
+    if suffix == ".parquet":
+        try:
+            return gpd.read_parquet(
+                scored_path,
+                columns=[id_column, "geometry"],
+                filters=[(id_column, "in", source_ids)],
+            )
+        except TypeError:
+            scored_dataset = gpd.read_parquet(
+                scored_path,
+                columns=[id_column, "geometry"],
+            )
+            return scored_dataset[scored_dataset[id_column].isin(source_ids)]
+
+    scored_dataset = _read_polygon_dataset(scored_path)
+    return scored_dataset[scored_dataset[id_column].isin(source_ids)].copy()
+
+
 def _validate_input_columns(
     dataset: gpd.GeoDataFrame, id_column: str, label: str
 ) -> None:
@@ -97,80 +154,6 @@ def _validate_matching_crs(
         raise ValueError(
             "The ground-truth and scored datasets must use the same CRS to compare polygons."
         )
-
-
-def _preserve_order(values: list) -> list:
-    return list(values)
-
-
-def _build_touching_components(dataset: gpd.GeoDataFrame) -> list[list[int]]:
-    if len(dataset) == 0:
-        return []
-
-    parent = list(range(len(dataset)))
-
-    def find(index: int) -> int:
-        while parent[index] != index:
-            parent[index] = parent[parent[index]]
-            index = parent[index]
-        return index
-
-    def union(left_index: int, right_index: int) -> None:
-        left_root = find(left_index)
-        right_root = find(right_index)
-        if left_root != right_root:
-            parent[right_root] = left_root
-
-    spatial_index = dataset.sindex
-    geometries = list(dataset.geometry)
-
-    for left_index, left_geometry in enumerate(geometries):
-        try:
-            candidate_indices = spatial_index.query(left_geometry, predicate="touches")
-        except TypeError:
-            candidate_indices = spatial_index.query(left_geometry)
-        except AttributeError:
-            candidate_indices = range(len(dataset))
-
-        for right_index in candidate_indices:
-            if right_index <= left_index:
-                continue
-            right_geometry = geometries[right_index]
-            if left_geometry.touches(right_geometry):
-                union(left_index, right_index)
-
-    components: dict[int, list[int]] = {}
-    for index in range(len(dataset)):
-        root = find(index)
-        components.setdefault(root, []).append(index)
-    return list(components.values())
-
-
-def _collect_list_column(
-    dataset: gpd.GeoDataFrame, indices: list[int], column_name: str
-) -> list:
-    return _preserve_order(dataset.iloc[indices][column_name].tolist())
-
-
-def _dissolve_dataset_rows(
-    dataset: gpd.GeoDataFrame,
-    indices: list[int],
-    id_column: str,
-    keep_columns: list[str],
-    label: str,
-) -> dict:
-    subset = dataset.iloc[indices]
-    dissolved_geometry = unary_union(list(subset.geometry))
-    source_ids = subset[id_column].tolist()
-    row: dict[str, object] = {
-        f"{label}_aggregate_id": f"{label}_{indices[0] if indices else 0}",
-        f"{label}_ids": source_ids,
-        "geometry": dissolved_geometry,
-        f"{label}_area_m2": float(dissolved_geometry.area),
-    }
-    for column_name in keep_columns:
-        row[column_name] = _collect_list_column(dataset, indices, column_name)
-    return row
 
 
 def _build_scored_aggregate(
@@ -633,13 +616,32 @@ def write_polygon_topology_results(
     raise ValueError("Unsupported output format. Use a .parquet or .gpkg file.")
 
 
+def _format_summary(summary: dict[str, float | int], output_path: Path) -> str:
+    return "\n".join(
+        [
+            f"Matched polygon pairs: {summary['matched_count']}",
+            f"Ignored ground-truth polygons: {summary['ignored_ground_truth_count']}",
+            f"Ignored scored polygons: {summary['ignored_scored_count']}",
+            f"Mean IoU: {summary['mean_iou']:.6f}",
+            (
+                "Mean directed boundary distances (m): "
+                f"GT->Scored {summary['mean_ground_truth_to_scored_boundary_distance_m']:.6f}, "
+                f"Scored->GT {summary['mean_scored_to_ground_truth_boundary_distance_m']:.6f}, "
+                f"Symmetric {summary['mean_symmetric_boundary_distance_m']:.6f}"
+            ),
+            f"Results written to: {output_path}",
+        ]
+    )
+
+
 def compare_polygon_datasets_implementation(
     ground_truth_path: Path,
     scored_path: Path,
+    output_path: Path,
     id_column: str,
     spacing_m: float,
     keep_columns: list[str] | None = None,
-) -> PolygonMetricsResult:
+) -> None:
     """Compute metrics against a prebuilt aggregated ground-truth dataset.
 
     Parameters
@@ -648,25 +650,24 @@ def compare_polygon_datasets_implementation(
         Path to the aggregated ground-truth polygon dataset.
     scored_path : Path
         Path to the scored polygon dataset.
+    output_path : Path
+        Path where the per-pair metrics table will be written (.csv, .parquet or .json).
     id_column : str
         Column name of unique IDs in the scored dataset.
     spacing_m : float
         Sampling spacing in metres used for boundary distances.
     keep_columns : list[str] | None
         Additional columns from the ground-truth dataset to keep in the output.
-
-    Returns
-    -------
-    PolygonMetricsResult
-        Container with paired results and summary statistics.
     """
     ground_truth_dataset = _read_polygon_dataset(ground_truth_path)
-    scored_dataset = _read_polygon_dataset(scored_path)
 
     if _is_aggregated_ground_truth_dataset(ground_truth_dataset):
         _validate_aggregated_ground_truth_dataset(ground_truth_dataset)
     else:
         _validate_input_columns(ground_truth_dataset, id_column, "ground-truth")
+
+    source_ids = _collect_ground_truth_source_ids(ground_truth_dataset, id_column)
+    scored_dataset = _read_filtered_scored_dataset(scored_path, id_column, source_ids)
 
     normalized_keep_columns = _normalize_keep_columns(
         ground_truth_dataset, id_column, keep_columns or []
@@ -784,17 +785,23 @@ def compare_polygon_datasets_implementation(
             }
         )
 
-    return PolygonMetricsResult(paired_results=paired_results, summary=summary)
+    metrics_result = PolygonMetricsResult(
+        paired_results=paired_results, summary=summary
+    )
+
+    write_comparison_results(metrics_result.paired_results, output_path)
+    logging.info(_format_summary(metrics_result.summary, output_path))
 
 
 def compare_polygon_datasets_call(
     ground_truth_path: Path,
     scored_path: Path,
+    output_path: Path,
     id_column: str,
     spacing_m: float,
     keep_columns: list[str] | None = None,
     verbose_int: int = 0,
-) -> PolygonMetricsResult:
+) -> None:
     """Entry-point wrapper for dataset comparison with logging context.
 
     Parameters
@@ -803,6 +810,8 @@ def compare_polygon_datasets_call(
         Path to the aggregated ground-truth dataset.
     scored_path : Path
         Path to the scored dataset.
+    output_path : Path
+        Path where the per-pair metrics table will be written (.csv, .parquet or .json).
     id_column : str
         Column name used for matching IDs.
     spacing_m : float
@@ -811,16 +820,12 @@ def compare_polygon_datasets_call(
         Additional columns from the ground-truth dataset to keep in the output.
     verbose_int : int
         Verbosity level for logging.
-
-    Returns
-    -------
-    PolygonMetricsResult
-        The computed paired metrics and summary statistics.
     """
     with LoggingContext(verbose=verbose_int):
-        return compare_polygon_datasets_implementation(
+        compare_polygon_datasets_implementation(
             ground_truth_path=ground_truth_path,
             scored_path=scored_path,
+            output_path=output_path,
             id_column=id_column,
             spacing_m=spacing_m,
             keep_columns=keep_columns,

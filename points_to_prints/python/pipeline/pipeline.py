@@ -1,7 +1,11 @@
 import logging
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from multiprocessing import Pool
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import List, Optional, Tuple
+
+from tqdm import tqdm
 
 from ..lidarhd.bd_topo_intersections import (
     crop_intersections_files,
@@ -1052,6 +1056,251 @@ def run_pipeline_call(
             tile_dir=tile_dir,
             stop_after_roofprints=stop_after_roofprints,
             stop_after_lod22=stop_after_lod22,
+            overwrite=overwrite,
+            skip_existing=skip_existing,
+            num_workers=num_workers,
+        )
+
+
+def _compare_polygon_datasets_single_job(
+    args: Tuple[Path, Path, Path, Path, Path, str, float, Optional[List[str]]],
+) -> Tuple[Path, Path, Path]:
+    """Run one validation comparison job in a worker process."""
+    (
+        scored_file,
+        output_indiv_file,
+        output_aggreg_file,
+        validation_dataset_indiv_file,
+        validation_dataset_aggreg_file,
+        id_column,
+        spacing_m,
+        keep_columns,
+    ) = args
+
+    from ..validation.metrics import compare_polygon_datasets_implementation
+
+    with TemporaryDirectory() as tmp_dir:
+        valid_scored_file = Path(tmp_dir) / scored_file.name
+        try:
+            command = [
+                "pixi",
+                "run",
+                "--quiet",
+                "gdal",
+                "vector",
+                "make-valid",
+                "-i",
+                str(scored_file),
+                "-o",
+                str(valid_scored_file),
+            ]
+
+            return_code = run_command_with_tqdm_logging(command, display=False)
+            if return_code != 0:
+                raise RuntimeError(f"Failed to make valid {scored_file}.")
+
+            compare_polygon_datasets_implementation(
+                ground_truth_path=validation_dataset_indiv_file,
+                scored_path=valid_scored_file,
+                output_path=output_indiv_file,
+                id_column=id_column,
+                spacing_m=spacing_m,
+                keep_columns=keep_columns,
+            )
+            compare_polygon_datasets_implementation(
+                ground_truth_path=validation_dataset_aggreg_file,
+                scored_path=valid_scored_file,
+                output_path=output_aggreg_file,
+                id_column=id_column,
+                spacing_m=spacing_m,
+                keep_columns=keep_columns,
+            )
+        except Exception:
+            logging.exception("Worker failed for %s.", scored_file)
+            raise
+
+    return scored_file, output_indiv_file, output_aggreg_file
+
+
+def compute_metrics_implementation(
+    validation_dataset_indiv_file: Path,
+    validation_dataset_aggreg_file: Path,
+    bd_topo_file: Path,
+    tiles_dirs: List[Path],
+    output_comparison_dir: Path,
+    id_column: str,
+    spacing_m: float,
+    keep_columns: Optional[List[str]],
+    overwrite: bool,
+    skip_existing: bool,
+    num_workers: Optional[int],
+):
+    """Compare the pipeline output to a validation dataset.
+
+    Parameters
+    ----------
+    validation_dataset_indiv_file: Path
+        Path to the individual building validation dataset (Parquet file).
+    validation_dataset_aggreg_file: Path
+        Path to the aggregated building validation dataset (Parquet file).
+    bd_topo_file: Path
+        Path to the BD TOPO polygon dataset to compare.
+    tiles_dirs: List[Path]
+        List of tile directories containing the pipeline output to compare.
+    output_comparison_dir: Path
+        Directory where the comparison results will be saved.
+    id_column: str
+        Name of the column containing the building IDs in the datasets.
+    spacing_m: float
+        Spacing in meters to use for the comparison.
+    keep_columns: Optional[List[str]]
+         List of additional column names to keep in the output comparison results (in addition to the id_column). If None, only the id_column will be kept.
+    overwrite: bool
+        Whether to overwrite existing comparison results.
+    skip_existing: bool
+        Whether to skip comparison if results already exist.
+    num_workers: Optional[int]
+        Number of worker processes for multiprocessing (None = CPU count)
+    """
+
+    comparison_jobs: List[
+        Tuple[Path, Path, Path, Path, Path, str, float, Optional[List[str]]]
+    ] = []
+
+    scored_files: List[Path] = [bd_topo_file]
+    output_indiv_files: List[Path] = [output_comparison_dir / "bdtopo-indiv.json"]
+    output_aggreg_files: List[Path] = [output_comparison_dir / "bdtopo-aggreg.json"]
+
+    for tile_dir in tiles_dirs:
+        tile_name = tile_dir.name
+        for roofprints_file in (tile_dir / "roofprints").glob("*.parquet"):
+            roofprint_name = roofprints_file.stem
+            scored_files.append(roofprints_file)
+            output_indiv_files.append(
+                output_comparison_dir / f"{tile_name}-{roofprint_name}-indiv.json"
+            )
+            output_aggreg_files.append(
+                output_comparison_dir / f"{tile_name}-{roofprint_name}-aggreg.json"
+            )
+
+    for scored_file, output_indiv_file, output_aggreg_file in zip(
+        scored_files, output_indiv_files, output_aggreg_files
+    ):
+        if output_indiv_file.exists() and output_aggreg_file.exists():
+            if skip_existing:
+                logging.info(
+                    f"Comparison results already exist for {scored_file}. Skipping comparison."
+                )
+                continue
+            if not overwrite:
+                logging.error(
+                    f"Comparison results already exist for {scored_file}. Use --overwrite to overwrite them or --skip_existing to skip them."
+                )
+                raise FileExistsError(
+                    f"Comparison results already exist for {scored_file}. Use --overwrite to overwrite them or --skip_existing to skip them."
+                )
+
+        comparison_jobs.append(
+            (
+                scored_file,
+                output_indiv_file,
+                output_aggreg_file,
+                validation_dataset_indiv_file,
+                validation_dataset_aggreg_file,
+                id_column,
+                spacing_m,
+                keep_columns,
+            )
+        )
+
+    if not comparison_jobs:
+        logging.info("No comparison jobs to run.")
+        return
+
+    logging.info(f"Comparing {len(comparison_jobs)} polygon datasets in parallel...")
+
+    failed_jobs: List[Tuple[Path, Exception]] = []
+    with ProcessPoolExecutor(max_workers=num_workers) as executor:
+        future_to_job = {
+            executor.submit(_compare_polygon_datasets_single_job, job): job
+            for job in comparison_jobs
+        }
+        for future in tqdm(
+            as_completed(future_to_job),
+            total=len(future_to_job),
+            desc="Comparing polygon datasets",
+        ):
+            job = future_to_job[future]
+            scored_file = job[0]
+            try:
+                future.result()
+            except Exception as exc:
+                failed_jobs.append((scored_file, exc))
+                logging.exception("Comparison failed for %s.", scored_file)
+
+    if failed_jobs:
+        failed_names = ", ".join(scored_file.name for scored_file, _ in failed_jobs)
+        raise RuntimeError(
+            f"{len(failed_jobs)} comparison job(s) failed: {failed_names}"
+        )
+
+    logging.info("Comparison jobs completed successfully.")
+
+
+def compute_metrics_call(
+    validation_dataset_indiv_file: Path,
+    validation_dataset_aggreg_file: Path,
+    bd_topo_file: Path,
+    tiles_dirs: List[Path],
+    output_comparison_dir: Path,
+    id_column: str,
+    spacing_m: float,
+    keep_columns: Optional[List[str]],
+    overwrite: bool,
+    skip_existing: bool,
+    verbose_int: int,
+    num_workers: Optional[int],
+):
+    """Compare the pipeline output to a validation dataset.
+
+    Parameters
+    ----------
+    validation_dataset_indiv_file: Path
+        Path to the individual building validation dataset (Parquet file).
+    validation_dataset_aggreg_file: Path
+        Path to the aggregated building validation dataset (Parquet file).
+    bd_topo_file: Path
+        Path to the BD TOPO polygon dataset to compare.
+    tiles_dirs: List[Path]
+        List of tile directories containing the pipeline output to compare.
+    output_comparison_dir: Path
+        Directory where the comparison results will be saved.
+    id_column: str
+        Name of the column containing the building IDs in the datasets.
+    spacing_m: float
+        Spacing in meters to use for the comparison.
+    keep_columns: Optional[List[str]]
+        List of additional column names to keep in the output comparison results (in addition to the id_column). If None, only the id_column will be kept.
+    overwrite: bool
+        Whether to overwrite existing comparison results.
+    skip_existing: bool
+        Whether to skip comparison if results already exist.
+    verbose_int: int
+        Verbosity level (0-4)
+    num_workers: Optional[int]
+        Number of worker processes for multiprocessing (None = CPU count)
+    """
+
+    with LoggingContext(verbose=verbose_int):
+        compute_metrics_implementation(
+            validation_dataset_indiv_file=validation_dataset_indiv_file,
+            validation_dataset_aggreg_file=validation_dataset_aggreg_file,
+            bd_topo_file=bd_topo_file,
+            tiles_dirs=tiles_dirs,
+            output_comparison_dir=output_comparison_dir,
+            id_column=id_column,
+            spacing_m=spacing_m,
+            keep_columns=keep_columns,
             overwrite=overwrite,
             skip_existing=skip_existing,
             num_workers=num_workers,

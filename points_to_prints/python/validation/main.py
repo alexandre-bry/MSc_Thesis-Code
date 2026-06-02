@@ -6,24 +6,6 @@ import typer
 app = typer.Typer()
 
 
-def _format_summary(summary: dict[str, float | int], output_path: Path) -> str:
-    return "\n".join(
-        [
-            f"Matched polygon pairs: {summary['matched_count']}",
-            f"Ignored ground-truth polygons: {summary['ignored_ground_truth_count']}",
-            f"Ignored scored polygons: {summary['ignored_scored_count']}",
-            f"Mean IoU: {summary['mean_iou']:.6f}",
-            (
-                "Mean directed boundary distances (m): "
-                f"GT->Scored {summary['mean_ground_truth_to_scored_boundary_distance_m']:.6f}, "
-                f"Scored->GT {summary['mean_scored_to_ground_truth_boundary_distance_m']:.6f}, "
-                f"Symmetric {summary['mean_symmetric_boundary_distance_m']:.6f}"
-            ),
-            f"Results written to: {output_path}",
-        ]
-    )
-
-
 @app.command("clean_topology")
 def clean_polygon_topology_command(
     input_path: Annotated[
@@ -206,16 +188,15 @@ def compare_polygon_datasets_command(
 ) -> None:
     from .metrics import compare_polygon_datasets_call, write_comparison_results
 
-    result = compare_polygon_datasets_call(
+    compare_polygon_datasets_call(
         ground_truth_path=ground_truth_path,
         scored_path=scored_path,
+        output_path=output_path,
         id_column=id_column,
         spacing_m=spacing_m,
         keep_columns=keep_columns,
         verbose_int=verbose_int,
     )
-    write_comparison_results(result.paired_results, output_path)
-    typer.echo(_format_summary(result.summary, output_path))
 
 
 if __name__ == "__main__":

@@ -84,6 +84,119 @@ def run_pipeline_command(
 
 
 @app.command(
+    "compute_metrics",
+    help="Compute the validation metrics by comparing the scored dataset to the ground-truth dataset.",
+)
+def compute_metrics_command(
+    validation_dataset_indiv_path: Annotated[
+        Path,
+        typer.Option(
+            "-i",
+            "--validation_dataset_indiv",
+            help="Path to the individual building validation dataset (Parquet file).",
+        ),
+    ],
+    validation_dataset_aggreg_path: Annotated[
+        Path,
+        typer.Option(
+            "-a",
+            "--validation_dataset_aggreg",
+            help="Path to the aggregated building validation dataset (Parquet file).",
+        ),
+    ],
+    bd_topo_path: Annotated[
+        Path,
+        typer.Option(
+            "-b",
+            "--bd_topo",
+            help="Path to the BD TOPO polygon dataset to compare.",
+        ),
+    ],
+    tiles_dirs: Annotated[
+        List[Path],
+        typer.Option(
+            "-t",
+            "--tiles_dir",
+            help="List of tile directories containing the pipeline output to compare.",
+        ),
+    ],
+    output_comparison_dir: Annotated[
+        Path,
+        typer.Option(
+            "-o",
+            "--output_comparison_dir",
+            help="Directory where the comparison results will be saved.",
+        ),
+    ],
+    id_column: Annotated[
+        str,
+        typer.Option(
+            "--id_column",
+            help="Name of the column containing the building IDs in the datasets.",
+        ),
+    ],
+    spacing_m: Annotated[
+        float,
+        typer.Option(
+            "--spacing_m",
+            help="Spacing in meters to use for the comparison.",
+        ),
+    ],
+    keep_columns: Annotated[
+        Optional[List[str]],
+        typer.Option(
+            "-k",
+            "--keep_columns",
+            help=(
+                "List of additional column names to keep in the output comparison results (in addition to the id_column). If not provided, only the id_column will be kept."
+            ),
+        ),
+    ] = None,
+    overwrite: Annotated[
+        bool,
+        typer.Option(
+            "--overwrite",
+            help="Whether to overwrite existing comparison results.",
+        ),
+    ] = False,
+    skip_existing: Annotated[
+        bool,
+        typer.Option(
+            "--skip_existing",
+            help="Whether to skip comparison if results already exist.",
+        ),
+    ] = False,
+    num_workers: Annotated[
+        Optional[int],
+        typer.Option(
+            "--num-workers",
+            help="Maximum number of multiprocessing workers (defaults to the platform default).",
+        ),
+    ] = None,
+    verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
+) -> None:
+    from .pipeline import compute_metrics_call
+
+    if num_workers is not None and num_workers < 1:
+        raise typer.BadParameter("--num-workers must be >= 1.")
+
+    compute_metrics_call(
+        validation_dataset_indiv_file=validation_dataset_indiv_path,
+        validation_dataset_aggreg_file=validation_dataset_aggreg_path,
+        bd_topo_file=bd_topo_path,
+        tiles_dirs=tiles_dirs,
+        output_comparison_dir=output_comparison_dir,
+        id_column=id_column,
+        spacing_m=spacing_m,
+        keep_columns=keep_columns,
+        overwrite=overwrite,
+        skip_existing=skip_existing,
+        num_workers=num_workers,
+        verbose_int=verbose_int,
+    )
+
+
+@app.command(
     "test_logging",
     help="A simple command to test the logging setup with different verbosity levels.",
 )
