@@ -803,19 +803,30 @@ def _compute_footprints(
 def run_pipeline_implementation(
     bd_topo_dir: Path,
     tile_dir: Path,
+    stop_after_roofprints: bool,
+    stop_after_lod22: bool,
     overwrite: bool,
     skip_existing: bool,
     num_workers: Optional[int],
 ):
     """Execute the complete pipeline to compute roofprints from LiDAR HD data.
 
-    Args:
-        bd_topo_dir: Directory containing BD TOPO data
-        tile_dir: Working directory for intermediate and output files
-        bd_topo_file: Path to BD TOPO shapefile
-        overwrite: Whether to overwrite existing files
-        skip_existing: Whether to skip processing if output files exist
-        num_workers: Number of worker processes for multiprocessing (None = CPU count)
+    Parameters
+    ----------
+    bd_topo_dir : Path
+        Directory containing BD TOPO data
+    tile_dir : Path
+        Working directory for intermediate and output files
+    stop_after_roofprints : bool
+        Whether to stop after computing roofprints
+    stop_after_lod22 : bool
+        Whether to stop after computing LoD2.2 models
+    overwrite : bool
+        Whether to overwrite existing files
+    skip_existing : bool
+        Whether to skip processing if output files exist
+    num_workers : Optional[int]
+        Number of worker processes for multiprocessing (None = CPU count)
     """
     tile_bd_topo_dir = tile_dir / "bdtopo"
     tile_bd_topo_dir.mkdir(exist_ok=True)
@@ -946,6 +957,10 @@ def run_pipeline_implementation(
         skip_existing=skip_existing,
     )
 
+    if stop_after_roofprints:
+        logging.info("Stopping pipeline after roofprints as requested.")
+        return
+
     # ------------------------------------------------------------------------ #
     #                                   Roof                                   #
     # ------------------------------------------------------------------------ #
@@ -973,6 +988,10 @@ def run_pipeline_implementation(
         )
         lod22_files.append(lod22_file)
 
+    if stop_after_lod22:
+        logging.info("Stopping pipeline after LoD22 as requested.")
+        return
+
     # ------------------------------------------------------------------------ #
     #                                Footprints                                #
     # ------------------------------------------------------------------------ #
@@ -999,6 +1018,8 @@ def run_pipeline_implementation(
 def run_pipeline_call(
     bd_topo_dir: Path,
     tile_dir: Path,
+    stop_after_roofprints: bool,
+    stop_after_lod22: bool,
     overwrite: bool,
     skip_existing: bool,
     verbose_int: int,
@@ -1012,6 +1033,10 @@ def run_pipeline_call(
         Directory containing BD TOPO data
     tile_dir: Path
         Working directory for intermediate and output files
+    stop_after_roofprints: bool
+        Whether to stop after computing roofprints
+    stop_after_lod22: bool
+        Whether to stop after computing LoD2.2 models
     overwrite: bool
         Whether to overwrite existing files
     skip_existing: bool
@@ -1025,6 +1050,8 @@ def run_pipeline_call(
         run_pipeline_implementation(
             bd_topo_dir=bd_topo_dir,
             tile_dir=tile_dir,
+            stop_after_roofprints=stop_after_roofprints,
+            stop_after_lod22=stop_after_lod22,
             overwrite=overwrite,
             skip_existing=skip_existing,
             num_workers=num_workers,

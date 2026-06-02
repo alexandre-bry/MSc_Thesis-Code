@@ -40,6 +40,20 @@ def run_pipeline_command(
             readable=True,
         ),
     ],
+    stop_after_roofprints: Annotated[
+        bool,
+        typer.Option(
+            "--stop_after_roofprints",
+            help="Whether to stop the pipeline after computing roofprints (skipping LoD22 and footprints).",
+        ),
+    ] = False,
+    stop_after_lod22: Annotated[
+        bool,
+        typer.Option(
+            "--stop_after_lod22",
+            help="Whether to stop the pipeline after computing LoD22 (skipping footprints).",
+        ),
+    ] = False,
     overwrite: Annotated[
         bool,
         typer.Option(
@@ -60,6 +74,8 @@ def run_pipeline_command(
     run_pipeline_call(
         bd_topo_dir=bd_topo_dir,
         tile_dir=tile_dir,
+        stop_after_roofprints=stop_after_roofprints,
+        stop_after_lod22=stop_after_lod22,
         overwrite=overwrite,
         skip_existing=skip_existing,
         verbose_int=verbose_int,
