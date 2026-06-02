@@ -304,6 +304,13 @@ def _compare_polygon_pair(
     scored_to_ground_truth_distance_m = _directed_boundary_distance(
         scored_geometry, ground_truth_geometry, spacing_m
     )
+    # Centroid distance (in CRS units, typically metres when CRS is metric)
+    try:
+        gt_centroid = ground_truth_geometry.centroid
+        scored_centroid = scored_geometry.centroid
+        centroid_distance_m = float(gt_centroid.distance(scored_centroid))
+    except Exception:
+        centroid_distance_m = 0.0
     return {
         "iou": _intersection_over_union(ground_truth_geometry, scored_geometry),
         "ground_truth_to_scored_boundary_distance_m": ground_truth_to_scored_distance_m,
@@ -312,6 +319,7 @@ def _compare_polygon_pair(
             ground_truth_to_scored_distance_m + scored_to_ground_truth_distance_m
         )
         / 2.0,
+        "centroid_distance_m": centroid_distance_m,
     }
 
 
@@ -717,6 +725,7 @@ def compare_polygon_datasets_implementation(
         "ground_truth_to_scored_boundary_distance_m",
         "scored_to_ground_truth_boundary_distance_m",
         "symmetric_boundary_distance_m",
+        "centroid_distance_m",
     ]
     paired_results = pd.DataFrame(rows)
     for column_name in ordered_columns:
@@ -759,6 +768,9 @@ def compare_polygon_datasets_implementation(
                 "mean_symmetric_boundary_distance_m": float(
                     paired_results["symmetric_boundary_distance_m"].mean()
                 ),
+                "mean_centroid_distance_m": float(
+                    paired_results["centroid_distance_m"].mean()
+                ),
             }
         )
     else:
@@ -768,6 +780,7 @@ def compare_polygon_datasets_implementation(
                 "mean_ground_truth_to_scored_boundary_distance_m": 0.0,
                 "mean_scored_to_ground_truth_boundary_distance_m": 0.0,
                 "mean_symmetric_boundary_distance_m": 0.0,
+                "mean_centroid_distance_m": 0.0,
             }
         )
 

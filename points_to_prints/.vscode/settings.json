@@ -26,5 +26,7 @@
   "comment-divider.length": 80,
   "comment-divider.shouldLengthIncludeIndent": true,
 
-  "autoDocstring.docstringFormat": "numpy"
+  "autoDocstring.docstringFormat": "numpy",
+
+  "git.addAICoAuthor": "off"
 }
