@@ -1128,6 +1128,7 @@ def compute_metrics_implementation(
     bd_topo_file: Path,
     tiles_dirs: List[Path],
     output_comparison_dir: Path,
+    output_format: str,
     id_column: str,
     spacing_m: float,
     keep_columns: Optional[List[str]],
@@ -1149,6 +1150,8 @@ def compute_metrics_implementation(
         List of tile directories containing the pipeline output to compare.
     output_comparison_dir: Path
         Directory where the comparison results will be saved.
+    output_format: str
+        Format to save the comparison results (e.g., 'parquet', 'csv', 'json').
     id_column: str
         Name of the column containing the building IDs in the datasets.
     spacing_m: float
@@ -1163,13 +1166,27 @@ def compute_metrics_implementation(
         Number of worker processes for multiprocessing (None = CPU count)
     """
 
+    # Check the output format
+    valid_formats = ["parquet", "csv", "json"]
+    if output_format not in valid_formats:
+        logging.error(
+            f"Invalid output format: {output_format}. Supported formats are: {', '.join(valid_formats)}."
+        )
+        raise ValueError(
+            f"Invalid output format: {output_format}. Supported formats are: {', '.join(valid_formats)}."
+        )
+
     comparison_jobs: List[
         Tuple[Path, Path, Path, Path, Path, str, float, Optional[List[str]]]
     ] = []
 
     scored_files: List[Path] = [bd_topo_file]
-    output_indiv_files: List[Path] = [output_comparison_dir / "bdtopo-indiv.json"]
-    output_aggreg_files: List[Path] = [output_comparison_dir / "bdtopo-aggreg.json"]
+    output_indiv_files: List[Path] = [
+        output_comparison_dir / f"bdtopo-indiv.{output_format}"
+    ]
+    output_aggreg_files: List[Path] = [
+        output_comparison_dir / f"bdtopo-aggreg.{output_format}"
+    ]
 
     for tile_dir in tiles_dirs:
         tile_name = tile_dir.name
@@ -1177,10 +1194,12 @@ def compute_metrics_implementation(
             roofprint_name = roofprints_file.stem
             scored_files.append(roofprints_file)
             output_indiv_files.append(
-                output_comparison_dir / f"{tile_name}-{roofprint_name}-indiv.json"
+                output_comparison_dir
+                / f"{tile_name}-{roofprint_name}-indiv.{output_format}"
             )
             output_aggreg_files.append(
-                output_comparison_dir / f"{tile_name}-{roofprint_name}-aggreg.json"
+                output_comparison_dir
+                / f"{tile_name}-{roofprint_name}-aggreg.{output_format}"
             )
 
     for scored_file, output_indiv_file, output_aggreg_file in zip(
@@ -1253,6 +1272,7 @@ def compute_metrics_call(
     bd_topo_file: Path,
     tiles_dirs: List[Path],
     output_comparison_dir: Path,
+    output_format: str,
     id_column: str,
     spacing_m: float,
     keep_columns: Optional[List[str]],
@@ -1275,6 +1295,8 @@ def compute_metrics_call(
         List of tile directories containing the pipeline output to compare.
     output_comparison_dir: Path
         Directory where the comparison results will be saved.
+    output_format: str
+        Format to save the comparison results (e.g., 'parquet', 'csv', 'json').
     id_column: str
         Name of the column containing the building IDs in the datasets.
     spacing_m: float
@@ -1298,6 +1320,7 @@ def compute_metrics_call(
             bd_topo_file=bd_topo_file,
             tiles_dirs=tiles_dirs,
             output_comparison_dir=output_comparison_dir,
+            output_format=output_format,
             id_column=id_column,
             spacing_m=spacing_m,
             keep_columns=keep_columns,

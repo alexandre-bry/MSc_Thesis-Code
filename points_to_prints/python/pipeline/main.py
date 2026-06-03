@@ -128,6 +128,13 @@ def compute_metrics_command(
             help="Directory where the comparison results will be saved.",
         ),
     ],
+    output_format: Annotated[
+        str,
+        typer.Option(
+            "--output_format",
+            help="Format to save the comparison results (e.g., 'parquet', 'csv', 'json').",
+        ),
+    ],
     id_column: Annotated[
         str,
         typer.Option(
@@ -186,6 +193,7 @@ def compute_metrics_command(
         bd_topo_file=bd_topo_path,
         tiles_dirs=tiles_dirs,
         output_comparison_dir=output_comparison_dir,
+        output_format=output_format,
         id_column=id_column,
         spacing_m=spacing_m,
         keep_columns=keep_columns,
