@@ -1,7 +1,7 @@
 #pragma once
 
+#include "../geom/cgal.hpp"
 #include "../las/enums.hpp"
-#include "../utils/cgal.hpp"
 
 void score_line_translations(
     const Line_2 &line, const std::vector<Point_3> &points,

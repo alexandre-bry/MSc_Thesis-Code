@@ -5,8 +5,8 @@
 #include <memory>
 #include <optional>
 
-#include "utils/cgal.hpp"
-#include "utils/kd_tree.hpp"
+#include "../geom/cgal.hpp"
+#include "../geom/kd_tree.hpp"
 
 using namespace PtsStructs;
 
@@ -428,7 +428,7 @@ void Topology3D::init(Trajectory trajectory) {
         double gps_time = entry.first;
         uint8_t scan_direction_flag = gps_time_to_scan_direction_flag[gps_time];
         const std::vector<PointId> &indices = entry.second;
-        Point_3 origin = trajectory.get_point_at_gps_time(gps_time);
+        Point_3 origin = trajectory.get_pos_at_gps_time(gps_time);
         std::vector<int> return_numbers;
         std::vector<double> z_values;
         for (PointId idx : indices) {
@@ -607,6 +607,7 @@ std::optional<RayId> Topology3D::get_prev_ray_in_gps_time_order(RayId i) const {
         return std::nullopt;
     }
 }
+
 // std::optional<RayId> Topology3D::get_next_ray_in_scan_line(RayId i) const
 // {
 //     auto potential_next = get_next_ray_in_gps_time_order(i);
@@ -645,6 +646,7 @@ std::optional<RayId> Topology3D::get_prev_ray_in_gps_time_order(RayId i) const {
 //         return prev;
 //     }
 // }
+
 std::optional<RayId> Topology3D::get_next_ray_in_vehicle_line(RayId i) const {
     if (i < 0 || i >= map_next_ray_vehicle_axis_order.size()) {
         throw std::out_of_range("Ray index out of range");

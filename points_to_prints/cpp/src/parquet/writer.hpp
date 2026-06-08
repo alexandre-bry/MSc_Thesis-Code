@@ -10,63 +10,20 @@
 #include <type_traits>
 #include <vector>
 
-#include "arrow/api.h"
-#include "arrow/array/builder_binary.h"
-#include "arrow/array/builder_nested.h"
-#include "arrow/io/file.h"
-#include "arrow/status.h"
-#include "arrow/type.h"
+#include <arrow/api.h>
+#include <arrow/array/builder_binary.h>
+#include <arrow/array/builder_nested.h>
+#include <arrow/io/file.h>
+#include <arrow/status.h>
+#include <arrow/type.h>
 #include <parquet/arrow/writer.h>
 
 #include <ogr_api.h>
 #include <ogr_geometry.h>
 #include <ogr_spatialref.h>
 
-#include "utils/cgal.hpp"
-#include "utils/ogc_simple_features.hpp"
-#include "utils/pbar.hpp"
-
-struct TestParquetOptions {
-    std::string input_file;
-};
-
-arrow::Status open_parquet(std::string &input_file);
-
-struct ReadWriteBDTOPOOptions {
-    std::string input_parquet_file;
-    std::string output_parquet_file;
-    bool overwrite;
-};
-
-arrow::Status read_building_outlines_from_bd_topo(
-    const std::string &bd_topo_parquet_file,
-    std::vector<MultiPolygonZWithAttributes> &outlines);
-
-arrow::Status write_multi_polygons_to_parquet(
-    const std::vector<MultiPolygonZWithAttributes> &multi_polygons,
-    const std::string &output_file, bool overwrite);
-
-struct BDTOPOEdge {
-    std::string building_id;
-    uint8_t polygon_idx;
-    uint8_t ring_idx;
-    uint16_t edge_idx;
-    uint32_t edge_key;
-    Point_3 start;
-    Point_3 end;
-};
-
-// arrow::Status _old_read_bd_topo_as_grouped_edges(
-//     const std::string &edges_parquet_file,
-//     const std::string &intersections_parquet_file,
-//     std::vector<BDTOPOEdge> &edges,
-//     std::vector<std::pair<std::size_t, std::size_t>> &intersections);
-
-arrow::Status read_bd_topo_as_grouped_edges(
-    const std::string &edges_parquet_file,
-    const std::string &intersections_parquet_file,
-    std::vector<BDTOPOEdge> &edges,
-    std::vector<std::pair<uint32_t, uint32_t>> &intersections);
+#include "../geom/ogc_simple_features.hpp"
+#include "../utils/pbar.hpp"
 
 // Forward declaration for function used by template
 char *buildGeoMetaData(std::string crs_epsg = "EPSG:2154",
@@ -81,10 +38,6 @@ arrow::Status write_geoms_to_parquet(const std::vector<GeomType> &geoms,
                                      bool overwrite,
                                      std::string crs_epsg = "EPSG:2154",
                                      std::string geometry_type = "Unknown");
-
-arrow::Status read_write_bd_topo(const std::string &input_parquet_file,
-                                 const std::string &output_parquet_file,
-                                 bool overwrite);
 
 // Template implementation (must be in header)
 template <typename GeomType>

@@ -5,10 +5,10 @@
 #include <ostream>
 #include <random>
 
+#include "../geom/points.hpp"
 #include "../las/reader.hpp"
-#include "../parquet.hpp"
 #include "../parquet/reader.hpp"
-#include "../points.hpp"
+#include "../parquet/writer.hpp"
 #include "../utils/pbar.hpp"
 
 const double DISTANCE_SEGMENTS = 1.0;
@@ -1083,7 +1083,7 @@ arrow::Status roofprints_to_3d(const std::string &input_roofprints_file,
     /* ----------------------------------------------------------------------
      */
 
-    NewLasReader las_reader(edge_points_file);
+    LasReader las_reader(edge_points_file);
     auto storage = las_reader.points;
     storage->build_kd_tree_2d();
 

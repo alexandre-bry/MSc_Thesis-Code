@@ -2,8 +2,8 @@
 #include <random>
 #include <vector>
 
-#include "../points.hpp"
-#include "../utils/cgal.hpp"
+#include "../geom/cgal.hpp"
+#include "../geom/points.hpp"
 
 struct RansacSegment3D {
     Line_3 line;

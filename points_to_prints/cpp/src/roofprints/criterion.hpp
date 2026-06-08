@@ -1,8 +1,8 @@
 #pragma once
 
 #include "../edge_matching/criterion.hpp"
-#include "../utils/cgal.hpp"
-#include "../utils/kd_tree.hpp"
+#include "../geom/cgal.hpp"
+#include "../geom/kd_tree.hpp"
 #include "constants.hpp"
 
 class CriterionRoofprints : public ICriterion {

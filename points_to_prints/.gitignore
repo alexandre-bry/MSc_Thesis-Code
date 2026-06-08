@@ -1,25 +1,11 @@
-# Binaries, cache, build
+# Binaries, cache, build, log
 .venv/
 .cache/
 .temp/
 .tmp/
 build/
 __pycache__/
+**/.roofer.log.json
 
 # Data
 data/
-output/
-
-# C++ includes
-# cpp/include/
-
-# Rust experiments
-rust/target/
-rust/
-
-# Folder with visualization binaries
-visualization/
-
-# Folder with experiments and illustrations
-experiments
-**/.roofer.log.json

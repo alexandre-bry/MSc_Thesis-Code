@@ -2,19 +2,6 @@
 
 #include <utility>
 
-// Potentially interesting attributes in BD TOPO:
-// - cleabs: unique identifier of the building footprint
-// - nature: type of building that could allow to handle differently complex
-// buildings (e.g. churches, windmills, towers, etc)
-// - hauteur: height of the highest point of the gutter of the building
-// - all the altitude_* attributes for the roof and the ground, which could be
-// used as an indication of the roof points
-// - origine_du_batiment: the source of the building outline
-// - precision_altimetrique: the expected vertical precision of the building
-// outline
-// - precision_planimetrique: the expected horizontal precision of the building
-// outline
-
 /* -------------------------------------------------------------------------- */
 /*                                  PolygonZ                                  */
 /* -------------------------------------------------------------------------- */

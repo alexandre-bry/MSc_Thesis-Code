@@ -4,7 +4,7 @@
 
 #include "../edge_matching/topology.hpp"
 #include "../las/reader.hpp"
-#include "../parquet.hpp"
+#include "../parquet/reader.hpp"
 #include "../utils/string_helper.hpp"
 #include "criterion.hpp"
 
@@ -143,7 +143,7 @@ compute_roofprints(const std::string &input_las_file,
 
     // Read the LAS file and get the point view
     std::cout << "Reading LAS file..." << std::endl;
-    NewLasReader las_reader(input_las_file);
+    LasReader las_reader(input_las_file);
     std::cout << "Successfully read LAS file with "
               << las_reader.points->point_count() << " points." << std::endl;
 

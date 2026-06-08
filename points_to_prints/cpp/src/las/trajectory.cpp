@@ -23,7 +23,7 @@ Trajectory::Trajectory(const std::vector<Point_3> points,
     }
 }
 
-Point_3 Trajectory::get_point_at_gps_time(double gps_time) const {
+Point_3 Trajectory::get_pos_at_gps_time(double gps_time) const {
     // Return the corresponding point if the GPS time exists
     auto it = gps_time_to_point.find(gps_time);
     if (it != gps_time_to_point.end()) {

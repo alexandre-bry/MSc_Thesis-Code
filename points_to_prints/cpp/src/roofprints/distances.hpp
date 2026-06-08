@@ -22,17 +22,37 @@ void compute_distances_in_order(const std::string &input_points_file,
                                 const std::string &output_edges_file,
                                 bool overwrite);
 
-void compute_distances_to_neighbours(const std::string &input_points_file,
-                                     const std::string &input_trajectory_file,
-                                     const std::string &output_distances_file,
-                                     const std::string &output_edges_file,
-                                     bool overwrite);
-
-struct DistancesInOrderOptions {
+struct IdentifyRoofEdgePointsOptions {
     std::string input_points_file;
     std::string input_trajectory_file;
     std::string output_distances_file;
     std::string output_edges_file;
+    bool overwrite;
+};
+
+/**
+ * @brief Identify roof edge points in the input point cloud based on
+ * computations of distances between neighbours in the scanner geometry.
+ *
+ * @param input_file Input LAS file path
+ * @param input_trajectory_file Input LAS file path containing the trajectory of
+ * the scanner device
+ * @param output_distances_file Output LAS file path containing the initial
+ * points with distances
+ * @param output_edges_file Output LAS file path containing the generated points
+ * to detect edges
+ * @param overwrite Whether to overwrite the output file if it already exists
+ */
+void identify_roof_edge_points(const std::string &input_points_file,
+                               const std::string &input_trajectory_file,
+                               const std::string &output_distances_file,
+                               const std::string &output_edges_file,
+                               bool overwrite);
+
+struct InwardDirectionsOptions {
+    std::string input_points_file;
+    std::string output_points_file;
+    std::string type;
     bool overwrite;
 };
 
@@ -51,10 +71,3 @@ struct DistancesInOrderOptions {
 void compute_inward_directions(const std::string &input_points_file,
                                const std::string &output_points_file,
                                const std::string &type, bool overwrite);
-
-struct InwardDirectionsOptions {
-    std::string input_points_file;
-    std::string output_points_file;
-    std::string type;
-    bool overwrite;
-};

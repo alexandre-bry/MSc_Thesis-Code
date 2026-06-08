@@ -1,6 +1,6 @@
 #include "criterion.hpp"
 
-#include "../utils/cgal.hpp"
+#include "../geom/cgal.hpp"
 #include "constants.hpp"
 #include <CGAL/enum.h>
 

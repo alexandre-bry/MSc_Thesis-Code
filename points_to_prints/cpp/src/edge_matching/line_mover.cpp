@@ -3,7 +3,7 @@
 #include <CGAL/Distance_3/Point_3_Point_3.h>
 #include <cstddef>
 
-#include "../utils/cgal.hpp"
+#include "../geom/cgal.hpp"
 #include "topology.hpp"
 
 const double MIN_EDGE_LENGTH = 1e-6;
@@ -21,17 +21,6 @@ bool is_reduced_to_point(const EdgeMatching::Edge &focus_line,
             CustomCGAL::intersection(focus_line.to_line(), next_line.to_line());
     } catch (const std::exception &e) {
         // If the lines are parallel, we consider that the edge is not reduced
-        // std::cerr << "Warning: the following lines are parallel, cannot "
-        //              "compute intersection:\n"
-        //           << "Focus line: " << focus_line.get_initial_start() << " -
-        //           "
-        //           << focus_line.get_initial_end() << "\n"
-        //           << "Previous line: " << prev_line.get_initial_start() << "
-        //           - "
-        //           << prev_line.get_initial_end() << "\n"
-        //           << "Next line: " << next_line.get_initial_start() << " - "
-        //           << next_line.get_initial_end() << "\n"
-        //           << "Error message: " << e.what() << std::endl;
         return false;
     }
 
@@ -51,17 +40,6 @@ bool is_flipped(const EdgeMatching::Edge &focus_line,
             CustomCGAL::intersection(focus_line.to_line(), next_line.to_line());
     } catch (const std::exception &e) {
         // If the lines are parallel, we consider that the edge is not flipped
-        // std::cerr << "Warning: the following lines are parallel, cannot "
-        //              "compute intersection:\n"
-        //           << "Focus line: " << focus_line.get_initial_start() << " -
-        //           "
-        //           << focus_line.get_initial_end() << "\n"
-        //           << "Previous line: " << prev_line.get_initial_start() << "
-        //           - "
-        //           << prev_line.get_initial_end() << "\n"
-        //           << "Next line: " << next_line.get_initial_start() << " - "
-        //           << next_line.get_initial_end() << "\n"
-        //           << "Error message: " << e.what() << std::endl;
         return false;
     }
 
@@ -77,12 +55,11 @@ bool is_problematic(const EdgeMatching::Edge &focus_line,
            is_flipped(focus_line, prev_line, next_line);
 }
 
-LineMoverSimple::LineMoverSimple(
-        const EdgeMatching::AllOutlines &_all_outlines,
+LineMoverSimple::LineMoverSimple(const EdgeMatching::AllOutlines &_all_outlines,
                                  EdgeMatching::EdgeGroupId _moving_group_id,
                                  UnitVector_2 _shift_direction,
                                  std::vector<double> _shift_amounts)
-        : all_outlines(&_all_outlines), moving_group_id(_moving_group_id),
+    : all_outlines(&_all_outlines), moving_group_id(_moving_group_id),
       shift_direction(_shift_direction), shift_amounts(_shift_amounts) {
 
     // Normalize the shift direction
@@ -143,10 +120,6 @@ LineMoverSimple::get_current_line(EdgeMatching::EdgeId line_id) const {
 
 void LineMoverSimple::set_current_shift(EdgeMatching::EdgeId line_id,
                                         double shift_amount) {
-    // std::cout << "Setting shift amount " << shift_amount << " for edge "
-    //           << this->all_outlines->get_edge(line_id).get_key() <<
-    //           std::endl;
-
     this->computed_shifts[this->current_shift_index][line_id] = shift_amount;
 }
 
@@ -172,11 +145,6 @@ bool LineMoverSimple::has_problem(EdgeMatching::EdgeId focus_line_id) const {
     EdgeMatching::EdgeId next_2_line_id =
         this->all_outlines->get_next_edge_id(next_1_line_id);
 
-    // std::cout << "Checking the following 5 lines in this order: "
-    //           << prev_2_line_id << ", " << prev_1_line_id << ", "
-    //           << focus_line_id << ", " << next_1_line_id << ", "
-    //           << next_2_line_id << std::endl;
-
     EdgeMatching::Edge focus_line = get_current_line(focus_line_id);
     EdgeMatching::Edge prev_1_line = get_current_line(prev_1_line_id);
     EdgeMatching::Edge next_1_line = get_current_line(next_1_line_id);
@@ -193,11 +161,6 @@ bool LineMoverSimple::step() {
     if (this->current_shift_index >= this->shift_amounts.size()) {
         return true;
     }
-
-    // std::cout << std::endl;
-
-    // std::cout << "New step with shift amount: "
-    //           << this->shift_amounts[this->current_shift_index] << std::endl;
 
     auto previous_shift_index = this->current_shift_index - 1;
     double current_shift_amount =
@@ -239,44 +202,20 @@ bool LineMoverSimple::step() {
         }
     }
 
-    // std::cout << "Keys of the edges to check at the beginning of the step: ";
-    // for (const auto &[edge_id, check_prev, check_next] :
-    //      this->edge_ids_to_check) {
-    //     std::cout << this->all_outlines->get_edge(edge_id).get_key()
-    //               << " (check_prev=" << check_prev
-    //               << ", check_next=" << check_next << "), ";
-    // }
-    // std::cout << std::endl;
-
     while (!this->edge_ids_to_check.empty()) {
         auto [focus_line_id, check_prev, check_next] =
             this->edge_ids_to_check.back();
         this->edge_ids_to_check.pop_back();
-        // std::cout << "Checking edge "
-        //           << this->all_outlines->get_edge(focus_line_id).get_key()
-        //           << " (check_prev=" << check_prev
-        //           << ", check_next=" << check_next << ")" << std::endl;
-
-        // if (checked_and_moved_edge_ids.find(focus_line_id) !=
-        //     checked_and_moved_edge_ids.end()) {
-        //     continue;
-        // }
 
         if (has_problem(focus_line_id)) {
-            // std::cout << "Found a problem" << std::endl;
             EdgeMatching::EdgeGroupId focus_line_group_id =
                 this->all_outlines->get_edge_group_id(focus_line_id);
-            // std::cout << "Shifting group " << focus_line_group_id
-            //           << " by amount " << current_shift_amount << std::endl;
             set_current_shift(focus_line_group_id, current_shift_amount);
 
             // Add all the edges in the same group to the list of edges to check
             const auto &focus_line_group =
                 this->all_outlines->get_edge_group(focus_line_group_id);
-            // std::cout << "This group contains the following edges: ";
             for (const auto &edge_id : focus_line_group.edge_ids) {
-                // std::cout << this->all_outlines->get_edge(edge_id).get_key()
-                //           << ", ";
                 if (edge_id != focus_line_id) {
                     EdgeMatching::EdgeId prev_edge_id =
                         this->all_outlines->get_prev_edge_id(edge_id);
@@ -292,7 +231,6 @@ bool LineMoverSimple::step() {
                     }
                 }
             }
-            // std::cout << std::endl;
 
             // Add previous line if it needs to be checked
             if (check_prev) {
@@ -350,9 +288,6 @@ bool LineMoverSimple::step() {
 
     this->current_shift_index++;
 
-    // std::cout << "End of step, number of edges to check for the next step: "
-    //           << this->edge_ids_to_check.size() << std::endl;
-
     return this->current_shift_index >= this->shift_amounts.size();
 }
 
@@ -405,10 +340,6 @@ LineMoverSimpleImproved::get_line(EdgeMatching::EdgeId line_id,
 
 void LineMoverSimpleImproved::set_threshold(EdgeMatching::EdgeId line_id,
                                             double shift_amount) {
-    // std::cout << "Setting threshold " << shift_amount << " for edge "
-    //           << this->all_outlines->get_edge(line_id).get_key() <<
-    //           std::endl;
-
     this->shift_thresholds[line_id] = shift_amount;
 }
 
@@ -433,219 +364,3 @@ void LineMoverSimpleImproved::update_sorted_thresholds_and_edges() {
                   return a.first < b.first;
               });
 }
-
-// bool LineMoverSimpleImproved::has_problem(
-//     EdgeMatching::EdgeId focus_line_id) const {
-//     EdgeMatching::EdgeId prev_1_line_id =
-//         this->all_outlines->get_prev_edge_id(focus_line_id);
-//     EdgeMatching::EdgeId next_1_line_id =
-//         this->all_outlines->get_next_edge_id(focus_line_id);
-//     EdgeMatching::EdgeId prev_2_line_id =
-//         this->all_outlines->get_prev_edge_id(prev_1_line_id);
-//     EdgeMatching::EdgeId next_2_line_id =
-//         this->all_outlines->get_next_edge_id(next_1_line_id);
-
-//     // std::cout << "Checking the following 5 lines in this order: "
-//     //           << prev_2_line_id << ", " << prev_1_line_id << ", "
-//     //           << focus_line_id << ", " << next_1_line_id << ", "
-//     //           << next_2_line_id << std::endl;
-
-//     EdgeMatching::Edge focus_line = get_current_line(focus_line_id);
-//     EdgeMatching::Edge prev_1_line = get_current_line(prev_1_line_id);
-//     EdgeMatching::Edge next_1_line = get_current_line(next_1_line_id);
-//     EdgeMatching::Edge prev_2_line = get_current_line(prev_2_line_id);
-//     EdgeMatching::Edge next_2_line = get_current_line(next_2_line_id);
-
-//     return is_problematic(focus_line, prev_1_line, next_1_line) ||
-//            is_problematic(prev_1_line, prev_2_line, focus_line) ||
-//            is_problematic(next_1_line, focus_line, next_2_line);
-// }
-
-// bool LineMoverSimpleImproved::step() {
-//     // Leave if all the shift amounts have been processed
-//     if (this->current_shift_index >= this->shift_amounts.size()) {
-//         return true;
-//     }
-
-//     // std::cout << std::endl;
-
-//     // std::cout << "New step with shift amount: "
-//     //           << this->shift_amounts[this->current_shift_index] <<
-//     std::endl;
-
-//     auto previous_shift_index = this->current_shift_index - 1;
-//     double current_shift_amount =
-//         this->shift_amounts[this->current_shift_index];
-//     double previous_shift_amount = this->shift_amounts[previous_shift_index];
-//     double shift_increment = current_shift_amount - previous_shift_amount;
-
-//     // Raise an error if the shift increment is negative (should not happen
-//     due
-//     // to checks in the constructor)
-//     if (shift_increment < 0) {
-//         throw std::logic_error(
-//             "Shift amounts must be non-negative and sorted in ascending
-//             order");
-//     }
-
-//     // Copy the previous computed shifts to the current index
-//     for (const auto &entry : this->computed_shifts[previous_shift_index]) {
-//         set_current_shift(entry.first, current_shift_amount);
-//     }
-
-//     std::set<std::tuple<EdgeMatching::EdgeId, bool, bool>>
-//     new_edge_ids_to_check; std::set<EdgeMatching::EdgeId>
-//     checked_and_moved_edge_ids;
-
-//     this->edge_ids_to_check = {};
-//     auto &current_shifts = this->computed_shifts[this->current_shift_index];
-//     for (const auto &entry : current_shifts) {
-//         EdgeMatching::EdgeId edge_id = entry.first;
-//         EdgeMatching::EdgeId prev_edge_id =
-//             this->all_outlines->get_prev_edge_id(edge_id);
-//         EdgeMatching::EdgeId next_edge_id =
-//             this->all_outlines->get_next_edge_id(edge_id);
-//         if (!is_currently_shifted(prev_edge_id)) {
-//             this->edge_ids_to_check.push_back(
-//                 std::make_tuple(prev_edge_id, true, false));
-//         }
-//         if (!is_currently_shifted(next_edge_id)) {
-//             this->edge_ids_to_check.push_back(
-//                 std::make_tuple(next_edge_id, false, true));
-//         }
-//     }
-
-//     // std::cout << "Keys of the edges to check at the beginning of the step:
-//     ";
-//     // for (const auto &[edge_id, check_prev, check_next] :
-//     //      this->edge_ids_to_check) {
-//     //     std::cout << this->all_outlines->get_edge(edge_id).get_key()
-//     //               << " (check_prev=" << check_prev
-//     //               << ", check_next=" << check_next << "), ";
-//     // }
-//     // std::cout << std::endl;
-
-//     while (!this->edge_ids_to_check.empty()) {
-//         auto [focus_line_id, check_prev, check_next] =
-//             this->edge_ids_to_check.back();
-//         this->edge_ids_to_check.pop_back();
-//         // std::cout << "Checking edge "
-//         //           << this->all_outlines->get_edge(focus_line_id).get_key()
-//         //           << " (check_prev=" << check_prev
-//         //           << ", check_next=" << check_next << ")" << std::endl;
-
-//         // if (checked_and_moved_edge_ids.find(focus_line_id) !=
-//         //     checked_and_moved_edge_ids.end()) {
-//         //     continue;
-//         // }
-
-//         if (has_problem(focus_line_id)) {
-//             // std::cout << "Found a problem" << std::endl;
-//             EdgeMatching::EdgeGroupId focus_line_group_id =
-//                 this->all_outlines->get_edge_group_id(focus_line_id);
-//             // std::cout << "Shifting group " << focus_line_group_id
-//             //           << " by amount " << current_shift_amount <<
-//             std::endl; set_current_shift(focus_line_group_id,
-//             current_shift_amount);
-
-//             // Add all the edges in the same group to the list of edges to
-//             check const auto &focus_line_group =
-//                 this->all_outlines->get_edge_group(focus_line_group_id);
-//             // std::cout << "This group contains the following edges: ";
-//             for (const auto &edge_id : focus_line_group.edge_ids) {
-//                 // std::cout <<
-//                 this->all_outlines->get_edge(edge_id).get_key()
-//                 //           << ", ";
-//                 if (edge_id != focus_line_id) {
-//                     EdgeMatching::EdgeId prev_edge_id =
-//                         this->all_outlines->get_prev_edge_id(edge_id);
-//                     EdgeMatching::EdgeId next_edge_id =
-//                         this->all_outlines->get_next_edge_id(edge_id);
-//                     if (!is_currently_shifted(prev_edge_id)) {
-//                         this->edge_ids_to_check.push_back(
-//                             std::make_tuple(prev_edge_id, true, false));
-//                     }
-//                     if (!is_currently_shifted(next_edge_id)) {
-//                         this->edge_ids_to_check.push_back(
-//                             std::make_tuple(next_edge_id, false, true));
-//                     }
-//                 }
-//             }
-//             // std::cout << std::endl;
-
-//             // Add previous line if it needs to be checked
-//             if (check_prev) {
-//                 EdgeMatching::EdgeId prev_line_id =
-//                     this->all_outlines->get_prev_edge_id(focus_line_id);
-//                 if (!is_currently_shifted(prev_line_id)) {
-//                     this->edge_ids_to_check.push_back(
-//                         std::make_tuple(prev_line_id, true, false));
-//                 }
-//                 EdgeMatching::EdgeId next_1_line_id =
-//                     this->all_outlines->get_next_edge_id(focus_line_id);
-//                 if (!is_currently_shifted(next_1_line_id)) {
-//                     this->edge_ids_to_check.push_back(
-//                         std::make_tuple(next_1_line_id, false, true));
-//                 }
-//                 EdgeMatching::EdgeId next_2_line_id =
-//                     this->all_outlines->get_next_edge_id(next_1_line_id);
-//                 if (!is_currently_shifted(next_2_line_id)) {
-//                     this->edge_ids_to_check.push_back(
-//                         std::make_tuple(next_2_line_id, false, true));
-//                 }
-//             }
-
-//             // Add next line if it needs to be checked
-//             if (check_next) {
-//                 EdgeMatching::EdgeId next_line_id =
-//                     this->all_outlines->get_next_edge_id(focus_line_id);
-//                 if (!is_currently_shifted(next_line_id)) {
-//                     this->edge_ids_to_check.push_back(
-//                         std::make_tuple(next_line_id, false, true));
-//                 }
-//                 EdgeMatching::EdgeId prev_1_line_id =
-//                     this->all_outlines->get_prev_edge_id(focus_line_id);
-//                 if (!is_currently_shifted(prev_1_line_id)) {
-//                     this->edge_ids_to_check.push_back(
-//                         std::make_tuple(prev_1_line_id, true, false));
-//                 }
-//                 EdgeMatching::EdgeId prev_2_line_id =
-//                     this->all_outlines->get_prev_edge_id(prev_1_line_id);
-//                 if (!is_currently_shifted(prev_2_line_id)) {
-//                     this->edge_ids_to_check.push_back(
-//                         std::make_tuple(prev_2_line_id, true, false));
-//                 }
-//             }
-//             checked_and_moved_edge_ids.insert(focus_line_id);
-//         } else {
-//             new_edge_ids_to_check.insert(
-//                 std::make_tuple(focus_line_id, check_prev, check_next));
-//         }
-//     }
-
-//     this->edge_ids_to_check =
-//         std::vector<std::tuple<EdgeMatching::EdgeId, bool, bool>>(
-//             new_edge_ids_to_check.begin(), new_edge_ids_to_check.end());
-
-//     this->current_shift_index++;
-
-//     // std::cout << "End of step, number of edges to check for the next step:
-//     "
-//     //           << this->edge_ids_to_check.size() << std::endl;
-
-//     return this->current_shift_index >= this->shift_amounts.size();
-// }
-
-// void LineMoverSimpleImproved::compute_all() {
-//     while (this->current_shift_index < this->shift_amounts.size()) {
-//         step();
-//     }
-// }
-
-// void LineMoverSimpleImproved::get_computed_shifts(
-//     std::vector<std::map<EdgeMatching::EdgeId, double>> &output) const {
-//     // Remove the first entry which corresponds to the initial configuration
-//     // with zero shift
-//     output = std::vector<std::map<EdgeMatching::EdgeId, double>>(
-//         this->computed_shifts.begin() + 1, this->computed_shifts.end());
-// }

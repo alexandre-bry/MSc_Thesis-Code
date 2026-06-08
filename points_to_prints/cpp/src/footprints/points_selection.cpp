@@ -27,8 +27,7 @@ using json = nlohmann::json;
 namespace PointSelection {
 namespace {
 
-constexpr double kGeometryEpsilon = 1e-9;
-constexpr double faceMatchTolerance = 0.2;
+constexpr double kGeometryEpsilon = 1e-6;
 
 struct CityObjectMeta {
     std::string type;
@@ -801,7 +800,7 @@ void select_points_under_roofs(const std::string &input_points_file,
               << std::endl;
 
     std::cout << "Reading input point cloud..." << std::endl;
-    NewLasReader las_reader(input_points_file);
+    LasReader las_reader(input_points_file);
     las_reader.points->build_kd_tree_2d();
     const std::shared_ptr<KdTree_2> kd_tree_2d =
         las_reader.points->get_kd_tree_2d();
@@ -810,8 +809,8 @@ void select_points_under_roofs(const std::string &input_points_file,
     const std::size_t point_count =
         static_cast<std::size_t>(las_reader.points->point_count());
 
-    NewLasWriter las_writer(predefined_dims, proprietary_dims,
-                            las_reader.points->spatial_reference());
+    LasWriter las_writer(predefined_dims, proprietary_dims,
+                         las_reader.points->spatial_reference());
 
     std::cout << "Selecting points under roofs..." << std::endl;
     std::vector<bool> selected(point_count, false);

@@ -1,7 +1,5 @@
 #include "writer.hpp"
-#include "../points.hpp"
 
-#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -14,59 +12,7 @@
 #include <pdal/StageFactory.hpp>
 #include <pdal/io/BufferReader.hpp>
 
-std::size_t CustomLasWriter::pointCount() { return view->size(); }
-
-void CustomLasWriter::write(
-    const std::string &filename,
-    const std::vector<LASclassification::Value> &allowed_classes) {
-
-    pdal::StageFactory factory;
-
-    pdal::Stage *writer = factory.createStage("writers.las");
-    pdal::Options writer_opts;
-    writer_opts.add("filename", filename);
-    writer_opts.add("extra_dims", "all");
-    writer->setOptions(writer_opts);
-
-    writer->setSpatialReference(this->table.spatialReference());
-
-    pdal::BufferReader reader;
-    reader.addView(this->view);
-
-    if (allowed_classes.empty()) {
-        // Prepare the writer without filter
-        writer->setInput(reader);
-    } else {
-        // Prepare the filter
-        std::string class_limits = get_class_limits(allowed_classes);
-        pdal::Options filter_opts;
-        filter_opts.add("limits", class_limits);
-        pdal::Stage *filter = factory.createStage("filters.range");
-        filter->setInput(reader);
-        filter->setOptions(filter_opts);
-
-        // Prepare the writer
-        writer->setInput(*filter);
-    }
-
-    writer->prepare(table);
-    writer->execute(table);
-}
-
-std::string CustomLasWriter::get_class_limits(
-    const std::vector<LASclassification::Value> &allowed_classes) const {
-    std::string class_limits = "";
-    for (const auto &cls : allowed_classes) {
-        if (!class_limits.empty()) {
-            class_limits += ",";
-        }
-        std::string cls_number = std::to_string(static_cast<uint8_t>(cls));
-        class_limits += "Classification[" + cls_number + ":" + cls_number + "]";
-    }
-    return class_limits;
-}
-
-void NewLasWriter::write(
+void LasWriter::write(
     const std::string &filename,
     const std::vector<LASclassification::Value> &allowed_classes) {
 
@@ -103,7 +49,7 @@ void NewLasWriter::write(
     writer->execute(points->get_table());
 }
 
-std::string NewLasWriter::get_class_limits(
+std::string LasWriter::get_class_limits(
     const std::vector<LASclassification::Value> &allowed_classes) const {
     std::string class_limits = "";
     for (const auto &cls : allowed_classes) {

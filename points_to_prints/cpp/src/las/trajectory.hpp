@@ -2,7 +2,7 @@
 
 #include <pdal/Dimension.hpp>
 
-#include "../utils/cgal.hpp"
+#include "../geom/cgal.hpp"
 
 struct Trajectory {
   private:
@@ -12,7 +12,7 @@ struct Trajectory {
     Trajectory(const std::vector<Point_3> points,
                const std::vector<double> gps_times);
 
-    Point_3 get_point_at_gps_time(double gps_time) const;
+    Point_3 get_pos_at_gps_time(double gps_time) const;
 };
 
 Trajectory read_trajectory(const std::string &input_file);

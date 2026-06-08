@@ -6,7 +6,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "../utils/cgal.hpp"
+#include "../geom/cgal.hpp"
 
 namespace PointSelection {
 

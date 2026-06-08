@@ -7,8 +7,8 @@
 #include <memory>
 #include <vector>
 
-#include "../points.hpp"
-#include "../utils/cgal.hpp"
+#include "../geom/cgal.hpp"
+#include "../geom/points.hpp"
 #include "../utils/strong_types.hpp"
 
 class ICriterion;

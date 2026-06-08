@@ -11,6 +11,8 @@
 
 #include <arrow/api.h>
 
+#include "../geom/cgal.hpp"
+
 enum class ParquetValueType {
     Int32,
     Int64,
@@ -91,3 +93,19 @@ struct ParquetReader {
     read_columns(const std::vector<RequestedColumn> &requested_columns,
                  GenericParquetOutput &output) const;
 };
+
+struct BDTOPOEdge {
+    std::string building_id;
+    uint8_t polygon_idx;
+    uint8_t ring_idx;
+    uint16_t edge_idx;
+    uint32_t edge_key;
+    Point_3 start;
+    Point_3 end;
+};
+
+arrow::Status read_bd_topo_as_grouped_edges(
+    const std::string &edges_parquet_file,
+    const std::string &intersections_parquet_file,
+    std::vector<BDTOPOEdge> &edges,
+    std::vector<std::pair<uint32_t, uint32_t>> &intersections);

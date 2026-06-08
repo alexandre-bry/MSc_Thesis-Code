@@ -3,6 +3,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from ..utils.custom_logging import LoggingContext, run_command_with_tqdm_logging
+
 from ..utils.duckdb_helpers import DuckDBConnectionManager
 
 SCHEMA_NAME = "bd_topo"

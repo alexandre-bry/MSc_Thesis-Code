@@ -8,9 +8,9 @@
 #include <string>
 #include <vector>
 
-#include "../parquet.hpp"
-#include "../points.hpp"
-#include "../utils/cgal.hpp"
+#include "../geom/cgal.hpp"
+#include "../geom/points.hpp"
+#include "../parquet/writer.hpp"
 #include "../utils/pbar.hpp"
 #include "constants.hpp"
 #include "criterion.hpp"

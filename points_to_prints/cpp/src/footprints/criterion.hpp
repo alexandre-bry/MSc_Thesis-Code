@@ -1,9 +1,9 @@
 #pragma once
 
 #include "../edge_matching/criterion.hpp"
+#include "../geom/cgal.hpp"
+#include "../geom/kd_tree.hpp"
 #include "../las/enums.hpp"
-#include "../utils/cgal.hpp"
-#include "../utils/kd_tree.hpp"
 #include "constants.hpp"
 
 class CriterionFootprints : public ICriterion {

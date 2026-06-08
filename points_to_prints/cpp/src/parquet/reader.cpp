@@ -535,3 +535,106 @@ arrow::Status ParquetReader::read_columns(
 
     return arrow::Status::OK();
 }
+
+arrow::Status read_bd_topo_as_grouped_edges(
+    const std::string &edges_parquet_file,
+    const std::string &intersections_parquet_file,
+    std::vector<BDTOPOEdge> &edges,
+    std::vector<std::pair<uint32_t, uint32_t>> &intersections) {
+    arrow::Status status;
+
+    // Prepare the columns to read from the edges Parquet file
+    std::vector<RequestedColumn> edges_columns{
+        {"cleabs", ParquetValueType::Utf8},
+        {"idx_polygon", ParquetValueType::UInt8},
+        {"idx_ring", ParquetValueType::UInt8},
+        {"idx_edge", ParquetValueType::UInt16},
+        {"edge_key", ParquetValueType::UInt32},
+        {"start_x", ParquetValueType::Float64},
+        {"start_y", ParquetValueType::Float64},
+        {"start_z", ParquetValueType::Float64},
+        {"end_x", ParquetValueType::Float64},
+        {"end_y", ParquetValueType::Float64},
+        {"end_z", ParquetValueType::Float64},
+    };
+
+    // Read the edges data from the Parquet file using the ParquetReader
+    ParquetReader edges_reader(edges_parquet_file);
+    GenericParquetOutput edges_output;
+    status = edges_reader.read_columns(edges_columns, edges_output);
+    if (!status.ok()) {
+        std::cerr << "Error reading edges Parquet file: " << status.ToString()
+                  << std::endl;
+        return status;
+    }
+
+    // Convert the input data into the desired BDTOPOEdge format
+    edges.reserve(edges_output.row_count);
+    std::map<uint32_t, std::size_t> edge_key_to_index;
+    for (std::size_t i = 0; i < edges_output.row_count; ++i) {
+        std::string cleabs = edges_output.value<std::string>("cleabs", i);
+        // if (cleabs != "BATIMENT0000000337020489") {
+        //     continue;
+        // }
+
+        edges.push_back({
+            edges_output.value<std::string>("cleabs", i),
+            edges_output.value<uint8_t>("idx_polygon", i),
+            edges_output.value<uint8_t>("idx_ring", i),
+            edges_output.value<uint16_t>("idx_edge", i),
+            edges_output.value<uint32_t>("edge_key", i),
+            {edges_output.value<double>("start_x", i),
+             edges_output.value<double>("start_y", i),
+             edges_output.value<double>("start_z", i)},
+            {edges_output.value<double>("end_x", i),
+             edges_output.value<double>("end_y", i),
+             edges_output.value<double>("end_z", i)},
+        });
+        edge_key_to_index[edges.back().edge_key] = edges.size() - 1;
+    }
+
+    // Prepare the columns to read from the intersections Parquet file
+    std::vector<RequestedColumn> intersection_columns{
+        {"edge_key_a", ParquetValueType::UInt32},
+        {"edge_key_b", ParquetValueType::UInt32},
+    };
+
+    // Read the intersections data from the Parquet file using the ParquetReader
+    ParquetReader intersections_reader(intersections_parquet_file);
+    GenericParquetOutput intersections_output;
+    status = intersections_reader.read_columns(intersection_columns,
+                                               intersections_output);
+    if (!status.ok()) {
+        std::cerr << "Error reading intersections Parquet file: "
+                  << status.ToString() << std::endl;
+        return status;
+    }
+
+    // Convert the input data into the desired format
+    intersections.clear();
+    intersections.reserve(intersections_output.row_count);
+    for (std::size_t i = 0; i < intersections_output.row_count; ++i) {
+        uint32_t edge_key_a =
+            intersections_output.value<uint32_t>("edge_key_a", i);
+        uint32_t edge_key_b =
+            intersections_output.value<uint32_t>("edge_key_b", i);
+        if (edge_key_to_index.count(edge_key_a) == 0) {
+            // std::cerr << "Warning: edge_key_a " << edge_key_a
+            //           << " not found in edges data, skipping this
+            //           intersection."
+            //           << std::endl;
+            continue;
+        }
+        if (edge_key_to_index.count(edge_key_b) == 0) {
+            // std::cerr << "Warning: edge_key_b " << edge_key_b
+            //           << " not found in edges data, skipping this
+            //           intersection."
+            //           << std::endl;
+            continue;
+        }
+        intersections.emplace_back(edge_key_to_index.at(edge_key_a),
+                                   edge_key_to_index.at(edge_key_b));
+    }
+
+    return status;
+}

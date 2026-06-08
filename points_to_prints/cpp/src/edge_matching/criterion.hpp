@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../utils/cgal.hpp"
+#include "../geom/cgal.hpp"
 
 class ICriterion {
   public:
