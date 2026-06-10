@@ -7,10 +7,10 @@ from typing import List, Optional, Tuple
 
 from tqdm import tqdm
 
-from ..lidarhd.bd_topo_intersections import (
+from ..bd_topo.intersections import (
     crop_intersections_files,
 )
-from ..lidarhd.las_manipulations import (
+from ..lidar_hd.las_manipulations import (
     classification_mapping_implementation,
     get_las_bounds,
     merge_files,
@@ -114,7 +114,7 @@ def _compute_trajectory(
     Parameters
     ----------
     input_las_path : Path
-        Path to the input flight strip LAZ file.
+        Path to the input flight strip LAS/LAZ file.
     output_trajectory_path : Path
         Path to the output trajectory file.
     overwrite : bool
@@ -218,7 +218,7 @@ def _process_bd_topo_data(
     Args:
         other_data_dir: Directory containing BD TOPO data
         tile_dir: Output directory for cropped BD TOPO files
-        initial_laz_file: LiDAR HD LAZ file to match bounds
+        initial_laz_file: LiDAR HD LAS/LAZ file to match bounds
         overwrite: Whether to overwrite existing files
         skip_existing: Whether to skip if files exist
 
@@ -241,7 +241,7 @@ def _process_bd_topo_data(
             "One or more required BD TOPO files are missing. Please ensure they are present in the specified directory."
         )
 
-    # Crop the BD TOPO data to the bounds of the source .laz file
+    # Crop the BD TOPO data to the bounds of the source LAS/LAZ file
     bounding_box = get_las_bounds(initial_laz_file)
     crop_intersections_files(
         input_edges_file=input_edges_file,
@@ -268,9 +268,9 @@ def _process_lidar_hd_data(
     Parameters
     ----------
     initial_laz_file : Path
-        Input LiDAR HD LAZ file
+        Input LiDAR HD LAS/LAZ file
     laz_with_inwards_roof_file : Path
-        Output file for LAZ with inward directions
+        Output file for LAS/LAZ with inward directions
     template_flight_strip_file : Path
         Template file for flight strip splitting (should contain a "#" character to be replaced by the strip number)
     overwrite : bool
@@ -281,7 +281,7 @@ def _process_lidar_hd_data(
     Returns
     -------
     List[Path]
-        List of flight strip LAZ file paths
+        List of flight strip LAS/LAZ file paths
     """
     logging.info("Processing LiDAR HD data...")
 
@@ -293,7 +293,7 @@ def _process_lidar_hd_data(
         skip_existing=skip_existing,
     )
 
-    # Split the source .laz file into multiple files based on the "PointSourceId" attribute
+    # Split the source LAS/LAZ file into multiple files based on the "PointSourceId" attribute
     all_flight_strip_files = _split_source_point_cloud(
         input_las_path=laz_with_inwards_roof_file,
         output_template_path=template_flight_strip_file,
@@ -316,7 +316,7 @@ def _compute_trajectories_parallel(
     Parameters
     ----------
     flight_strip_files : List[Path]
-        List of flight strip LAZ file paths.
+        List of flight strip LAS/LAZ file paths.
     trajectory_files : List[Path]
         List of output trajectory file paths corresponding to each flight strip.
     overwrite : bool
@@ -370,13 +370,13 @@ def _compute_distances_and_edges(
     Parameters
     ----------
     laz_file : Path
-        Path to the input flight strip LAZ file.
+        Path to the input flight strip LAS/LAZ file.
     trajectory_file : Path
         Path to the trajectory file for the flight strip.
     distance_file : Path
-        Path to the output distances LAZ file.
+        Path to the output distances LAS/LAZ file.
     edge_file : Path
-        Path to the output edges LAZ file.
+        Path to the output edges LAS/LAZ file.
     overwrite : bool
         Whether to overwrite existing output files.
     skip_existing : bool
@@ -487,7 +487,7 @@ def _compute_distances_and_edges_parallel(
     """Process all flight strips with C++ pipeline in parallel.
 
     Args:
-        flight_strip_files: List of flight strip LAZ file paths
+        flight_strip_files: List of flight strip LAS/LAZ file paths
         tile_dir: Output directory
         overwrite: Whether to overwrite existing files
         skip_existing: Whether to skip if files exist
@@ -546,13 +546,13 @@ def _merge_output_files(
     Parameters
     ----------
     distances_files : List[Path]
-        List of distances LAZ files to merge.
+        List of distances LAS/LAZ LAS/LAZ files to merge.
     edges_files : List[Path]
-        List of edges LAZ files to merge.
+        List of edges LAS/LAZ files to merge.
     merged_distances_file : Path
-        Output path for merged distances LAZ file.
+        Output path for merged distances LAS/LAZ file.
     merged_edges_file : Path
-        Output path for merged edges LAZ file.
+        Output path for merged edges LAS/LAZ file.
     overwrite : bool
         Whether to overwrite existing merged files.
     skip_existing : bool
@@ -590,7 +590,7 @@ def _compute_roofprints(
     Parameters
     ----------
     merged_edges_file : Path
-        Path to merged edges LAZ file.
+        Path to merged edges LAS/LAZ file.
     bd_topo_edges_file : Path
         Path to cropped BD TOPO edges Parquet file.
     bd_topo_intersections_file : Path
@@ -832,9 +832,9 @@ def run_pipeline_implementation(
     num_workers : Optional[int]
         Number of worker processes for multiprocessing (None = CPU count)
     """
-    tile_bd_topo_dir = tile_dir / "bdtopo"
+    tile_bd_topo_dir = tile_dir / "bd_topo"
     tile_bd_topo_dir.mkdir(exist_ok=True)
-    tile_lidar_hd_dir = tile_dir / "lidarhd"
+    tile_lidar_hd_dir = tile_dir / "lidar_hd"
     tile_lidar_hd_dir.mkdir(exist_ok=True)
     tile_axes_dir = tile_lidar_hd_dir / "axes"
     tile_axes_dir.mkdir(exist_ok=True)
@@ -845,7 +845,7 @@ def run_pipeline_implementation(
     tile_footprints_dir = tile_dir / "footprints"
     tile_footprints_dir.mkdir(exist_ok=True)
 
-    initial_laz_file = tile_dir / "lidarhd.copc.laz"
+    initial_laz_file = tile_dir / "lidar_hd.copc.laz"
     if initial_laz_file.exists():
         initial_laz_file.move(tile_lidar_hd_dir / initial_laz_file.name)
     initial_laz_file = tile_lidar_hd_dir / initial_laz_file.name
@@ -881,7 +881,7 @@ def run_pipeline_implementation(
     # -------------------------------------------------------------------- #
 
     # Process LiDAR HD: compute inward directions and split by flight strips
-    las_with_inwards_roof_file = tile_lidar_hd_dir / "lidarhd-with_inwards_roof.laz"
+    las_with_inwards_roof_file = tile_lidar_hd_dir / "lidar_hd-with_inwards_roof.laz"
     template_flight_strip_file = tile_axes_dir / "axis_#.laz"
 
     all_flight_strip_files = _process_lidar_hd_data(
@@ -970,7 +970,7 @@ def run_pipeline_implementation(
     # ------------------------------------------------------------------------ #
 
     # Reclassify the input LiDAR HD file to classify as building all the points which are potentially building points, as roofer only uses those
-    reclassified_lidar_hd_file = tile_lidar_hd_dir / "lidarhd-reclassified.laz"
+    reclassified_lidar_hd_file = tile_lidar_hd_dir / "lidar_hd-reclassified.laz"
     classification_mapping_implementation(
         input_file=initial_laz_file,
         output_file=reclassified_lidar_hd_file,
@@ -1182,10 +1182,10 @@ def compute_metrics_implementation(
 
     scored_files: List[Path] = [bd_topo_file]
     output_indiv_files: List[Path] = [
-        output_comparison_dir / f"bdtopo-indiv.{output_format}"
+        output_comparison_dir / f"bd_topo-indiv.{output_format}"
     ]
     output_aggreg_files: List[Path] = [
-        output_comparison_dir / f"bdtopo-aggreg.{output_format}"
+        output_comparison_dir / f"bd_topo-aggreg.{output_format}"
     ]
 
     for tile_dir in tiles_dirs:

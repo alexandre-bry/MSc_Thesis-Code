@@ -3,7 +3,7 @@ from typing import Annotated
 
 import typer
 
-app = typer.Typer()
+app = typer.Typer(no_args_is_help=True)
 
 
 @app.command("clean_topology")

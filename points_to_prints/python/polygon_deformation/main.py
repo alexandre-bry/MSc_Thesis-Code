@@ -22,7 +22,7 @@ from .plot_recorder import PlotRecorder
 from .sample_data import example_circle, generate_points_circle, generate_polygon_circle
 from .topology import AllLines
 
-app = typer.Typer()
+app = typer.Typer(no_args_is_help=True)
 
 
 def _run_test_circle_task(task: tuple[str, str, dict]) -> tuple[str, str]:

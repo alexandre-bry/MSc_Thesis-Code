@@ -8,12 +8,12 @@ import typer
 from ..utils.custom_logging import LoggingContext
 from .pipeline import run_pipeline_call
 
-app = typer.Typer()
+app = typer.Typer(no_args_is_help=True)
 
 
 @app.command(
-    "run_pipeline",
-    help="Run the pipeline.",
+    "points_to_prints",
+    help="Run the pipeline to compute roofprints and footprints from the BD TOPO and the LiDAR HD.",
 )
 def run_pipeline_command(
     bd_topo_dir: Annotated[
@@ -33,7 +33,7 @@ def run_pipeline_command(
         typer.Option(
             "-t",
             "--tile_dir",
-            help="Directory containing the downloaded tile .laz files.",
+            help="Directory containing the downloaded LAS/LAZ tile (in `<tile_dir>/lidar_hd/lidar_hd.copc.laz`).",
             exists=True,
             file_okay=False,
             dir_okay=True,
@@ -84,7 +84,7 @@ def run_pipeline_command(
 
 
 @app.command(
-    "compute_metrics",
+    "metrics",
     help="Compute the validation metrics by comparing the scored dataset to the ground-truth dataset.",
 )
 def compute_metrics_command(
@@ -202,18 +202,6 @@ def compute_metrics_command(
         num_workers=num_workers,
         verbose_int=verbose_int,
     )
-
-
-@app.command(
-    "test_logging",
-    help="A simple command to test the logging setup with different verbosity levels.",
-)
-def test(verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0):
-    with LoggingContext(verbose=verbose_int):
-        logging.debug("This is a debug message.")
-        logging.info("This is an info message.")
-        logging.warning("This is a warning message.")
-        logging.error("This is an error message.")
 
 
 if __name__ == "__main__":

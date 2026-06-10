@@ -4,12 +4,18 @@ This file contains documentation about the functions and tools to use to run the
 
 ## Prerequisites
 
+### Pixi dependencies
+
 To run the pipeline, you first need to install the dependencies.
 The easiest way is using [`pixi`](https://pixi.prefix.dev/latest/):
 
 ```bash
 pixi install
 ```
+
+### Other dependencies
+
+- It is necessary to clone [LiDARHD_Traj_Estimation](https://github.com/whuwuteng/LiDARHD_Traj_Estimation) (not public yet)
 
 TODO:
 
@@ -50,13 +56,13 @@ If you know the bounding box on which you want to run the pipeline, you can down
 
 ```bash
 # General command:
-pixi run py-run lidarhd -- download_lidar_hd \
+pixi run p2p-py lidar_hd download_lidar_hd \
     --bbox "<minx>,<miny>,<maxx>,<maxy>" \
     -o "<output_template>"
 # Example:
-pixi run py-run lidarhd -- download_lidar_hd \
+pixi run p2p-py lidar_hd download_lidar_hd \
     --bbox "668000,6859000,670000,6861000" \
-    -o "data/tiles/{xmin_km}_{ymin_km}/lidarhd/lidarhd.copc.laz" \
+    -o "data/tiles/{xmin_km}_{ymin_km}/lidar_hd/lidar_hd.copc.laz" \
     -vv
 ```
 
@@ -65,21 +71,21 @@ As you can see, we use the `data/tiles` folder to store the data specific to eac
 ### 2. Download the BD TOPO data
 
 You first need to download the BD TOPO data from [cartes.gouv.fr](https://cartes.gouv.fr/rechercher-une-donnee/dataset/IGNF_BD-TOPO) for your area of interest.
-Once extracted (for example with `7z x data/input/bdtopo/BDTOPO_3-5_TOUSTHEMES_GPKG_LAMB93_D077_2026-03-15.7z -odata/input/bdtopo/`), you can convert the data to the expected Parquet format using the following command:
+Once extracted (for example with `7z x data/input/bd_topo/BDTOPO_3-5_TOUSTHEMES_GPKG_LAMB93_D077_2026-03-15.7z -odata/input/bd_topo/`), you can convert the data to the expected Parquet format using the following command:
 
 ```bash
 # General command:
-pixi run py-run lidarhd -- bd_topo_convert \
+pixi run p2p-py bd_topo convert \
     -i <input> \
     -o <output_parquet>
 # Example:
-pixi run py-run lidarhd -- bd_topo_convert \
-    -i data/input/bdtopo/BDTOPO_3-5_TOUSTHEMES_GPKG_LAMB93_R11_2026-03-15/BDTOPO/1_DONNEES_LIVRAISON_2026-03-00147/BDT_3-5_GPKG_LAMB93_R11_ED2026-03-15/BDT_3-5_GPKG_LAMB93_R11-ED2026-03-15.gpkg \
-    -o data/formatted/bdtopo/R11-2026_03_15/bdtopo.parquet \
+pixi run p2p-py bd_topo convert \
+    -i data/input/bd_topo/BDTOPO_3-5_TOUSTHEMES_GPKG_LAMB93_R11_2026-03-15/BDTOPO/1_DONNEES_LIVRAISON_2026-03-00147/BDT_3-5_GPKG_LAMB93_R11_ED2026-03-15/BDT_3-5_GPKG_LAMB93_R11-ED2026-03-15.gpkg \
+    -o data/formatted/bd_topo/R11-2026_03_15/bd_topo.parquet \
     -vv
 ```
 
-As you can see we use the `data/input/bdtopo` folder for the raw BD TOPO data, and the `data/formatted/bdtopo` folder for the formatted BD TOPO data.
+As you can see we use the `data/input/bd_topo` folder for the raw BD TOPO data, and the `data/formatted/bd_topo` folder for the formatted BD TOPO data.
 
 ### 3. Compute intersections between building outlines in BD TOPO
 
@@ -87,17 +93,17 @@ To identify groups of touching building outlines in the BD TOPO data, you can us
 
 ```bash
 # General command:
-pixi run py-run lidarhd -- bd_topo_intersections \
-    -b <input_bdtopo_parquet> \
+pixi run p2p-py bd_topo intersections \
+    -b <input_bd_topo_parquet> \
     -e <output_edges_parquet> \
     -i <output_intersections_parquet> \
     -g <output_building_groups_parquet>
 # Example:
-pixi run py-run lidarhd -- bd_topo_intersections \
-    -b data/formatted/bdtopo/R11-2026_03_15/bdtopo.parquet \
-    -e data/formatted/bdtopo/R11-2026_03_15/edges.parquet \
-    -i data/formatted/bdtopo/R11-2026_03_15/intersections.parquet \
-    -g data/formatted/bdtopo/R11-2026_03_15/building_groups.parquet \
+pixi run p2p-py bd_topo intersections \
+    -b data/formatted/bd_topo/R11-2026_03_15/bd_topo.parquet \
+    -e data/formatted/bd_topo/R11-2026_03_15/edges.parquet \
+    -i data/formatted/bd_topo/R11-2026_03_15/intersections.parquet \
+    -g data/formatted/bd_topo/R11-2026_03_15/building_groups.parquet \
     -vv
 ```
 
@@ -108,12 +114,12 @@ The final steps of the pipeline require [`roofer`](https://github.com/3DBAG/roof
 
 ```bash
 # General command:
-pixi run py-run pipeline -- run_pipeline \
-    -b <input_bdtopo_parquet> \
+pixi run p2p-py pipeline points_to_prints \
+    -b <input_bd_topo_parquet> \
     -t <input_tile_folder>
 # Example:
-pixi run py-run pipeline -- run_pipeline \
-    -b data/formatted/bdtopo/R11-2026_03_15/ \
+pixi run p2p-py pipeline points_to_prints \
+    -b data/formatted/bd_topo/R11-2026_03_15/ \
     -t data/tiles/668_6859/ \
     -vv
 ```

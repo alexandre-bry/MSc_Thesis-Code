@@ -39,7 +39,7 @@ def _tile_box_to_name(tile_box: Box2154) -> str:
     return f"{tile_box.p_min.x // 1000:04d}-{tile_box.p_min.y // 1000:04d}"
 
 
-def _coordonnees_nw_to_tile_box(tile_name: str) -> Optional[Box2154]:
+def _nw_coordinates_to_tile_box(tile_name: str) -> Optional[Box2154]:
     """Convert a LiDAR HD north-west tile code to its 1 km bounding box.
 
     Parameters
@@ -351,7 +351,7 @@ async def collect_existing_tiles(
                 matched_tile_name: Optional[str] = None
                 best_overlap = -1
                 for tile_name, tile_url in tile_results:
-                    candidate_box = _coordonnees_nw_to_tile_box(tile_name)
+                    candidate_box = _nw_coordinates_to_tile_box(tile_name)
                     if candidate_box is None:
                         continue
 
@@ -527,14 +527,21 @@ async def download_lidar_hd_data(
 
     Parameters
     ----------
-    xmin, xmax, ymin, ymax
-        Requested bounding box in EPSG:2154.
-    output_path_template
+    xmin : int
+        Minimum X coordinate of the requested bounding box in EPSG:2154.
+    xmax : int
+        Maximum X coordinate of the requested bounding box in EPSG:2154.
+    ymin : int
+        Minimum Y coordinate of the requested bounding box in EPSG:2154.
+    ymax : int
+        Maximum Y coordinate of the requested bounding box in EPSG:2154.
+    output_path_template : Path
         Output path template supporting the tile placeholders.
-    overwrite
+    overwrite : bool
         Whether existing files should be replaced.
-    concurrency
+    concurrency : int, optional
         Maximum HTTP concurrency for tile discovery and downloading.
+        By default DEFAULT_CONCURRENCY.
     """
     bbox = Box2154(Point2154(xmin, ymin), Point2154(xmax, ymax))
     tiles_boxes = bbox.get_tiles_boxes()

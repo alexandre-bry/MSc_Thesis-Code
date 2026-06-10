@@ -16,7 +16,7 @@ from ..utils.utils import Box2154, Point2154
 
 
 def get_las_bounds(las_file: Path) -> Box2154:
-    # Open the LAS file and read the header to get the bounds
+    # Open the LAS/LAZ file and read the header to get the bounds
     reader = Reader(str(las_file))
     pipeline = Pipeline([reader])
     pipeline.execute()
@@ -30,7 +30,7 @@ def get_las_bounds(las_file: Path) -> Box2154:
         proj_metadata = las_metadata["readers.copc"]
     else:
         raise ValueError(
-            f"Could not find LAS metadata for file '{las_file}' in PDAL metadata output"
+            f"Could not find LAS/LAZ metadata for file '{las_file}' in PDAL metadata output"
         )
 
     if (
@@ -40,7 +40,7 @@ def get_las_bounds(las_file: Path) -> Box2154:
         or "maxy" not in proj_metadata
     ):
         raise ValueError(
-            f"Could not retrieve bounds from LAS metadata for file '{las_file}'"
+            f"Could not retrieve bounds from LAS/LAZ metadata for file '{las_file}'"
         )
     minx = int(float(proj_metadata["minx"]))
     miny = int(float(proj_metadata["miny"]))
@@ -139,18 +139,32 @@ def split_point_cloud_implementation(
     """
     Split a point cloud file into multiple files based on a specified dimension.
 
-    Args:
-        input_file: Input point cloud file path
-        output_file_template: Template for output file paths (should include # placeholder)
-        dimension: Dimension to split on (e.g., "Classification")
-        overwrite: Whether to overwrite output files if they already exist
-        skip_existing: Whether to skip processing output files that already exist
+    Parameters
+    ----------
+    input_file : Path
+        Input LAS/LAZ file path.
+    output_file_template : Path
+        Template for output file paths (should include # placeholder).
+    dimension : str
+        Dimension to split on (e.g., "Classification").
+    overwrite : bool
+        Whether to overwrite existing output files.
+    skip_existing : bool
+        Whether to skip processing if output files already exist.
 
-    Returns:
-        List of paths to the created output files
+    Returns
+    -------
+    List[Path]
+        List of paths to the created output files.
 
-    Raises:
-        FileNotFoundError: If the input file doesn't exist
+    Raises
+    ------
+    FileNotFoundError
+        If the input file doesn't exist.
+    ValueError
+        If the output file template doesn't contain a # placeholder.
+    FileExistsError
+        If the output file already exists and overwrite is False.
     """
     if not input_file.exists():
         raise FileNotFoundError(f"Input file not found: {input_file}")
@@ -235,37 +249,6 @@ def split_point_cloud_implementation(
     return all_output_files
 
 
-def identity_convert(input_file: Path, output_file: Path, overwrite: bool) -> None:
-    """
-    Convert a file to another format.
-
-    Args:
-        input_file: Input file path
-        output_file: Output file path
-        overwrite: Whether to overwrite the output file if it already exists
-
-    Raises:
-        FileNotFoundError: If the input file doesn't exist
-        FileExistsError: If the output file already exists and overwrite is False
-    """
-    if not input_file.exists():
-        raise FileNotFoundError(f"Input file not found: {input_file}")
-
-    output_path = Path(output_file)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    # Check if the output file already exists
-    if output_path.exists() and not overwrite:
-        raise FileExistsError(f"Output file already exists: {output_path}")
-
-    # Create pipeline
-    reader = Reader(str(input_file))
-    writer = Writer(str(output_file), extra_dims="all")
-
-    pipeline = Pipeline([reader, writer])
-    pipeline.execute()
-
-
 def split_point_cloud_call(
     input_file: Path,
     output_file_template: Path,
@@ -292,9 +275,32 @@ def classification_mapping_implementation(
     input_file: Path,
     output_file: Path,
     mapping: Dict[int, int],
-    skip_existing: bool,
     overwrite: bool,
+    skip_existing: bool,
 ):
+    """
+    Map the classification values in a LAS/LAZ file to a new set of values based on a provided mapping.
+
+    Parameters
+    ----------
+    input_file : Path
+        Input LAS/LAZ file.
+    output_file : Path
+        Output LAS/LAZ file.
+    mapping : Dict[int, int]
+        Mapping of old classification values to new classification values.
+    overwrite : bool
+        Whether to overwrite existing output files.
+    skip_existing : bool
+        Whether to skip processing if output files already exist.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the input file doesn't exist.
+    FileExistsError
+        If the output file already exists and overwrite is False.
+    """
     if not input_file.exists():
         raise FileNotFoundError(f"Input file not found: {input_file}")
 
@@ -327,8 +333,8 @@ def classification_mapping_call(
     input_file: Path,
     output_file: Path,
     mapping: Dict[int, int],
-    skip_existing: bool,
     overwrite: bool,
+    skip_existing: bool,
     verbose_int: int,
 ):
     with LoggingContext(verbose=verbose_int):

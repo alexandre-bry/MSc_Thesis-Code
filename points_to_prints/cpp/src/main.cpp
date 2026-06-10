@@ -15,16 +15,16 @@ void setup_distances_in_order(CLI::App &app) {
 
     CLI::App *sub = app.add_subcommand(
         "distances_in_order", "Compute the distances in GPS time order");
-    sub->add_option("-i,--input", opt->input_points_file, "Input LAS file")
+    sub->add_option("-i,--input", opt->input_points_file, "Input LAS/LAZ file")
         ->required();
     sub->add_option("-t,--trajectory", opt->input_trajectory_file,
                     "Input trajectory file")
         ->required();
     sub->add_option("-d,--distances", opt->output_distances_file,
-                    "Output LAS file for distances")
+                    "Output LAS/LAZ file for distances")
         ->required();
     sub->add_option("-e,--edges", opt->output_edges_file,
-                    "Output LAS file for points on edges")
+                    "Output LAS/LAZ file for points on edges")
         ->required();
     sub->add_flag("--overwrite", opt->overwrite,
                   "Overwrite the output file if it exists")
@@ -42,7 +42,7 @@ void setup_compute_roofprints(CLI::App &app) {
 
     CLI::App *sub =
         app.add_subcommand("compute_roofprints", "Compute roofprints");
-    sub->add_option("-l,--input-las", opt->input_las_file, "Input LAS file")
+    sub->add_option("-l,--input-las", opt->input_las_file, "Input LAS/LAZ file")
         ->required();
     sub->add_option("-e,--input-bd-topo-edges", opt->input_bd_topo_edges_file,
                     "Input BD TOPO Parquet file with building edges")
@@ -83,10 +83,10 @@ void setup_add_inward_directions(CLI::App &app) {
     CLI::App *sub = app.add_subcommand("add_inward_directions",
                                        "Add inward directions to LAS");
 
-    sub->add_option("-i,--input", opt->input_points_file, "Input LAS file")
+    sub->add_option("-i,--input", opt->input_points_file, "Input LAS/LAZ file")
         ->required();
     sub->add_option("-o,--output", opt->output_points_file,
-                    "Output LAS file for points with inward directions")
+                    "Output LAS/LAZ file for points with inward directions")
         ->required();
     sub->add_option("-t,--type", opt->type,
                     "Type of inward direction to compute: 'roof' or 'facade'")
@@ -111,7 +111,7 @@ void setup_roofprints_to_3d(CLI::App &app) {
                     "Input Parquet file with roofprints")
         ->required();
     sub->add_option("-e,--edge-points", opt->edge_points_file,
-                    "Input LAS file with edge points")
+                    "Input LAS/LAZ file with edge points")
         ->required();
     sub->add_option("-o,--output", opt->output_roofprints_3d_file,
                     "Output Parquet file for 3D roofprints")
@@ -171,7 +171,7 @@ void setup_compute_footprints(CLI::App &app) {
     CLI::App *sub =
         app.add_subcommand("compute_footprints", "Compute footprints");
     sub->add_option("-p,--input-points", opt->input_points_file,
-                    "Input LAS file")
+                    "Input LAS/LAZ file")
         ->required();
     sub->add_option("-l,--input-lod22", opt->input_lod22_file,
                     "Input Parquet file with LoD2.2 data")

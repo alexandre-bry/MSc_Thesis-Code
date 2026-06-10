@@ -1,10 +1,15 @@
-# Roofprint Extractor
+# From Points to Prints
+
+## Introduction
+
+This repository contains the code produced during my thesis for the MSc Geomatics at TU Delft, in collaboration with the IGN (Institut national de l’information géographique et forestière) from November 2025 to June 2026.
+
+Reports and slides produced during the thesis are available in [this other repository](https://github.com/alexandre-bry/MSc_Thesis-Report).
 
 ## Installation
 
-Commands are given for Ubuntu.
-
-1. Install pixi and add it to the path.
+1. Install [pixi](https://pixi.prefix.dev/latest/) and add it to the path.
+    For example on Linux:
 
     ```bash
     curl -fsSL https://pixi.sh/install.sh | sh
@@ -34,3 +39,8 @@ For that, you can use [Entwine](https://entwine.io/), which is installed with pi
 ```bash
 pixi run entwine build -i <input_laz> -o <output_ept_folder> --deep --srs EPSG:2154
 ```
+
+## TODO
+
+- Add the validation dataset
+- Show how to use the `compute_metrics` command with the validation dataset
