@@ -138,10 +138,10 @@ void setup_select_points_under_roofs(CLI::App &app) {
     CLI::App *sub = app.add_subcommand(
         "select_points_under_roofs",
         "Keep only LAS/LAZ points that are under at least one CityJSON roof");
-    sub->add_option("-i,--input-points", opt->input_points_file,
+    sub->add_option("-p,--input-points", opt->input_points_file,
                     "Input LAS/LAZ file")
         ->required();
-    sub->add_option("-r,--input-roofs", opt->input_roofs_file,
+    sub->add_option("-l,--input-lod22", opt->input_roofs_file,
                     "Input CityJSON file with building roofs")
         ->required();
     sub->add_option("-o,--output-points", opt->output_points_file,
@@ -170,14 +170,14 @@ void setup_compute_footprints(CLI::App &app) {
 
     CLI::App *sub =
         app.add_subcommand("compute_footprints", "Compute footprints");
-    sub->add_option("-r,--input-roofprints", opt->input_roofprints_file,
-                    "Input Parquet file with roofprints")
-        ->required();
     sub->add_option("-p,--input-points", opt->input_points_file,
                     "Input LAS file")
         ->required();
     sub->add_option("-l,--input-lod22", opt->input_lod22_file,
                     "Input Parquet file with LoD2.2 data")
+        ->required();
+    sub->add_option("-r,--input-roofprints", opt->input_roofprints_file,
+                    "Input Parquet file with roofprints")
         ->required();
     sub->add_option("-o,--output-footprints-template",
                     opt->output_footprints_template_file,

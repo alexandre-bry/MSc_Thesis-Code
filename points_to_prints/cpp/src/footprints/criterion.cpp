@@ -75,7 +75,7 @@ double CriterionFootprints::evaluate_segments(
             bool ground_point =
                 (point_class == LASclassification::Value::Ground);
             double energy = 0.0;
-            if (signed_distance < -distance_close) {
+            if (signed_distance < -distance_close || signed_distance > distance_close + distance_penalty) {
                 continue;
             } else if (signed_distance < distance_close) {
                 energy = -weight * (1.0 - absolute_distance / distance_close);
