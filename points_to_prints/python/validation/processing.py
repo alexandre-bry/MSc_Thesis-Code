@@ -1,15 +1,21 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 from pathlib import Path
 from typing import Iterable
 
 import geopandas as gpd
 import pandas as pd
-
 from shapely.ops import unary_union
 
-from .metrics import _normalize_keep_columns, _read_polygon_dataset, _validate_input_columns
+from ..utils.custom_logging import LoggingContext, Verbose
+from ..utils.input_output import OutputAction
+from .metrics import (
+    _normalize_keep_columns,
+    _read_polygon_dataset,
+    _validate_input_columns,
+)
 
 
 def _deterministic_aggregate_id(source_ids: Iterable[object]) -> str:
@@ -118,12 +124,14 @@ def _ensure_supported_output_path(output_path: Path) -> None:
 def _write_polygon_dataset(
     dataset: gpd.GeoDataFrame,
     output_path: Path,
-    overwrite: bool,
+    output_action: OutputAction,
 ) -> None:
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_action.handle_input_output(
+        message_prefix="Writing polygon dataset",
+        output_files=[output_path],
+    )
+
     _ensure_supported_output_path(output_path)
-    if output_path.exists() and not overwrite:
-        raise FileExistsError(f"Output file already exists: {output_path}")
 
     if output_path.suffix.lower() == ".parquet":
         dataset.to_parquet(
@@ -136,17 +144,22 @@ def _write_polygon_dataset(
     dataset.to_file(output_path, driver="GPKG", index=False)
 
 
-def build_validation_datasets(
+def prepare_validation_dataset_implementation(
     input_ground_truth_path: Path,
     id_column: str,
     individual_output_path: Path,
     aggregated_output_path: Path,
-    keep_columns: list[str] | None = None,
-    overwrite: bool = False,
+    keep_columns: list[str] | None,
+    output_action: OutputAction,
 ) -> None:
     """Persist both the raw validation dataset and the dissolved aggregate dataset."""
     if individual_output_path == aggregated_output_path:
         raise ValueError("The individual and aggregated output paths must differ.")
+
+    output_action.handle_input_output(
+        message_prefix="Building validation datasets",
+        output_files=[individual_output_path, aggregated_output_path],
+    )
 
     ground_truth = _read_polygon_dataset(input_ground_truth_path)
     _validate_input_columns(ground_truth, id_column, "ground-truth")
@@ -156,16 +169,6 @@ def build_validation_datasets(
         ground_truth, id_column, keep_columns or []
     )
 
-    if not overwrite:
-        if individual_output_path.exists():
-            raise FileExistsError(
-                f"Output file already exists: {individual_output_path}"
-            )
-        if aggregated_output_path.exists():
-            raise FileExistsError(
-                f"Output file already exists: {aggregated_output_path}"
-            )
-
     individual_dataset = ground_truth.copy()
     aggregated_dataset = _build_aggregated_ground_truth_dataset(
         ground_truth,
@@ -173,5 +176,34 @@ def build_validation_datasets(
         normalized_keep_columns,
     )
 
-    _write_polygon_dataset(individual_dataset, individual_output_path, overwrite)
-    _write_polygon_dataset(aggregated_dataset, aggregated_output_path, overwrite)
+    _write_polygon_dataset(individual_dataset, individual_output_path, output_action)
+    _write_polygon_dataset(aggregated_dataset, aggregated_output_path, output_action)
+
+    logging.info(
+        "\n".join(
+            [
+                f"Validation dataset written to: {individual_output_path}",
+                f"Aggregated validation dataset written to: {aggregated_output_path}",
+            ]
+        )
+    )
+
+
+def prepare_validation_dataset_call(
+    input_ground_truth_path: Path,
+    id_column: str,
+    individual_output_path: Path,
+    aggregated_output_path: Path,
+    keep_columns: list[str] | None,
+    output_action: OutputAction,
+    verbose: Verbose,
+):
+    with LoggingContext(verbose=verbose):
+        prepare_validation_dataset_implementation(
+            input_ground_truth_path=input_ground_truth_path,
+            id_column=id_column,
+            individual_output_path=individual_output_path,
+            aggregated_output_path=aggregated_output_path,
+            keep_columns=keep_columns,
+            output_action=output_action,
+        )

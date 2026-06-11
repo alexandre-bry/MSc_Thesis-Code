@@ -3,6 +3,9 @@ from typing import Annotated
 
 import typer
 
+from ..utils.custom_logging import Verbose
+from ..utils.input_output import OutputAction
+
 app = typer.Typer(no_args_is_help=True)
 
 
@@ -36,27 +39,26 @@ def clean_polygon_topology_command(
         bool,
         typer.Option(
             "--overwrite",
-            "-f",
-            help="Overwrite the output file if it exists",
+            help="Whether to overwrite the output files.",
+        ),
+    ] = False,
+    skip_existing: Annotated[
+        bool,
+        typer.Option(
+            "--skip_existing",
+            help="Whether to skip steps if output files already exist.",
         ),
     ] = False,
     verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
 ) -> None:
-    from .metrics import clean_polygon_topology_call, write_polygon_topology_results
+    from .metrics import clean_polygon_topology_call
 
-    cleaned_dataset = clean_polygon_topology_call(
+    clean_polygon_topology_call(
         input_path=input_path,
+        output_path=output_path,
         threshold_m=threshold_m,
-        verbose_int=verbose_int,
-    )
-    write_polygon_topology_results(cleaned_dataset, output_path, overwrite)
-    typer.echo(
-        "\n".join(
-            [
-                f"Cleaned polygon features: {len(cleaned_dataset)}",
-                f"Results written to: {output_path}",
-            ]
-        )
+        output_action=OutputAction.from_flags(overwrite, skip_existing),
+        verbose=Verbose.from_int(verbose_int),
     )
 
 
@@ -104,29 +106,28 @@ def prepare_validation_dataset_command(
         bool,
         typer.Option(
             "--overwrite",
-            "-f",
-            help="Overwrite the output files if they exist",
+            help="Whether to overwrite the output files.",
+        ),
+    ] = False,
+    skip_existing: Annotated[
+        bool,
+        typer.Option(
+            "--skip_existing",
+            help="Whether to skip steps if output files already exist.",
         ),
     ] = False,
     verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
 ) -> None:
-    from .processing import build_validation_datasets
+    from .processing import prepare_validation_dataset_call
 
-    build_validation_datasets(
+    prepare_validation_dataset_call(
         input_ground_truth_path=input_path,
         id_column=id_column,
         individual_output_path=individual_output_path,
         aggregated_output_path=aggregated_output_path,
         keep_columns=keep_columns,
-        overwrite=overwrite,
-    )
-    typer.echo(
-        "\n".join(
-            [
-                f"Validation dataset written to: {individual_output_path}",
-                f"Aggregated validation dataset written to: {aggregated_output_path}",
-            ]
-        )
+        output_action=OutputAction.from_flags(overwrite, skip_existing),
+        verbose=Verbose.from_int(verbose_int),
     )
 
 
@@ -184,9 +185,23 @@ def compare_polygon_datasets_command(
             ),
         ),
     ] = [],
+    overwrite: Annotated[
+        bool,
+        typer.Option(
+            "--overwrite",
+            help="Whether to overwrite the output files.",
+        ),
+    ] = False,
+    skip_existing: Annotated[
+        bool,
+        typer.Option(
+            "--skip_existing",
+            help="Whether to skip steps if output files already exist.",
+        ),
+    ] = False,
     verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
 ) -> None:
-    from .metrics import compare_polygon_datasets_call, write_comparison_results
+    from .metrics import compare_polygon_datasets_call
 
     compare_polygon_datasets_call(
         ground_truth_path=ground_truth_path,
@@ -195,7 +210,8 @@ def compare_polygon_datasets_command(
         id_column=id_column,
         spacing_m=spacing_m,
         keep_columns=keep_columns,
-        verbose_int=verbose_int,
+        verbose=Verbose.from_int(verbose_int),
+        output_action=OutputAction.from_flags(overwrite, skip_existing),
     )
 
 

@@ -1,26 +1,6 @@
-# Documentation
+# Usage
 
-This file contains documentation about the functions and tools to use to run the pipeline.
-
-## Prerequisites
-
-### Pixi dependencies
-
-To run the pipeline, you first need to install the dependencies.
-The easiest way is using [`pixi`](https://pixi.prefix.dev/latest/):
-
-```bash
-pixi install
-```
-
-### Other dependencies
-
-- It is necessary to clone [LiDARHD_Traj_Estimation](https://github.com/whuwuteng/LiDARHD_Traj_Estimation) (not public yet)
-
-TODO:
-
-- Mention the potential issue with installing duckdb spatial extension installation and how to solve it (add an environment variable `POINTS2POINTS_DUCKDB_INSTALL_PATH=spatial` which can be changed to the path where the extension is downloaded if automatic download fails).
-- Make sure it is possible to install LiDARHD_Traj_Estimation
+This file documents the usage of the CLI tools to run the pipeline to produce roofprints and footprints.
 
 ## Steps to run the pipeline
 
@@ -33,7 +13,18 @@ data
 └── tiles           # Data specific to each tile
 ```
 
-Most of the commands in the pipeline are still flexible and will ask for the input and output paths, so you can adapt them to your needs.
+Each tile has its own folder in `data/tiles`, which will have the following structure:
+
+```bash
+<tile_folder>
+├── bdtopo
+├── footprints
+├── lidarhd
+├── roof
+└── roofprints
+```
+
+The sub-commands in the`pipeline` command will expect and follow this structure, but most of the individual commands in the project are still flexible and will ask for the input and output paths, so you can adapt them to your needs.
 
 Regarding the commands themselves, everything below will start with `pixi run <command>` because we assume that everything was installed with `pixi`.
 Then, there are three types of commands:
@@ -68,46 +59,28 @@ pixi run p2p-py lidar_hd download_lidar_hd \
 
 As you can see, we use the `data/tiles` folder to store the data specific to each tile, and each tile has its own folder named with the coordinates of its lower-left corner in kilometers (e.g. the tile `668000,6859000,669000,6860000` will be stored in the folder `data/tiles/668_6859`).
 
-### 2. Download the BD TOPO data
+The structure of each tile is hard-coded in the pipeline as the following:
+
+### 2. Download and prepare the BD TOPO data
 
 You first need to download the BD TOPO data from [cartes.gouv.fr](https://cartes.gouv.fr/rechercher-une-donnee/dataset/IGNF_BD-TOPO) for your area of interest.
 Once extracted (for example with `7z x data/input/bd_topo/BDTOPO_3-5_TOUSTHEMES_GPKG_LAMB93_D077_2026-03-15.7z -odata/input/bd_topo/`), you can convert the data to the expected Parquet format using the following command:
 
 ```bash
 # General command:
-pixi run p2p-py bd_topo convert \
-    -i <input> \
-    -o <output_parquet>
+pixi run p2p-py pipeline prepare_bd_topo \
+    -s <input_file> \
+    -o <output_folder>
 # Example:
-pixi run p2p-py bd_topo convert \
-    -i data/input/bd_topo/BDTOPO_3-5_TOUSTHEMES_GPKG_LAMB93_R11_2026-03-15/BDTOPO/1_DONNEES_LIVRAISON_2026-03-00147/BDT_3-5_GPKG_LAMB93_R11_ED2026-03-15/BDT_3-5_GPKG_LAMB93_R11-ED2026-03-15.gpkg \
-    -o data/formatted/bd_topo/R11-2026_03_15/bd_topo.parquet \
+pixi run p2p-py pipeline prepare_bd_topo \
+    -s data/input/bd_topo/BDTOPO_3-5_TOUSTHEMES_GPKG_LAMB93_R11_2026-03-15/BDTOPO/1_DONNEES_LIVRAISON_2026-03-00147/BDT_3-5_GPKG_LAMB93_R11_ED2026-03-15/BDT_3-5_GPKG_LAMB93_R11-ED2026-03-15.gpkg \
+    -o data/formatted/bd_topo/R11-2026_03_15 \
     -vv
 ```
 
 As you can see we use the `data/input/bd_topo` folder for the raw BD TOPO data, and the `data/formatted/bd_topo` folder for the formatted BD TOPO data.
 
-### 3. Compute intersections between building outlines in BD TOPO
-
-To identify groups of touching building outlines in the BD TOPO data, you can use the following command:
-
-```bash
-# General command:
-pixi run p2p-py bd_topo intersections \
-    -b <input_bd_topo_parquet> \
-    -e <output_edges_parquet> \
-    -i <output_intersections_parquet> \
-    -g <output_building_groups_parquet>
-# Example:
-pixi run p2p-py bd_topo intersections \
-    -b data/formatted/bd_topo/R11-2026_03_15/bd_topo.parquet \
-    -e data/formatted/bd_topo/R11-2026_03_15/edges.parquet \
-    -i data/formatted/bd_topo/R11-2026_03_15/intersections.parquet \
-    -g data/formatted/bd_topo/R11-2026_03_15/building_groups.parquet \
-    -vv
-```
-
-### 4. Run the pipeline
+### 3. Run the pipeline
 
 To run the full pipeline for a given tile, we have a Python script that bundles all the necessary steps.
 The final steps of the pipeline require [`roofer`](https://github.com/3DBAG/roofer) and [`cjseq`](https://github.com/cityjson/cjseq) to be installed.

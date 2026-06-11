@@ -20,7 +20,8 @@ from shapely.geometry import (
 from shapely.ops import unary_union
 from shapely.strtree import STRtree
 
-from ..utils.custom_logging import LoggingContext
+from ..utils.custom_logging import LoggingContext, Verbose
+from ..utils.input_output import OutputAction
 
 
 @dataclass(slots=True)
@@ -450,22 +451,28 @@ def _rebuild_polygon_from_vertex_representatives(
 
 def clean_polygon_topology_implementation(
     input_path: Path,
+    output_path: Path,
     threshold_m: float,
-) -> gpd.GeoDataFrame:
+    output_action: OutputAction,
+) -> None:
     """Clean polygon topology by snapping nearby vertices and rebuilding rings.
 
     Parameters
     ----------
     input_path : Path
         Path to the input polygon dataset (.parquet or .gpkg).
+    output_path : Path
+        Path where the cleaned polygon dataset will be written (.parquet or .gpkg).
     threshold_m : float
         Distance threshold in metres used to merge nearby vertices.
-
-    Returns
-    -------
-    geopandas.GeoDataFrame
-        A new GeoDataFrame with cleaned polygon geometries.
+    output_action: OutputAction
+        The output action to use for handling input and output files.
     """
+    output_action.handle_input_output(
+        message_prefix="Cleaning polygon topology",
+        input_files=[input_path],
+    )
+
     if threshold_m <= 0:
         raise ValueError("The merge threshold must be strictly positive.")
 
@@ -506,86 +513,104 @@ def clean_polygon_topology_implementation(
         polygons_by_feature.append(feature_polygons)
         coordinate_slices.append(feature_coordinate_indices)
 
-    if not coordinate_values:
-        return dataset.copy()
-
-    representatives = _build_vertex_representatives(coordinate_values, threshold_m)
-
-    cleaned_geometries: list[Polygon | MultiPolygon] = []
-    for row_id, feature_polygons in enumerate(polygons_by_feature):
-        cleaned_polygons: list[Polygon] = []
-        coordinate_cursor = 0
-        feature_indices = coordinate_slices[row_id]
-
-        for polygon in feature_polygons:
-            ring_coordinate_count = len(polygon.exterior.coords)
-            polygon_coordinate_indices = feature_indices[
-                coordinate_cursor : coordinate_cursor + ring_coordinate_count
-            ]
-            coordinate_cursor += ring_coordinate_count
-
-            for interior in polygon.interiors:
-                polygon_coordinate_indices.extend(
-                    feature_indices[
-                        coordinate_cursor : coordinate_cursor + len(interior.coords)
-                    ]
-                )
-                coordinate_cursor += len(interior.coords)
-
-            cleaned_polygon = _rebuild_polygon_from_vertex_representatives(
-                polygon,
-                representatives,
-                polygon_coordinate_indices,
-                "input",
-                row_id,
-            )
-            if isinstance(cleaned_polygon, Polygon):
-                cleaned_polygons.append(cleaned_polygon)
-            else:
-                cleaned_polygons.extend(list(cleaned_polygon.geoms))
-
-        if len(cleaned_polygons) == 1:
-            cleaned_geometries.append(cleaned_polygons[0])
-        else:
-            cleaned_geometries.append(MultiPolygon(cleaned_polygons))
-
     cleaned_dataset = dataset.copy()
-    cleaned_dataset.geometry = cleaned_geometries
-    return cleaned_dataset
+
+    if coordinate_values:
+        representatives = _build_vertex_representatives(coordinate_values, threshold_m)
+
+        cleaned_geometries: list[Polygon | MultiPolygon] = []
+        for row_id, feature_polygons in enumerate(polygons_by_feature):
+            cleaned_polygons: list[Polygon] = []
+            coordinate_cursor = 0
+            feature_indices = coordinate_slices[row_id]
+
+            for polygon in feature_polygons:
+                ring_coordinate_count = len(polygon.exterior.coords)
+                polygon_coordinate_indices = feature_indices[
+                    coordinate_cursor : coordinate_cursor + ring_coordinate_count
+                ]
+                coordinate_cursor += ring_coordinate_count
+
+                for interior in polygon.interiors:
+                    polygon_coordinate_indices.extend(
+                        feature_indices[
+                            coordinate_cursor : coordinate_cursor + len(interior.coords)
+                        ]
+                    )
+                    coordinate_cursor += len(interior.coords)
+
+                cleaned_polygon = _rebuild_polygon_from_vertex_representatives(
+                    polygon,
+                    representatives,
+                    polygon_coordinate_indices,
+                    "input",
+                    row_id,
+                )
+                if isinstance(cleaned_polygon, Polygon):
+                    cleaned_polygons.append(cleaned_polygon)
+                else:
+                    cleaned_polygons.extend(list(cleaned_polygon.geoms))
+
+            if len(cleaned_polygons) == 1:
+                cleaned_geometries.append(cleaned_polygons[0])
+            else:
+                cleaned_geometries.append(MultiPolygon(cleaned_polygons))
+
+        cleaned_dataset = dataset.copy()
+        cleaned_dataset.geometry = cleaned_geometries
+
+    write_polygon_topology_results(
+        results=cleaned_dataset,
+        output_path=output_path,
+        output_action=output_action,
+    )
+
+    logging.info(
+        "\n".join(
+            [
+                f"Cleaned polygon features: {len(cleaned_dataset)}",
+                f"Results written to: {output_path}",
+            ]
+        )
+    )
 
 
 def clean_polygon_topology_call(
     input_path: Path,
+    output_path: Path,
     threshold_m: float,
-    verbose_int: int,
-) -> gpd.GeoDataFrame:
+    output_action: OutputAction,
+    verbose: Verbose,
+) -> None:
     """Call wrapper for :func:`clean_polygon_topology_implementation`.
 
     Parameters
     ----------
     input_path : Path
         Path to the input polygon dataset.
+    output_path : Path
+        Path where the cleaned polygon dataset will be written.
     threshold_m : float
         Vertex merge threshold in metres.
-    verbose_int : int
-        Verbosity level forwarded to the logging context.
+    output_action: OutputAction
+        The output action to use for handling input and output files.
+    verbose: Verbose
+        The verbosity level for logging.
 
-    Returns
-    -------
-    geopandas.GeoDataFrame
-        The cleaned polygon dataset.
     """
-    with LoggingContext(verbose=verbose_int):
+    with LoggingContext(verbose=verbose):
         return clean_polygon_topology_implementation(
             input_path=input_path,
+            output_path=output_path,
             threshold_m=threshold_m,
+            output_action=output_action,
         )
 
 
 def write_polygon_topology_results(
     results: gpd.GeoDataFrame,
     output_path: Path,
-    overwrite: bool,
+    output_action: OutputAction,
 ) -> None:
     """Persist cleaned polygon topology results to disk.
 
@@ -595,13 +620,15 @@ def write_polygon_topology_results(
         Cleaned geometries to persist.
     output_path : Path
         Destination path (.parquet or .gpkg supported).
-    overwrite : bool
-        If True, overwrite existing file.
+    output_action: OutputAction
+        The output action to use for handling input and output files.
     """
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_action.handle_input_output(
+        message_prefix="Writing cleaned polygon topology results",
+        output_files=[output_path],
+    )
+
     suffix = output_path.suffix.lower()
-    if output_path.exists() and not overwrite:
-        raise FileExistsError(f"Output file already exists: {output_path}")
     if suffix == ".parquet":
         results.to_parquet(
             output_path,
@@ -640,7 +667,8 @@ def compare_polygon_datasets_implementation(
     output_path: Path,
     id_column: str,
     spacing_m: float,
-    keep_columns: list[str] | None = None,
+    keep_columns: list[str] | None,
+    output_action: OutputAction,
 ) -> None:
     """Compute metrics against a prebuilt aggregated ground-truth dataset.
 
@@ -658,7 +686,15 @@ def compare_polygon_datasets_implementation(
         Sampling spacing in metres used for boundary distances.
     keep_columns : list[str] | None
         Additional columns from the ground-truth dataset to keep in the output.
+    output_action: OutputAction
+        The output action to use for handling input and output files.
     """
+    output_action.handle_input_output(
+        message_prefix="Comparing polygon datasets",
+        input_files=[ground_truth_path, scored_path],
+        output_files=[output_path],
+    )
+
     ground_truth_dataset = _read_polygon_dataset(ground_truth_path)
 
     if _is_aggregated_ground_truth_dataset(ground_truth_dataset):
@@ -789,7 +825,7 @@ def compare_polygon_datasets_implementation(
         paired_results=paired_results, summary=summary
     )
 
-    write_comparison_results(metrics_result.paired_results, output_path)
+    write_comparison_results(metrics_result.paired_results, output_path, output_action)
     logging.info(_format_summary(metrics_result.summary, output_path))
 
 
@@ -799,8 +835,9 @@ def compare_polygon_datasets_call(
     output_path: Path,
     id_column: str,
     spacing_m: float,
-    keep_columns: list[str] | None = None,
-    verbose_int: int = 0,
+    keep_columns: list[str] | None,
+    output_action: OutputAction,
+    verbose: Verbose,
 ) -> None:
     """Entry-point wrapper for dataset comparison with logging context.
 
@@ -818,10 +855,12 @@ def compare_polygon_datasets_call(
         Sampling spacing in metres.
     keep_columns : list[str] | None
         Additional columns from the ground-truth dataset to keep in the output.
-    verbose_int : int
-        Verbosity level for logging.
+    output_action: OutputAction
+        The output action to use for handling input and output files.
+    verbose: Verbose
+        The verbosity level for logging.
     """
-    with LoggingContext(verbose=verbose_int):
+    with LoggingContext(verbose=verbose):
         compare_polygon_datasets_implementation(
             ground_truth_path=ground_truth_path,
             scored_path=scored_path,
@@ -829,10 +868,13 @@ def compare_polygon_datasets_call(
             id_column=id_column,
             spacing_m=spacing_m,
             keep_columns=keep_columns,
+            output_action=output_action,
         )
 
 
-def write_comparison_results(results: pd.DataFrame, output_path: Path) -> None:
+def write_comparison_results(
+    results: pd.DataFrame, output_path: Path, output_action: OutputAction
+) -> None:
     """Write comparison results to CSV, GeoParquet or JSON.
 
     Parameters
@@ -843,8 +885,14 @@ def write_comparison_results(results: pd.DataFrame, output_path: Path) -> None:
         when the output extension is ``.parquet``.
     output_path : Path
         Destination path. Supported extensions: ``.csv``, ``.parquet`` and ``.json``.
+    output_action: OutputAction
+        The output action to use for handling input and output files.
     """
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_action.handle_input_output(
+        message_prefix="Writing comparison results",
+        output_files=[output_path],
+    )
+
     suffix = output_path.suffix.lower()
     if suffix == ".csv":
         csv_results = pd.DataFrame(results.copy())
@@ -868,11 +916,11 @@ def write_comparison_results(results: pd.DataFrame, output_path: Path) -> None:
             except Exception:
                 pass
             if hasattr(v, "wkt"):
-                return v.wkt
+                return getattr(v, "wkt")
             # numpy arrays and pandas arrays -> convert to list
             if hasattr(v, "tolist") and not isinstance(v, str):
                 try:
-                    lst = v.tolist()
+                    lst = getattr(v, "tolist")()
                 except Exception:
                     lst = None
                 if lst is not None:
@@ -884,7 +932,7 @@ def write_comparison_results(results: pd.DataFrame, output_path: Path) -> None:
             # numpy scalar -> python native
             if hasattr(v, "item") and not isinstance(v, str):
                 try:
-                    return v.item()
+                    return getattr(v, "item")()
                 except Exception:
                     pass
             return v

@@ -12,7 +12,7 @@ from pdal import Filter, Pipeline, Reader, Writer
 from tqdm import tqdm
 
 from ..utils.custom_logging import LoggingContext
-from ..utils.utils import Box2154, Point2154
+from ..utils.geom import Box2154, Point2154
 
 
 def get_las_bounds(las_file: Path) -> Box2154:

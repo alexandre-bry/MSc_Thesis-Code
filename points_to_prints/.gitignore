@@ -5,7 +5,7 @@
 .tmp/
 build/
 __pycache__/
-**/.roofer.log.json
+**/roofer.log.json
 
 # Data
 data/

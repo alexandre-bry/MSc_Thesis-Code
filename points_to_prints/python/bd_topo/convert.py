@@ -2,9 +2,13 @@ import logging
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from ..utils.custom_logging import LoggingContext, run_command_with_tqdm_logging
-
+from ..utils.custom_logging import (
+    LoggingContext,
+    Verbose,
+    run_command_with_tqdm_logging,
+)
 from ..utils.duckdb_helpers import DuckDBConnectionManager
+from ..utils.input_output import OutputAction
 
 SCHEMA_NAME = "bd_topo"
 TABLE_NAME = "buildings"
@@ -13,22 +17,28 @@ INITIAL_GEOMETRY_COLUMN_NAME = "geometrie"
 FINAL_GEOMETRY_COLUMN_NAME = "geometry"
 
 
-def convert_bd_topo_to_parquet_implementation(
+def convert_bd_topo_implementation(
     input_path: Path,
     output_path: Path,
-    overwrite: bool,
-    skip_existing: bool,
+    output_action: OutputAction,
 ):
-    if skip_existing and output_path.exists():
-        logging.info(f"Output file {output_path} already exists. Skipping conversion.")
-        return
-    if output_path.exists() and not overwrite:
-        logging.warning(
-            f"Output file {output_path} already exists. Use --overwrite to replace it."
-        )
-        return
+    """Convert a BD TOPO file to Parquet format.
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    Parameters
+    ----------
+    input_path : Path
+        Path to the input BD TOPO file containing all the layers including the buildings layer (e.g., a .gpkg file).
+    output_path : Path
+        Path to the output parquet file.
+    output_action: OutputAction
+        The output action to use for handling input and output files.
+    """
+
+    output_action.handle_input_output(
+        message_prefix=f"Converting {input_path.name} to Parquet",
+        input_files=[input_path],
+        output_files=[output_path],
+    )
 
     # Create a temporary directory to store intermediate files
     logging.info(f"Creating temporary directory for processing {input_path.name}.")
@@ -104,17 +114,28 @@ def convert_bd_topo_to_parquet_implementation(
             )
 
 
-def convert_bd_topo_to_parquet_call(
+def convert_bd_topo_call(
     input_path: Path,
     output_path: Path,
-    overwrite: bool,
-    skip_existing: bool,
-    verbose_int: int,
+    output_action: OutputAction,
+    verbose: Verbose,
 ):
-    with LoggingContext(verbose=verbose_int):
-        convert_bd_topo_to_parquet_implementation(
+    """_summary_
+
+    Parameters
+    ----------
+    input_path : Path
+        Path to the input BD TOPO file containing all the layers including the buildings layer (e.g., a .gpkg file).
+    output_path : Path
+        Path to the output parquet file.
+    output_action: OutputAction
+        The output action to use for handling input and output files.
+    verbose: Verbose
+        The verbosity level for logging.
+    """
+    with LoggingContext(verbose=verbose):
+        convert_bd_topo_implementation(
             input_path=input_path,
             output_path=output_path,
-            overwrite=overwrite,
-            skip_existing=skip_existing,
+            output_action=output_action,
         )

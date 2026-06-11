@@ -4,15 +4,19 @@ from glob import glob
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from ..utils.custom_logging import LoggingContext, run_command_with_tqdm_logging
+from ..utils.custom_logging import (
+    LoggingContext,
+    Verbose,
+    run_command_with_tqdm_logging,
+)
+from ..utils.input_output import OutputAction
 
 
 def roofprints_to_lod22_implementation(
     point_cloud_path: Path,
     roofprints_path: Path,
     roof_path: Path,
-    overwrite: bool,
-    skip_existing: bool,
+    output_action: OutputAction,
 ) -> None:
     """
     Creates a 3D roof model from roofprints and a point cloud.
@@ -26,33 +30,15 @@ def roofprints_to_lod22_implementation(
         Path to the roofprints file (Parquet, GeoPackage, Shapefile, ...).
     roof_path : Path
         Path where the resulting 3D roof model will be saved (CityJSON).
-    overwrite : bool
-        Whether to overwrite the output file if it already exists.
-    skip_existing : bool
-        Whether to skip processing if the output file already exists.
+    output_action: OutputAction
+        The output action to use for handling input and output files.
     """
 
-    if roof_path.exists():
-        if skip_existing:
-            logging.info(
-                f"Output file {roof_path} already exists. Skipping processing."
-            )
-            return
-        elif not overwrite:
-            logging.error(
-                f"Output file {roof_path} already exists. Use --overwrite to overwrite it."
-            )
-            return
-        else:
-            logging.warning(f"Output file {roof_path} already exists. Overwriting it.")
-
-    if not point_cloud_path.exists():
-        logging.error(f"Point cloud file {point_cloud_path} does not exist.")
-        return
-
-    if not roofprints_path.exists():
-        logging.error(f"Roofprints file {roofprints_path} does not exist.")
-        return
+    output_action.handle_input_output(
+        message_prefix="Roofprints to LoD2.2",
+        input_files=[point_cloud_path, roofprints_path],
+        output_files=[roof_path],
+    )
 
     with TemporaryDirectory() as temp_dir:
         # ----------------- Convert roofprints to GeoPackage ----------------- #
@@ -127,17 +113,32 @@ def roofprints_to_lod22_call(
     point_cloud_path: Path,
     roofprints_path: Path,
     roof_path: Path,
-    overwrite: bool,
-    skip_existing: bool,
-    verbose_int: int = 0,
+    output_action: OutputAction,
+    verbose: Verbose,
 ) -> None:
-    with LoggingContext(verbose=verbose_int):
+    """
+    Creates a 3D roof model from roofprints and a point cloud.
+    This simply calls roofer with the appropriate arguments, and then converts the CityJSONSeq output to CityJSON.
+
+    Parameters
+    ----------
+    point_cloud_path : Path
+        Path to the point cloud file (LAS/LAZ).
+    roofprints_path : Path
+        Path to the roofprints file (Parquet, GeoPackage, Shapefile, ...).
+    roof_path : Path
+        Path where the resulting 3D roof model will be saved (CityJSON).
+    output_action: OutputAction
+        The output action to use for handling input and output files.
+    verbose: Verbose
+        The verbosity level for logging.
+    """
+    with LoggingContext(verbose=verbose):
         roof_path.parent.mkdir(parents=True, exist_ok=True)
 
         roofprints_to_lod22_implementation(
             point_cloud_path=point_cloud_path,
             roofprints_path=roofprints_path,
             roof_path=roof_path,
-            overwrite=overwrite,
-            skip_existing=skip_existing,
+            output_action=output_action,
         )

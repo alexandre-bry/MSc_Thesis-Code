@@ -1,3 +1,8 @@
+"""
+Main entry point for the CLI application.
+This module defines the main Typer app and registers all sub-apps for different functionalities.
+"""
+
 from typing import Annotated
 
 import typer

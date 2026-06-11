@@ -3,7 +3,7 @@ from pathlib import Path
 
 from ..lidar_hd.las_manipulations import get_las_bounds
 from ..utils.duckdb_helpers import connect_to_duckdb, create_schema, export_parquet
-from ..utils.utils import Box2154
+from ..utils.geom import Box2154
 
 SCHEMA_NAME = "crop"
 

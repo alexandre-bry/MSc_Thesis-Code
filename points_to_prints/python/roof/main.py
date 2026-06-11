@@ -3,6 +3,9 @@ from typing import Annotated
 
 import typer
 
+from ..utils.custom_logging import Verbose
+from ..utils.input_output import OutputAction
+
 app = typer.Typer(no_args_is_help=True)
 
 
@@ -48,14 +51,14 @@ def roofprints_to_lod22_command(
         bool,
         typer.Option(
             "--overwrite",
-            help="Whether to overwrite the output file if it already exists.",
+            help="Whether to overwrite the output files.",
         ),
     ] = False,
     skip_existing: Annotated[
         bool,
         typer.Option(
             "--skip_existing",
-            help="Whether to skip processing files that already exist.",
+            help="Whether to skip steps if output files already exist.",
         ),
     ] = False,
     verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
@@ -66,9 +69,8 @@ def roofprints_to_lod22_command(
         point_cloud_path=las_file,
         roofprints_path=roofprints_file,
         roof_path=output_file,
-        overwrite=overwrite,
-        skip_existing=skip_existing,
-        verbose_int=verbose_int,
+        output_action=OutputAction.from_flags(overwrite, skip_existing),
+        verbose=Verbose.from_int(verbose_int),
     )
 
 

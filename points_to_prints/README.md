@@ -16,15 +16,26 @@ Reports and slides produced during the thesis are available in [this other repos
     echo 'export PATH="$HOME/.pixi/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
     ```
 
-2. Install the dependencies.
+2. Install most of the dependencies of the project:
 
     ```bash
     pixi install
     ```
 
+3. Then there are a few other dependencies to install manually:
+    - You need to clone [LiDARHD_Traj_Estimation](https://github.com/whuwuteng/LiDARHD_Traj_Estimation) at the root of the project (not public yet)
+    - To use the commands to build the roof and the footprints, you also need to install [`roofer`](https://github.com/3DBAG/roofer) and [`cjseq`](https://github.com/cityjson/cjseq).
+
 ## Usage
 
 To list the available commands, run `pixi task list`.
+The commands are split between two CLIs depending on the language they were implemented in:
+
+- `p2p-py` for the commands implemented in Python.
+  You can get the list of available commands with `pixi run p2p-py --help`.
+- `p2p-cpp` for the commands implemented in C++.
+  You can get the list of available commands with `pixi run p2p-cpp --help`.
+
 See the [documentation](./Documentation.md) for information about the expected pipeline to produce the roofprints and the footprints.
 
 ## Tips
@@ -44,3 +55,5 @@ pixi run entwine build -i <input_laz> -o <output_ept_folder> --deep --srs EPSG:2
 
 - Add the validation dataset
 - Show how to use the `compute_metrics` command with the validation dataset
+- Mention the potential issue with installing duckdb spatial extension installation and how to solve it (add an environment variable `POINTS2POINTS_DUCKDB_INSTALL_PATH=spatial` which can be changed to the path where the extension is downloaded if automatic download fails).
+- Make sure it is possible to install LiDARHD_Traj_Estimation

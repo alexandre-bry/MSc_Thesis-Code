@@ -5,16 +5,15 @@
 
 #include "footprints/footprints.hpp"
 #include "footprints/points_selection.hpp"
-#include "parquet/writer.hpp"
 #include "roofprint_to_3d/transfer_3d.hpp"
 #include "roofprints/distances.hpp"
 #include "roofprints/roofprints.hpp"
 
-void setup_distances_in_order(CLI::App &app) {
+void setup_identify_roof_edge_points(CLI::App &app) {
     auto opt = std::make_shared<IdentifyRoofEdgePointsOptions>();
 
     CLI::App *sub = app.add_subcommand(
-        "distances_in_order", "Compute the distances in GPS time order");
+        "roof_edge_points", "Identify roof edge points in the point cloud");
     sub->add_option("-i,--input", opt->input_points_file, "Input LAS/LAZ file")
         ->required();
     sub->add_option("-t,--trajectory", opt->input_trajectory_file,
@@ -40,9 +39,11 @@ void setup_distances_in_order(CLI::App &app) {
 void setup_compute_roofprints(CLI::App &app) {
     auto opt = std::make_shared<EdgeMatching::ComputeRoofprintsOptions>();
 
-    CLI::App *sub =
-        app.add_subcommand("compute_roofprints", "Compute roofprints");
-    sub->add_option("-l,--input-las", opt->input_las_file, "Input LAS/LAZ file")
+    CLI::App *sub = app.add_subcommand(
+        "roofprints", "Compute the roofprints from the roof edge points and "
+                      "the building edges and intersections from BD TOPO");
+    sub->add_option("-l,--input-las", opt->input_las_file,
+                    "Input LAS/LAZ file containing the roof edge points")
         ->required();
     sub->add_option("-e,--input-bd-topo-edges", opt->input_bd_topo_edges_file,
                     "Input BD TOPO Parquet file with building edges")
@@ -80,8 +81,9 @@ void setup_compute_roofprints(CLI::App &app) {
 void setup_add_inward_directions(CLI::App &app) {
     auto opt = std::make_shared<InwardDirectionsOptions>();
 
-    CLI::App *sub = app.add_subcommand("add_inward_directions",
-                                       "Add inward directions to LAS");
+    CLI::App *sub = app.add_subcommand(
+        "inward_directions",
+        "Compute the inward direction for each point in the point cloud");
 
     sub->add_option("-i,--input", opt->input_points_file, "Input LAS/LAZ file")
         ->required();
@@ -102,74 +104,12 @@ void setup_add_inward_directions(CLI::App &app) {
     });
 }
 
-void setup_roofprints_to_3d(CLI::App &app) {
-    auto opt = std::make_shared<RooprintsTo3DOptions>();
-
-    CLI::App *sub =
-        app.add_subcommand("roofprints_to_3d", "Convert roofprints to 3D");
-    sub->add_option("-i,--input", opt->input_roofprints_file,
-                    "Input Parquet file with roofprints")
-        ->required();
-    sub->add_option("-e,--edge-points", opt->edge_points_file,
-                    "Input LAS/LAZ file with edge points")
-        ->required();
-    sub->add_option("-o,--output", opt->output_roofprints_3d_file,
-                    "Output Parquet file for 3D roofprints")
-        ->required();
-    sub->add_flag("--overwrite", opt->overwrite,
-                  "Overwrite the output file if it exists")
-        ->default_val(false);
-
-    sub->callback([opt]() {
-        auto status =
-            roofprints_to_3d(opt->input_roofprints_file, opt->edge_points_file,
-                             opt->output_roofprints_3d_file, opt->overwrite);
-        if (!status.ok()) {
-            std::cerr << "Error in roofprints_to_3d: " << status.ToString()
-                      << std::endl;
-        }
-    });
-}
-
-void setup_select_points_under_roofs(CLI::App &app) {
-    auto opt =
-        std::make_shared<PointSelection::SelectPointsUnderRoofsOptions>();
-
-    CLI::App *sub = app.add_subcommand(
-        "select_points_under_roofs",
-        "Keep only LAS/LAZ points that are under at least one CityJSON roof");
-    sub->add_option("-p,--input-points", opt->input_points_file,
-                    "Input LAS/LAZ file")
-        ->required();
-    sub->add_option("-l,--input-lod22", opt->input_roofs_file,
-                    "Input CityJSON file with building roofs")
-        ->required();
-    sub->add_option("-o,--output-points", opt->output_points_file,
-                    "Output LAS/LAZ file with selected points")
-        ->required();
-    sub->add_option("-v,--vertical-buffer", opt->vertical_buffer,
-                    "Vertical tolerance below roof surfaces")
-        ->default_val(0.5);
-    sub->add_option("-x,--horizontal-buffer", opt->horizontal_buffer,
-                    "Horizontal halo around roof boundaries")
-        ->default_val(0.3);
-    sub->add_flag("--overwrite", opt->overwrite,
-                  "Overwrite the output file if it exists")
-        ->default_val(false);
-
-    sub->callback([opt]() {
-        PointSelection::select_points_under_roofs(
-            opt->input_points_file, opt->input_roofs_file,
-            opt->output_points_file, opt->vertical_buffer,
-            opt->horizontal_buffer, opt->overwrite);
-    });
-}
-
 void setup_compute_footprints(CLI::App &app) {
     auto opt = std::make_shared<EdgeMatching::ComputeFootprintsOptions>();
 
-    CLI::App *sub =
-        app.add_subcommand("compute_footprints", "Compute footprints");
+    CLI::App *sub = app.add_subcommand(
+        "footprints", "Compute the footprints from the roofprints, the LoD2.2 "
+                      "building models and the point cloud");
     sub->add_option("-p,--input-points", opt->input_points_file,
                     "Input LAS/LAZ file")
         ->required();
@@ -204,17 +144,87 @@ void setup_compute_footprints(CLI::App &app) {
     });
 }
 
+void setup_roofprints_to_3d(CLI::App &app) {
+    auto opt = std::make_shared<RooprintsTo3DOptions>();
+
+    CLI::App *sub = app.add_subcommand(
+        "roofprints_to_3d",
+        "(Experimental) Move the edges of the roofprints to 3D by finding 3D "
+        "segments in their vertical planes");
+    sub->add_option("-i,--input", opt->input_roofprints_file,
+                    "Input Parquet file with roofprints")
+        ->required();
+    sub->add_option("-e,--edge-points", opt->edge_points_file,
+                    "Input LAS/LAZ file with edge points")
+        ->required();
+    sub->add_option("-o,--output", opt->output_roofprints_3d_file,
+                    "Output Parquet file for 3D roofprints")
+        ->required();
+    sub->add_flag("--overwrite", opt->overwrite,
+                  "Overwrite the output file if it exists")
+        ->default_val(false);
+
+    sub->callback([opt]() {
+        auto status =
+            roofprints_to_3d(opt->input_roofprints_file, opt->edge_points_file,
+                             opt->output_roofprints_3d_file, opt->overwrite);
+        if (!status.ok()) {
+            std::cerr << "Error in roofprints_to_3d: " << status.ToString()
+                      << std::endl;
+        }
+    });
+}
+
+void setup_select_points_under_roofs(CLI::App &app) {
+    auto opt =
+        std::make_shared<PointSelection::SelectPointsUnderRoofsOptions>();
+
+    CLI::App *sub = app.add_subcommand(
+        "select_points_under_roofs",
+        "Keep only the points which are under at least one roof surface, with "
+        "a certain vertical and horizontal tolerance");
+    sub->add_option("-p,--input-points", opt->input_points_file,
+                    "Input LAS/LAZ file")
+        ->required();
+    sub->add_option("-l,--input-lod22", opt->input_roofs_file,
+                    "Input CityJSON file with building roofs")
+        ->required();
+    sub->add_option("-o,--output-points", opt->output_points_file,
+                    "Output LAS/LAZ file with selected points")
+        ->required();
+    sub->add_option(
+           "-v,--vertical-buffer", opt->vertical_buffer,
+           "Vertical tolerance below roof surfaces, pointing downwards")
+        ->default_val(0.5);
+    sub->add_option(
+           "-x,--horizontal-buffer", opt->horizontal_buffer,
+           "Horizontal buffer around roof boundaries, pointing outwards")
+        ->default_val(0.3);
+    sub->add_flag("--overwrite", opt->overwrite,
+                  "Overwrite the output file if it exists")
+        ->default_val(false);
+
+    sub->callback([opt]() {
+        PointSelection::select_points_under_roofs(
+            opt->input_points_file, opt->input_roofs_file,
+            opt->output_points_file, opt->vertical_buffer,
+            opt->horizontal_buffer, opt->overwrite);
+    });
+}
+
 struct HelloWorldOptions {
     std::string name;
 };
 
-void setup_add_hello_world(CLI::App &app) {
+CLI::App &setup_add_hello_world(CLI::App &app) {
     auto opt = std::make_shared<HelloWorldOptions>();
 
     CLI::App *sub = app.add_subcommand("hello_world", "Print Hello World");
     sub->add_option("-n,--name", opt->name, "Name to greet")->required();
     sub->callback(
         [opt]() { std::cout << "Hello, " << opt->name << "!" << std::endl; });
+
+    return *sub;
 }
 
 int main(int argc, char **argv) {
@@ -223,10 +233,9 @@ int main(int argc, char **argv) {
 
     // Main commands
     setup_add_inward_directions(app);
-    setup_distances_in_order(app);
+    setup_identify_roof_edge_points(app);
     setup_compute_roofprints(app);
     setup_compute_footprints(app);
-    setup_add_hello_world(app);
 
     CLI::App *sub_utils_roof = app.add_subcommand(
         "utils_roof", "Subcommands related to roofprints and roofs");
@@ -235,6 +244,9 @@ int main(int argc, char **argv) {
     setup_roofprints_to_3d(*sub_utils_roof);
     setup_select_points_under_roofs(*sub_utils_roof);
 
+    auto &hello_world_subcommand = setup_add_hello_world(app);
+
+    // Parse the command line arguments and execute the corresponding command
     CLI11_PARSE(app, argc, argv);
 
     return 0;

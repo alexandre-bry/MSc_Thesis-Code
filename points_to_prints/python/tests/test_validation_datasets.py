@@ -8,8 +8,8 @@ import geopandas as gpd
 from shapely.geometry import Polygon
 
 from python.validation import (
-    build_validation_datasets,
     compare_polygon_datasets_call,
+    prepare_validation_dataset_implementation,
 )
 
 
@@ -45,7 +45,7 @@ class ValidationDatasetTests(unittest.TestCase):
             aggregated_path = temp_dir_path / "aggregated.parquet"
             sample_polygons.to_parquet(input_path, index=False)
 
-            build_validation_datasets(
+            prepare_validation_dataset_implementation(
                 input_ground_truth_path=input_path,
                 id_column="cleabs",
                 individual_output_path=individual_path,
@@ -109,13 +109,13 @@ class ValidationDatasetTests(unittest.TestCase):
             sample_polygons.to_parquet(first_input, index=False)
             sample_polygons.to_parquet(second_input, index=False)
 
-            build_validation_datasets(
+            prepare_validation_dataset_implementation(
                 input_ground_truth_path=first_input,
                 id_column="cleabs",
                 individual_output_path=first_individual,
                 aggregated_output_path=first_aggregated,
             )
-            build_validation_datasets(
+            prepare_validation_dataset_implementation(
                 input_ground_truth_path=second_input,
                 id_column="cleabs",
                 individual_output_path=second_individual,
@@ -148,7 +148,7 @@ class ValidationDatasetTests(unittest.TestCase):
             scored_path = temp_dir_path / "scored.parquet"
             sample_polygons.to_parquet(input_path, index=False)
 
-            build_validation_datasets(
+            prepare_validation_dataset_implementation(
                 input_ground_truth_path=input_path,
                 id_column="cleabs",
                 individual_output_path=individual_path,
@@ -193,7 +193,7 @@ class ValidationDatasetTests(unittest.TestCase):
             scored_path = temp_dir_path / "scored.parquet"
             sample_polygons.to_parquet(input_path, index=False)
 
-            build_validation_datasets(
+            prepare_validation_dataset_implementation(
                 input_ground_truth_path=input_path,
                 id_column="cleabs",
                 individual_output_path=individual_path,

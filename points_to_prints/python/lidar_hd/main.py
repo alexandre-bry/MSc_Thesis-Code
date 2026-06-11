@@ -6,7 +6,7 @@ from typing import Annotated, List
 import typer
 
 from ..utils.custom_logging import LoggingContext
-from .download import download_lidar_hd_data
+from .download import download_lidar_hd_data_implementation
 from .las_manipulations import (
     classification_mapping_call,
     merge_files,
@@ -40,21 +40,26 @@ def download_lidar_hd(
         bool,
         typer.Option(
             "--overwrite",
-            help="Whether to overwrite the files.",
+            help="Whether to overwrite the output files.",
+        ),
+    ] = False,
+    skip_existing: Annotated[
+        bool,
+        typer.Option(
+            "--skip_existing",
+            help="Whether to skip steps if output files already exist.",
         ),
     ] = False,
     verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
 ):
+    bbox_values = bbox.split(",")
+    if len(bbox_values) != 4:
+        raise ValueError("Bounding box must be in the format 'xmin,ymin,xmax,ymax'.")
+    xmin, ymin, xmax, ymax = map(int, bbox_values)
     with LoggingContext(verbose=verbose_int):
-        bbox_values = bbox.split(",")
-        if len(bbox_values) != 4:
-            raise ValueError(
-                "Bounding box must be in the format 'xmin,ymin,xmax,ymax'."
-            )
-        xmin, ymin, xmax, ymax = map(int, bbox_values)
 
         asyncio.run(
-            download_lidar_hd_data(
+            download_lidar_hd_data_implementation(
                 xmin=xmin,
                 ymin=ymin,
                 xmax=xmax,
@@ -102,14 +107,14 @@ def split_point_cloud_command(
         bool,
         typer.Option(
             "--overwrite",
-            help="Whether to overwrite the files.",
+            help="Whether to overwrite the output files.",
         ),
     ] = False,
     skip_existing: Annotated[
         bool,
         typer.Option(
             "--skip_existing",
-            help="Whether to skip processing files that already exist.",
+            help="Whether to skip steps if output files already exist.",
         ),
     ] = False,
     verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
@@ -152,14 +157,14 @@ def merge_las(
         bool,
         typer.Option(
             "--overwrite",
-            help="Whether to overwrite the files.",
+            help="Whether to overwrite the output files.",
         ),
     ] = False,
     skip_existing: Annotated[
         bool,
         typer.Option(
             "--skip_existing",
-            help="Whether to skip processing files that already exist.",
+            help="Whether to skip steps if output files already exist.",
         ),
     ] = False,
     verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
@@ -213,14 +218,14 @@ def classification_mapping(
         bool,
         typer.Option(
             "--overwrite",
-            help="Whether to overwrite the files.",
+            help="Whether to overwrite the output files.",
         ),
     ] = False,
     skip_existing: Annotated[
         bool,
         typer.Option(
             "--skip_existing",
-            help="Whether to skip processing files that already exist.",
+            help="Whether to skip steps if output files already exist.",
         ),
     ] = False,
     verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,

@@ -8,7 +8,9 @@ from typing import Dict, List, Optional, Tuple
 import httpx
 from tqdm import tqdm
 
-from ..utils.utils import Box2154, Point2154
+from ..utils.custom_logging import LoggingContext, Verbose
+from ..utils.geom import Box2154, Point2154
+from ..utils.input_output import OutputAction
 
 WFS_BASE_URL = "https://data.geopf.fr/wfs"
 WFS_TYPENAME = "IGNF_LIDAR-HD_METADONNEE:metadata"
@@ -514,14 +516,14 @@ def validate_downloaded_files(
     return valid_count, invalid_files
 
 
-async def download_lidar_hd_data(
+async def download_lidar_hd_data_implementation(
     xmin: int,
     xmax: int,
     ymin: int,
     ymax: int,
     output_path_template: Path,
-    overwrite: bool,
-    concurrency: int = DEFAULT_CONCURRENCY,
+    output_action: OutputAction,
+    concurrency: Optional[int],
 ) -> None:
     """Download LIDAR HD tiles covering a requested EPSG:2154 bounding box.
 
@@ -537,11 +539,10 @@ async def download_lidar_hd_data(
         Maximum Y coordinate of the requested bounding box in EPSG:2154.
     output_path_template : Path
         Output path template supporting the tile placeholders.
-    overwrite : bool
-        Whether existing files should be replaced.
-    concurrency : int, optional
+    output_action: OutputAction
+        The output action to use for handling input and output files.
+    concurrency : Optional[int]
         Maximum HTTP concurrency for tile discovery and downloading.
-        By default DEFAULT_CONCURRENCY.
     """
     bbox = Box2154(Point2154(xmin, ymin), Point2154(xmax, ymax))
     tiles_boxes = bbox.get_tiles_boxes()
@@ -554,6 +555,8 @@ async def download_lidar_hd_data(
         )
 
     # Discover WFS tiles intersecting the requested area.
+    if concurrency is None:
+        concurrency = DEFAULT_CONCURRENCY
     name_to_url_with_nones = await collect_existing_tiles(
         tiles=tiles_boxes, concurrency=concurrency
     )
@@ -566,37 +569,33 @@ async def download_lidar_hd_data(
 
     # Build the download path map, skipping files that already exist when requested.
     name_to_path: Dict[str, Path] = {}
-    if not overwrite:
-        existing_files: List[str] = []
-        for tile_box in tiles_boxes:
-            tile_name = _tile_box_to_name(tile_box)
-            tile_url = name_to_url.get(tile_name)
-            if tile_url is None:
-                continue
+    for tile_box in tiles_boxes:
+        tile_name = _tile_box_to_name(tile_box)
+        tile_url = name_to_url.get(tile_name)
+        if tile_url is None:
+            continue
 
-            file_name = tile_url.split("/")[-1]
+        file_name = tile_url.split("/")[-1]
 
-            output_path_template_str = str(output_path_template)
-            output_path = output_path_template_str.format(
-                xmin=tile_box.p_min.x,
-                ymin=tile_box.p_min.y,
-                xmax=tile_box.p_max.x,
-                ymax=tile_box.p_max.y,
-                xmin_km=tile_box.p_min.x // 1000,
-                ymin_km=tile_box.p_min.y // 1000,
-                xmax_km=tile_box.p_max.x // 1000,
-                ymax_km=tile_box.p_max.y // 1000,
-                file_name=file_name,
-            )
+        output_path_template_str = str(output_path_template)
+        output_path = output_path_template_str.format(
+            xmin=tile_box.p_min.x,
+            ymin=tile_box.p_min.y,
+            xmax=tile_box.p_max.x,
+            ymax=tile_box.p_max.y,
+            xmin_km=tile_box.p_min.x // 1000,
+            ymin_km=tile_box.p_min.y // 1000,
+            xmax_km=tile_box.p_max.x // 1000,
+            ymax_km=tile_box.p_max.y // 1000,
+            file_name=file_name,
+        )
 
-            if Path(output_path).exists():
-                existing_files.append(file_name)
-            else:
-                name_to_path[tile_name] = Path(output_path)
+        if Path(output_path).exists():
+            existing_files.append(file_name)
+        else:
+            name_to_path[tile_name] = Path(output_path)
 
-        name_to_url = {name: name_to_url[name] for name in name_to_path.keys()}
-
-        logging.info(f"{len(existing_files)} files already exist and will be skipped.")
+    name_to_url = {name: name_to_url[name] for name in name_to_path.keys()}
 
     if len(name_to_url) == 0:
         logging.info("No tiles to download after filtering. Exiting.")
@@ -623,3 +622,45 @@ async def download_lidar_hd_data(
         logging.error(f"{len(invalid_files)} invalid files:")
         for file_name, error in invalid_files:
             logging.error(f"  - {file_name}: {error}")
+
+
+def download_lidar_hd_call(
+    xmin: int,
+    xmax: int,
+    ymin: int,
+    ymax: int,
+    output_path_template: Path,
+    output_action: OutputAction,
+    verbose_int: int,
+    concurrency: Optional[int],
+):
+    """Download LiDAR HD data for a specified bounding box.
+
+    Parameters
+    ----------
+    xmin : int
+        Minimum X coordinate of the requested bounding box in EPSG:2154.
+    xmax : int
+        Maximum X coordinate of the requested bounding box in EPSG:2154.
+    ymin : int
+        Minimum Y coordinate of the requested bounding box in EPSG:2154.
+    ymax : int
+        Maximum Y coordinate of the requested bounding box in EPSG:2154.
+    output_path_template : Path
+        Path to save the downloaded files. The path can contain the values {xmin}, {ymin}, {xmax}, {ymax}, {file_name} which will be replaced with the corresponding values. The values also have their kilometre equivalents {xmin_km}, {ymin_km}, {xmax_km}, {ymax_km}.
+    output_action: OutputAction
+        The output action to use for handling input and output files.
+    verbose: Verbose
+        The verbosity level for logging."""
+    with LoggingContext(verbose=Verbose.from_int(verbose_int)):
+        asyncio.run(
+            download_lidar_hd_data_implementation(
+                xmin=xmin,
+                xmax=xmax,
+                ymin=ymin,
+                ymax=ymax,
+                output_path_template=output_path_template,
+                output_action=output_action,
+                concurrency=concurrency,
+            )
+        )

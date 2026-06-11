@@ -1,14 +1,68 @@
-import asyncio
-import logging
 from pathlib import Path
 from typing import Annotated, List, Optional
 
 import typer
 
-from ..utils.custom_logging import LoggingContext
+from ..utils.custom_logging import Verbose
+from ..utils.input_output import OutputAction
 from .pipeline import run_pipeline_call
 
 app = typer.Typer(no_args_is_help=True)
+
+
+@app.command(
+    "prepare_bd_topo",
+    help="Prepare the BD TOPO data for the pipeline.",
+)
+def prepare_bd_topo_command(
+    bd_topo_source_file: Annotated[
+        Path,
+        typer.Option(
+            "-s",
+            "--bd_topo_source_file",
+            help="Path to the source BD TOPO file (e.g., GeoPackage) to prepare.",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ],
+    bd_topo_output_dir: Annotated[
+        Path,
+        typer.Option(
+            "-o",
+            "--bd_topo_output_dir",
+            help="Directory where the prepared BD TOPO files will be saved.",
+            exists=False,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+        ),
+    ],
+    overwrite: Annotated[
+        bool,
+        typer.Option(
+            "--overwrite",
+            help="Whether to overwrite the output files.",
+        ),
+    ] = False,
+    skip_existing: Annotated[
+        bool,
+        typer.Option(
+            "--skip_existing",
+            help="Whether to skip steps if output files already exist.",
+        ),
+    ] = False,
+    verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
+) -> None:
+    from .bd_topo import prepare_bd_topo_call
+
+    prepare_bd_topo_call(
+        bd_topo_source_file=bd_topo_source_file,
+        bd_topo_output_dir=bd_topo_output_dir,
+        output_action=OutputAction.from_flags(overwrite, skip_existing),
+        verbose=Verbose.from_int(verbose_int),
+    )
 
 
 @app.command(
@@ -69,16 +123,21 @@ def run_pipeline_command(
         ),
     ] = False,
     verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
-    num_workers: Annotated[Optional[int], typer.Option("--num_workers")] = None,
+    num_workers: Annotated[
+        Optional[int],
+        typer.Option(
+            "--num-workers",
+            help="Maximum number of multiprocessing workers (defaults to the platform default).",
+        ),
+    ] = None,
 ):
     run_pipeline_call(
         bd_topo_dir=bd_topo_dir,
         tile_dir=tile_dir,
         stop_after_roofprints=stop_after_roofprints,
         stop_after_lod22=stop_after_lod22,
-        overwrite=overwrite,
-        skip_existing=skip_existing,
-        verbose_int=verbose_int,
+        output_action=OutputAction.from_flags(overwrite, skip_existing),
+        verbose=Verbose.from_int(verbose_int),
         num_workers=num_workers,
     )
 
@@ -163,16 +222,17 @@ def compute_metrics_command(
         bool,
         typer.Option(
             "--overwrite",
-            help="Whether to overwrite existing comparison results.",
+            help="Whether to overwrite the output files.",
         ),
     ] = False,
     skip_existing: Annotated[
         bool,
         typer.Option(
             "--skip_existing",
-            help="Whether to skip comparison if results already exist.",
+            help="Whether to skip steps if output files already exist.",
         ),
     ] = False,
+    verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
     num_workers: Annotated[
         Optional[int],
         typer.Option(
@@ -180,7 +240,6 @@ def compute_metrics_command(
             help="Maximum number of multiprocessing workers (defaults to the platform default).",
         ),
     ] = None,
-    verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
 ) -> None:
     from .pipeline import compute_metrics_call
 
@@ -197,10 +256,9 @@ def compute_metrics_command(
         id_column=id_column,
         spacing_m=spacing_m,
         keep_columns=keep_columns,
-        overwrite=overwrite,
-        skip_existing=skip_existing,
+        output_action=OutputAction.from_flags(overwrite, skip_existing),
+        verbose=Verbose.from_int(verbose_int),
         num_workers=num_workers,
-        verbose_int=verbose_int,
     )
 
 

@@ -6,9 +6,9 @@ aggregated validation data.
 """
 
 from .metrics import compare_polygon_datasets_call
-from .processing import build_validation_datasets
+from .processing import prepare_validation_dataset_implementation
 
 __all__ = [
-    "build_validation_datasets",
+    "prepare_validation_dataset_implementation",
     "compare_polygon_datasets_call",
 ]
