@@ -8,7 +8,7 @@ from ..utils.custom_logging import (
     run_command_with_tqdm_logging,
 )
 from ..utils.duckdb_helpers import DuckDBConnectionManager
-from ..utils.input_output import OutputAction
+from ..utils.input_output import InputOutput, OutputBehaviour
 
 SCHEMA_NAME = "bd_topo"
 TABLE_NAME = "buildings"
@@ -20,7 +20,7 @@ FINAL_GEOMETRY_COLUMN_NAME = "geometry"
 def convert_bd_topo_implementation(
     input_path: Path,
     output_path: Path,
-    output_action: OutputAction,
+    input_output: InputOutput,
 ):
     """Convert a BD TOPO file to Parquet format.
 
@@ -30,14 +30,18 @@ def convert_bd_topo_implementation(
         Path to the input BD TOPO file containing all the layers including the buildings layer (e.g., a .gpkg file).
     output_path : Path
         Path to the output parquet file.
-    output_action: OutputAction
-        The output action to use for handling input and output files.
+    input_output: InputOutput
+        The handler for input and output file issues.
     """
-
-    output_action.handle_input_output(
-        message_prefix=f"Converting {input_path.name} to Parquet",
+    message_prefix = "Converting BD TOPO to Parquet"
+    input_output.handle_input(
+        message_prefix=message_prefix,
         input_files=[input_path],
-        output_files=[output_path],
+    )
+    input_output.handle_output(
+        message_prefix=message_prefix,
+        behaviour=OutputBehaviour.ALL_OR_NOTHING,
+        output_files=[[output_path]],
     )
 
     # Create a temporary directory to store intermediate files
@@ -117,7 +121,7 @@ def convert_bd_topo_implementation(
 def convert_bd_topo_call(
     input_path: Path,
     output_path: Path,
-    output_action: OutputAction,
+    input_output: InputOutput,
     verbose: Verbose,
 ):
     """_summary_
@@ -128,8 +132,8 @@ def convert_bd_topo_call(
         Path to the input BD TOPO file containing all the layers including the buildings layer (e.g., a .gpkg file).
     output_path : Path
         Path to the output parquet file.
-    output_action: OutputAction
-        The output action to use for handling input and output files.
+    input_output: InputOutput
+        The handler for input and output file issues.
     verbose: Verbose
         The verbosity level for logging.
     """
@@ -137,5 +141,5 @@ def convert_bd_topo_call(
         convert_bd_topo_implementation(
             input_path=input_path,
             output_path=output_path,
-            output_action=output_action,
+            input_output=input_output,
         )

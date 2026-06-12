@@ -4,7 +4,7 @@ from typing import Annotated
 import typer
 
 from ..utils.custom_logging import Verbose
-from ..utils.input_output import OutputAction
+from ..utils.input_output import InputOutput
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -57,7 +57,7 @@ def clean_polygon_topology_command(
         input_path=input_path,
         output_path=output_path,
         threshold_m=threshold_m,
-        output_action=OutputAction.from_flags(overwrite, skip_existing),
+        input_output=InputOutput.from_flags(overwrite, skip_existing),
         verbose=Verbose.from_int(verbose_int),
     )
 
@@ -126,7 +126,7 @@ def prepare_validation_dataset_command(
         individual_output_path=individual_output_path,
         aggregated_output_path=aggregated_output_path,
         keep_columns=keep_columns,
-        output_action=OutputAction.from_flags(overwrite, skip_existing),
+        input_output=InputOutput.from_flags(overwrite, skip_existing),
         verbose=Verbose.from_int(verbose_int),
     )
 
@@ -211,7 +211,7 @@ def compare_polygon_datasets_command(
         spacing_m=spacing_m,
         keep_columns=keep_columns,
         verbose=Verbose.from_int(verbose_int),
-        output_action=OutputAction.from_flags(overwrite, skip_existing),
+        input_output=InputOutput.from_flags(overwrite, skip_existing),
     )
 
 

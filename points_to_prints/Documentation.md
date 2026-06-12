@@ -47,19 +47,17 @@ If you know the bounding box on which you want to run the pipeline, you can down
 
 ```bash
 # General command:
-pixi run p2p-py lidar_hd download_lidar_hd \
+pixi run p2p-py pipeline download_lidar_hd \
     --bbox "<minx>,<miny>,<maxx>,<maxy>" \
-    -o "<output_template>"
+    --tiles_dir "output_tiles_directory>"
 # Example:
-pixi run p2p-py lidar_hd download_lidar_hd \
+pixi run p2p-py pipeline download_lidar_hd \
     --bbox "668000,6859000,670000,6861000" \
-    -o "data/tiles/{xmin_km}_{ymin_km}/lidar_hd/lidar_hd.copc.laz" \
+    --tiles_dir "data/tiles" \
     -vv
 ```
 
 As you can see, we use the `data/tiles` folder to store the data specific to each tile, and each tile has its own folder named with the coordinates of its lower-left corner in kilometers (e.g. the tile `668000,6859000,669000,6860000` will be stored in the folder `data/tiles/668_6859`).
-
-The structure of each tile is hard-coded in the pipeline as the following:
 
 ### 2. Download and prepare the BD TOPO data
 

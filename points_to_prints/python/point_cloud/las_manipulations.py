@@ -13,6 +13,7 @@ from tqdm import tqdm
 
 from ..utils.custom_logging import LoggingContext
 from ..utils.geom import Box2154, Point2154
+from ..utils.input_output import InputOutput, OutputBehaviour
 
 
 def get_las_bounds(las_file: Path) -> Box2154:
@@ -85,39 +86,30 @@ def create_merge_pipeline(input_files: List[Path], output_file: Path) -> Dict:
 
 
 def merge_files(
-    input_files: List[Path], output_file: Path, overwrite: bool, skip_existing: bool
+    input_files: List[Path], output_file: Path, input_output: InputOutput
 ) -> None:
     """
     Merge multiple point cloud files into a single output file.
 
-    Args:
-        input_files: List of input point cloud file paths
-        output_file: Output file path
-        overwrite: Whether to overwrite the output file if it already exists
-        skip_existing: Whether to skip processing files that already exist
-
-    Raises:
-        FileNotFoundError: If any input file doesn't exist
-        ValueError: If input_files is empty
+    Parameters
+    ----------
+    input_files : List[Path]
+        List of input point cloud file paths.
+    output_file : Path
+        Output point cloud file path.
+    input_output : InputOutput
+        The handler for input and output file issues.
     """
-    if not input_files:
-        raise ValueError("At least one input file must be provided")
-
-    # Validate input files exist
-    input_paths = [Path(f) for f in input_files]
-    for p in input_paths:
-        if not p.exists():
-            raise FileNotFoundError(f"Input file not found: {p}")
-
-    output_path = Path(output_file)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    # Check if the output file already exists
-    if output_path.exists() and not overwrite:
-        if skip_existing:
-            logging.info(f"Skipping existing output file: {output_path}")
-            return
-        raise FileExistsError(f"Output file already exists: {output_path}")
+    message_prefix = "Merge point clouds"
+    input_output.handle_input(
+        message_prefix=message_prefix,
+        input_files=input_files,
+    )
+    input_output.handle_output(
+        message_prefix=message_prefix,
+        behaviour=OutputBehaviour.ALL_OR_NOTHING,
+        output_files=[[output_file]],
+    )
 
     # Create pipeline
     pipeline = create_merge_pipeline(input_files, output_file)
@@ -133,8 +125,7 @@ def split_point_cloud_implementation(
     input_file: Path,
     output_file_template: Path,
     dimension: str,
-    overwrite: bool,
-    skip_existing: bool,
+    input_output: InputOutput,
 ) -> List[Path]:
     """
     Split a point cloud file into multiple files based on a specified dimension.
@@ -147,10 +138,8 @@ def split_point_cloud_implementation(
         Template for output file paths (should include # placeholder).
     dimension : str
         Dimension to split on (e.g., "Classification").
-    overwrite : bool
-        Whether to overwrite existing output files.
-    skip_existing : bool
-        Whether to skip processing if output files already exist.
+    input_output: InputOutput
+        The handler for input and output file issues.
 
     Returns
     -------
@@ -159,15 +148,11 @@ def split_point_cloud_implementation(
 
     Raises
     ------
-    FileNotFoundError
-        If the input file doesn't exist.
     ValueError
         If the output file template doesn't contain a # placeholder.
-    FileExistsError
-        If the output file already exists and overwrite is False.
     """
-    if not input_file.exists():
-        raise FileNotFoundError(f"Input file not found: {input_file}")
+    message_prefix = "Splitting point cloud"
+    input_output.handle_input(message_prefix=message_prefix, input_files=[input_file])
 
     # Check if the output file template contains the # placeholder
     if "#" not in output_file_template.name:
@@ -203,23 +188,12 @@ def split_point_cloud_implementation(
         for dimension_value in dimension_unique_values
     ]
 
-    # Check if the output directory already contains files that match the output file template pattern
-    if not overwrite or skip_existing:
-        # Count the number of existing files
-        already_existing_files = 0
-        for output_file in output_files:
-            if output_file.exists():
-                already_existing_files += 1
-
-        if skip_existing and already_existing_files == len(output_files):
-            logging.info(
-                f"All output files already exist for the following dimension values: {list(map(str, dimension_unique_values))}.\nSkipping processing due to --skip_existing flag."
-            )
-            return output_files
-        elif not overwrite and already_existing_files > 0:
-            raise FileExistsError(
-                f"Output files already exist for the following dimension values: {list(map(str, dimension_unique_values))}.\nUse --overwrite to overwrite them."
-            )
+    # Check if the output files already exist
+    input_output.handle_output(
+        message_prefix=message_prefix,
+        behaviour=OutputBehaviour.ALL_OR_NOTHING,
+        output_files=[output_files],
+    )
 
     # Write every output to a separate file
     tqdm_iterable = tqdm(
@@ -253,8 +227,7 @@ def split_point_cloud_call(
     input_file: Path,
     output_file_template: Path,
     dimension: str,
-    overwrite: bool,
-    skip_existing: bool,
+    input_output: InputOutput,
     verbose_int: int,
 ):
     with LoggingContext(verbose=verbose_int):
@@ -264,8 +237,7 @@ def split_point_cloud_call(
             input_file=input_file,
             output_file_template=output_file_template,
             dimension=dimension,
-            overwrite=overwrite,
-            skip_existing=skip_existing,
+            input_output=input_output,
         )
 
     return all_output_files
@@ -275,8 +247,7 @@ def classification_mapping_implementation(
     input_file: Path,
     output_file: Path,
     mapping: Dict[int, int],
-    overwrite: bool,
-    skip_existing: bool,
+    input_output: InputOutput,
 ):
     """
     Map the classification values in a LAS/LAZ file to a new set of values based on a provided mapping.
@@ -289,30 +260,16 @@ def classification_mapping_implementation(
         Output LAS/LAZ file.
     mapping : Dict[int, int]
         Mapping of old classification values to new classification values.
-    overwrite : bool
-        Whether to overwrite existing output files.
-    skip_existing : bool
-        Whether to skip processing if output files already exist.
-
-    Raises
-    ------
-    FileNotFoundError
-        If the input file doesn't exist.
-    FileExistsError
-        If the output file already exists and overwrite is False.
+    input_output: InputOutput
+        The handler for input and output file issues.
     """
-    if not input_file.exists():
-        raise FileNotFoundError(f"Input file not found: {input_file}")
-
-    output_path = Path(output_file)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    # Check if the output file already exists
-    if output_path.exists() and not overwrite:
-        if skip_existing:
-            logging.info(f"Skipping existing output file: {output_path}")
-            return
-        raise FileExistsError(f"Output file already exists: {output_path}")
+    message_prefix = "Reclassifying point cloud"
+    input_output.handle_input(message_prefix=message_prefix, input_files=[input_file])
+    input_output.handle_output(
+        message_prefix=message_prefix,
+        behaviour=OutputBehaviour.ALL_OR_NOTHING,
+        output_files=[[output_file]],
+    )
 
     # Create pipeline
     reader = Reader(str(input_file))
@@ -333,8 +290,7 @@ def classification_mapping_call(
     input_file: Path,
     output_file: Path,
     mapping: Dict[int, int],
-    overwrite: bool,
-    skip_existing: bool,
+    input_output: InputOutput,
     verbose_int: int,
 ):
     with LoggingContext(verbose=verbose_int):
@@ -342,6 +298,5 @@ def classification_mapping_call(
             input_file=input_file,
             output_file=output_file,
             mapping=mapping,
-            skip_existing=skip_existing,
-            overwrite=overwrite,
+            input_output=input_output,
         )

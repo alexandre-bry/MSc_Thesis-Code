@@ -1,13 +1,13 @@
 from pathlib import Path
 
 from ..utils.custom_logging import LoggingContext, Verbose
-from ..utils.input_output import OutputAction
+from ..utils.input_output import InputOutput
 
 
 def prepare_bd_topo_implementation(
     bd_topo_source_file: Path,
     bd_topo_output_dir: Path,
-    output_action: OutputAction,
+    input_output: InputOutput,
 ):
     """Prepare the BD TOPO data for the pipeline.
 
@@ -17,12 +17,12 @@ def prepare_bd_topo_implementation(
         Path to the source BD TOPO file (e.g., GeoPackage) to prepare.
     bd_topo_output_dir : Path
         Directory where the prepared BD TOPO files will be saved.
-    output_action: OutputAction
-        The output action to use for handling input and output files.
+    input_output: InputOutput
+        The handler for input and output file issues.
     """
 
     from ..bd_topo.convert import convert_bd_topo_implementation
-    from ..bd_topo.intersections import intersections_implementation
+    from ..outline.intersections import intersections_implementation
 
     full_output_path = bd_topo_output_dir / f"bd_topo.parquet"
     edges_path = bd_topo_output_dir / f"edges.parquet"
@@ -32,8 +32,7 @@ def prepare_bd_topo_implementation(
     convert_bd_topo_implementation(
         input_path=bd_topo_source_file,
         output_path=full_output_path,
-        overwrite=output_action.is_overwrite(),
-        skip_existing=output_action.is_skip_existing(),
+        input_output=input_output,
     )
 
     intersections_implementation(
@@ -41,15 +40,14 @@ def prepare_bd_topo_implementation(
         output_edges_file=edges_path,
         output_intersections_file=intersections_path,
         output_building_groups_file=groups_path,
-        overwrite=output_action.is_overwrite(),
-        skip_existing=output_action.is_skip_existing(),
+        input_output=input_output,
     )
 
 
 def prepare_bd_topo_call(
     bd_topo_source_file: Path,
     bd_topo_output_dir: Path,
-    output_action: OutputAction,
+    input_output: InputOutput,
     verbose: Verbose,
 ):
     """Prepare the BD TOPO data for the pipeline.
@@ -60,8 +58,8 @@ def prepare_bd_topo_call(
         Path to the source BD TOPO file (e.g., GeoPackage) to prepare.
     bd_topo_output_dir : Path
         Directory where the prepared BD TOPO files will be saved.
-    output_action: OutputAction
-        The output action to use for handling input and output files.
+    input_output: InputOutput
+        The handler for input and output file issues.
     verbose: Verbose
         The verbosity level for logging.
     """
@@ -70,5 +68,5 @@ def prepare_bd_topo_call(
         prepare_bd_topo_implementation(
             bd_topo_source_file=bd_topo_source_file,
             bd_topo_output_dir=bd_topo_output_dir,
-            output_action=output_action,
+            input_output=input_output,
         )

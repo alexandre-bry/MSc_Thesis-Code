@@ -7,12 +7,11 @@ from typing import List, Optional, Tuple
 
 from tqdm import tqdm
 
-from ..bd_topo.intersections import (
-    crop_intersections_files,
+from ..outline.intersections import (
+    crop_intersections_implementation,
 )
-from ..lidar_hd.las_manipulations import (
+from ..point_cloud.las_manipulations import (
     classification_mapping_implementation,
-    get_las_bounds,
     merge_files,
     split_point_cloud_implementation,
 )
@@ -22,7 +21,7 @@ from ..utils.custom_logging import (
     Verbose,
     run_command_with_tqdm_logging,
 )
-from ..utils.input_output import OutputAction
+from ..utils.input_output import InputOutput, OutputBehaviour
 
 
 def _build_cpp_tool():
@@ -38,7 +37,7 @@ def _build_cpp_tool():
 
 
 def _compute_inward_direction(
-    input_las_path: Path, output_las_path: Path, output_action: OutputAction
+    input_las_path: Path, output_las_path: Path, input_output: InputOutput
 ):
     """Compute the inward direction to prepare the computation of the roofprints.
 
@@ -48,8 +47,8 @@ def _compute_inward_direction(
         Path to the input point cloud.
     output_las_path : Path
         Path to the output point cloud with the new attributes.
-    output_action: OutputAction
-        The output action to use for handling input and output files.
+    input_output: InputOutput
+        The handler for input and output file issues.
 
     Raises
     ------
@@ -59,10 +58,15 @@ def _compute_inward_direction(
         _description_
     """
     logging.info("Computing the inward direction...")
-    output_action.handle_input_output(
-        message_prefix="Inward direction computation",
+    message_prefix = "Inward direction computation"
+    input_output.handle_input(
+        message_prefix=message_prefix,
         input_files=[input_las_path],
-        output_files=[output_las_path],
+    )
+    input_output.handle_output(
+        message_prefix=message_prefix,
+        behaviour=OutputBehaviour.ALL_OR_NOTHING,
+        output_files=[[output_las_path]],
     )
 
     command_inwards = [
@@ -80,7 +84,7 @@ def _compute_inward_direction(
         "roof",
     ]
 
-    if output_action.is_overwrite():
+    if input_output.is_overwrite():
         command_inwards.append("--overwrite")
 
     return_code = run_command_with_tqdm_logging(command_inwards)
@@ -94,14 +98,13 @@ def _compute_inward_direction(
 def _split_source_point_cloud(
     input_las_path: Path,
     output_template_path: Path,
-    output_action: OutputAction,
+    input_output: InputOutput,
 ) -> List[Path]:
     all_strip_files = split_point_cloud_implementation(
         input_file=input_las_path,
         output_file_template=output_template_path,
         dimension="PointSourceId",
-        overwrite=output_action.is_overwrite(),
-        skip_existing=output_action.is_skip_existing(),
+        input_output=input_output,
     )
     return all_strip_files
 
@@ -109,7 +112,7 @@ def _split_source_point_cloud(
 def _compute_trajectory(
     input_las_path: Path,
     output_trajectory_path: Path,
-    output_action: OutputAction,
+    input_output: InputOutput,
     display: bool,
 ) -> bool:
     """
@@ -121,8 +124,8 @@ def _compute_trajectory(
         Path to the input flight strip LAS/LAZ file.
     output_trajectory_path : Path
         Path to the output trajectory file.
-    output_action: OutputAction
-        The output action to use for handling input and output files.
+    input_output: InputOutput
+        The handler for input and output file issues.
     display : bool
         Whether to display the command output.
 
@@ -137,10 +140,15 @@ def _compute_trajectory(
         If the output file already exists and overwrite is False.
     """
     logging.info(f"Computing the trajectory for {input_las_path}...")
-    output_action.handle_input_output(
-        message_prefix="Trajectory computation",
+    message_prefix = "Trajectory computation"
+    input_output.handle_input(
+        message_prefix=message_prefix,
         input_files=[input_las_path],
-        output_files=[output_trajectory_path],
+    )
+    input_output.handle_output(
+        message_prefix=message_prefix,
+        behaviour=OutputBehaviour.ALL_OR_NOTHING,
+        output_files=[[output_trajectory_path]],
     )
 
     command_trajectory_file_1 = input_las_path.parent / f"{input_las_path.stem}_1.txt"
@@ -180,20 +188,13 @@ def _compute_trajectory(
     return True
 
 
-def _check_file_exists(file_path: Path) -> bool:
-    file_exists = file_path.exists()
-    if not file_exists:
-        logging.error("This file is expected to exist but it is missing.")
-    return file_exists
-
-
-def _compute_single_trajectory(args: Tuple[Path, Path, OutputAction, bool]) -> bool:
+def _compute_single_trajectory(args: Tuple[Path, Path, InputOutput, bool]) -> bool:
     """Helper function for multiprocessing trajectory computation."""
-    input_las_path, output_trajectory_path, output_action, display = args
+    input_las_path, output_trajectory_path, input_output, display = args
     return _compute_trajectory(
         input_las_path=input_las_path,
         output_trajectory_path=output_trajectory_path,
-        output_action=output_action,
+        input_output=input_output,
         display=display,
     )
 
@@ -206,7 +207,7 @@ def _process_bd_topo_data(
     output_edges_file: Path,
     output_intersections_file: Path,
     output_building_groups_file: Path,
-    output_action: OutputAction,
+    input_output: InputOutput,
 ) -> None:
     """Process and crop BD TOPO data to match the LiDAR HD bounds.
 
@@ -226,8 +227,8 @@ def _process_bd_topo_data(
         Path to the output cropped BD TOPO intersections Parquet file.
     output_building_groups_file : Path
         Path to the output cropped BD TOPO building groups Parquet file.
-    output_action : OutputAction
-        The output action to use for handling input and output files.
+    input_output : InputOutput
+        The handler for input and output file issues.
 
     Raises
     ------
@@ -236,34 +237,38 @@ def _process_bd_topo_data(
     """
 
     logging.info("Processing BD TOPO data...")
-
-    output_action.handle_input_output(
-        message_prefix="BD TOPO processing",
+    message_prefix = "BD TOPO processing"
+    input_output.handle_input(
+        message_prefix=message_prefix,
         input_files=[
             initial_laz_file,
             input_edges_file,
             input_intersections_file,
             input_building_groups_file,
         ],
+    )
+    input_output.handle_output(
+        message_prefix=message_prefix,
+        behaviour=OutputBehaviour.ALL_OR_NOTHING,
         output_files=[
-            output_edges_file,
-            output_intersections_file,
-            output_building_groups_file,
+            [
+                output_edges_file,
+                output_intersections_file,
+                output_building_groups_file,
+            ]
         ],
     )
 
     # Crop the BD TOPO data to the bounds of the source LAS/LAZ file
-    bounding_box = get_las_bounds(initial_laz_file)
-    crop_intersections_files(
+    crop_intersections_implementation(
+        input_las_file=initial_laz_file,
         input_edges_file=input_edges_file,
         input_intersections_file=input_intersections_file,
         input_building_groups_file=input_building_groups_file,
         output_edges_file=output_edges_file,
         output_intersections_file=output_intersections_file,
         output_building_groups_file=output_building_groups_file,
-        bounding_box=bounding_box,
-        overwrite=output_action.is_overwrite(),
-        skip_existing=output_action.is_skip_existing(),
+        input_output=input_output,
     )
 
 
@@ -271,7 +276,7 @@ def _process_lidar_hd_data(
     initial_laz_file: Path,
     laz_with_inwards_roof_file: Path,
     template_flight_strip_file: Path,
-    output_action: OutputAction,
+    input_output: InputOutput,
 ) -> List[Path]:
     """Process LiDAR HD data: compute inward directions and split by flight strips.
 
@@ -283,8 +288,8 @@ def _process_lidar_hd_data(
         Output file for LAS/LAZ with inward directions
     template_flight_strip_file : Path
         Template file for flight strip splitting (should contain a "#" character to be replaced by the strip number)
-    output_action : OutputAction
-        The output action to use for handling input and output files.
+    input_output : InputOutput
+        The handler for input and output file issues.
 
     Returns
     -------
@@ -297,14 +302,14 @@ def _process_lidar_hd_data(
     _compute_inward_direction(
         input_las_path=initial_laz_file,
         output_las_path=laz_with_inwards_roof_file,
-        output_action=output_action,
+        input_output=input_output,
     )
 
     # Split the source LAS/LAZ file into multiple files based on the "PointSourceId" attribute
     all_flight_strip_files = _split_source_point_cloud(
         input_las_path=laz_with_inwards_roof_file,
         output_template_path=template_flight_strip_file,
-        output_action=output_action,
+        input_output=input_output,
     )
 
     return sorted(all_flight_strip_files)
@@ -313,7 +318,7 @@ def _process_lidar_hd_data(
 def _compute_trajectories_parallel(
     flight_strip_files: List[Path],
     trajectory_files: List[Path],
-    output_action: OutputAction,
+    input_output: InputOutput,
     num_workers: Optional[int] = None,
 ) -> List[bool]:
     """Compute trajectories for all flight strips in parallel.
@@ -324,8 +329,8 @@ def _compute_trajectories_parallel(
         List of flight strip LAS/LAZ file paths.
     trajectory_files : List[Path]
         List of output trajectory file paths corresponding to each flight strip.
-    output_action : OutputAction
-        The output action to use for handling input and output files.
+    input_output : InputOutput
+        The handler for input and output file issues.
     num_workers : Optional[int], optional
         Number of worker processes (None = CPU count), by default None
 
@@ -334,6 +339,7 @@ def _compute_trajectories_parallel(
     List[bool]
         List of boolean values indicating success or failure for each flight strip.
     """
+
     logging.info(
         f"Computing trajectories for {len(flight_strip_files)} flight strips in parallel..."
     )
@@ -343,7 +349,7 @@ def _compute_trajectories_parallel(
         (
             laz_file,
             trajectory_file,
-            output_action,
+            input_output,
             False,  # display
         )
         for laz_file, trajectory_file in zip(flight_strip_files, trajectory_files)
@@ -362,7 +368,7 @@ def _compute_distances_and_edges(
     trajectory_file: Path,
     distance_file: Path,
     edge_file: Path,
-    output_action: OutputAction,
+    input_output: InputOutput,
     display: bool,
 ) -> None:
     """
@@ -378,16 +384,20 @@ def _compute_distances_and_edges(
         Path to the output distances LAS/LAZ file.
     edge_file : Path
         Path to the output edges LAS/LAZ file.
-    output_action : OutputAction
-        The output action to use for handling input and output files.
+    input_output : InputOutput
+        The handler for input and output file issues.
     display : bool
         Whether to display the command output.
     """
-
-    output_action.handle_input_output(
-        message_prefix="Distances and edges computation",
+    message_prefix = "Distances and edges computation"
+    input_output.handle_input(
+        message_prefix=message_prefix,
         input_files=[laz_file, trajectory_file],
-        output_files=[distance_file, edge_file],
+    )
+    input_output.handle_output(
+        message_prefix=message_prefix,
+        behaviour=OutputBehaviour.ALL_OR_NOTHING,
+        output_files=[[distance_file, edge_file]],
     )
 
     command = [
@@ -408,7 +418,7 @@ def _compute_distances_and_edges(
         str(edge_file),
     ]
 
-    if output_action.is_overwrite():
+    if input_output.is_overwrite():
         command.append("--overwrite")
 
     return_code = run_command_with_tqdm_logging(command, display=display)
@@ -420,14 +430,14 @@ def _compute_distances_and_edges(
 
 
 def _compute_distances_and_edges_single(
-    args: Tuple[Path, Path, Path, Path, int, int, OutputAction, bool],
+    args: Tuple[Path, Path, Path, Path, int, int, InputOutput, bool],
 ) -> Tuple[Path, Path]:
     """Helper function for processing a single file with C++ pipeline.
 
     Parameters
     ----------
-    args : Tuple[Path, Path, Path, Path, int, int, OutputAction, bool]
-        laz_file, trajectory_file, distance_file, edge_file, index, total_files, output_action, display
+    args : Tuple[Path, Path, Path, Path, int, int, InputOutput, bool]
+        laz_file, trajectory_file, distance_file, edge_file, index, total_files, input_output, display
     """
     (
         laz_file,
@@ -436,7 +446,7 @@ def _compute_distances_and_edges_single(
         edge_file,
         index,
         total_files,
-        output_action,
+        input_output,
         display,
     ) = args
 
@@ -449,7 +459,7 @@ def _compute_distances_and_edges_single(
         trajectory_file=trajectory_file,
         distance_file=distance_file,
         edge_file=edge_file,
-        output_action=output_action,
+        input_output=input_output,
         display=display,
     )
 
@@ -461,7 +471,7 @@ def _compute_distances_and_edges_parallel(
     trajectory_files: List[Path],
     distances_files: List[Path],
     edges_files: List[Path],
-    output_action: OutputAction,
+    input_output: InputOutput,
     num_workers: Optional[int] = None,
 ) -> Tuple[List[Path], List[Path]]:
     """Process all flight strips with C++ pipeline in parallel.
@@ -476,8 +486,8 @@ def _compute_distances_and_edges_parallel(
         List of distances file paths.
     edges_files : List[Path]
         List of edges file paths.
-    output_action : OutputAction
-        The output action to use for handling input and output files.
+    input_output : InputOutput
+        The handler for input and output file issues.
     num_workers : Optional[int], optional
         The number of worker processes to use (None = CPU count).
         By default None.
@@ -502,7 +512,7 @@ def _compute_distances_and_edges_parallel(
             edge_file,
             index,
             total_files,
-            output_action,
+            input_output,
             False,  # display
         )
         for index, (laz_file, trajectory_file, distance_file, edge_file) in enumerate(
@@ -528,7 +538,7 @@ def _merge_output_files(
     edges_files: List[Path],
     merged_distances_file: Path,
     merged_edges_file: Path,
-    output_action: OutputAction,
+    input_output: InputOutput,
 ) -> None:
     """Merge distances and edges files from all flight strips.
 
@@ -542,22 +552,20 @@ def _merge_output_files(
         Output path for merged distances LAS/LAZ file.
     merged_edges_file : Path
         Output path for merged edges LAS/LAZ file.
-    output_action : OutputAction
-        The output action to use for handling input and output files.
+    input_output : InputOutput
+        The handler for input and output file issues.
     """
     logging.info("Merging files")
 
     merge_files(
         input_files=distances_files,
         output_file=merged_distances_file,
-        overwrite=output_action.is_overwrite(),
-        skip_existing=output_action.is_skip_existing(),
+        input_output=input_output,
     )
     merge_files(
         input_files=edges_files,
         output_file=merged_edges_file,
-        overwrite=output_action.is_overwrite(),
-        skip_existing=output_action.is_skip_existing(),
+        input_output=input_output,
     )
 
     logging.info("File merging completed.")
@@ -569,7 +577,7 @@ def _compute_roofprints(
     bd_topo_intersections_file: Path,
     output_roofprints_template_file: Path,
     n_iterations: int,
-    output_action: OutputAction,
+    input_output: InputOutput,
 ) -> List[Path]:
     """Compute roofprints from merged edges and BD TOPO data.
 
@@ -585,8 +593,8 @@ def _compute_roofprints(
         Output path for roofprints template file, with one '{iteration}' placeholder which will be replaced with the n_iterations value.
     n_iterations : int
         Number of iterations for roofprint computation.
-    output_action : OutputAction
-        The output action to use for handling input and output files.
+    input_output : InputOutput
+        The handler for input and output file issues.
 
     Raises
     ------
@@ -594,6 +602,12 @@ def _compute_roofprints(
         If the output roofprints file already exists and overwrite is False.
     """
     logging.info("\n\nO----- Computing roofprints -----O\n")
+
+    message_prefix = "Roofprints computation"
+    input_output.handle_input(
+        message_prefix=message_prefix,
+        input_files=[merged_edges_file, bd_topo_edges_file, bd_topo_intersections_file],
+    )
 
     # Check the template
     if str(output_roofprints_template_file).count("{iteration}") != 1:
@@ -608,10 +622,10 @@ def _compute_roofprints(
         for n in iterations
     ]
 
-    output_action.handle_input_output(
-        message_prefix="Roofprints computation",
-        input_files=[merged_edges_file, bd_topo_edges_file, bd_topo_intersections_file],
-        output_files=output_roofprints_files,
+    input_output.handle_output(
+        message_prefix=message_prefix,
+        behaviour=OutputBehaviour.ALL_OR_NOTHING,
+        output_files=[output_roofprints_files],
     )
 
     logging.info(f"Computing roofprints with n_iterations={n_iterations}...")
@@ -636,7 +650,7 @@ def _compute_roofprints(
         str(output_roofprints_template_file),
     ]
 
-    if output_action.is_overwrite():
+    if input_output.is_overwrite():
         command.append("--overwrite")
 
     return_code = run_command_with_tqdm_logging(command)
@@ -653,14 +667,14 @@ def _compute_lod22(
     lidar_hd_reclassified_file: Path,
     roofprints_file: Path,
     output_lod22_cj_file: Path,
-    output_action: OutputAction,
+    input_output: InputOutput,
 ):
     # Compute the roof using roofer
     roofprints_to_lod22_implementation(
         point_cloud_path=lidar_hd_reclassified_file,
         roofprints_path=roofprints_file,
         roof_path=output_lod22_cj_file,
-        output_action=output_action,
+        input_output=input_output,
     )
 
 
@@ -670,7 +684,7 @@ def _compute_footprints(
     roofprints_file: Path,
     output_footprints_template_file: Path,
     n_iterations: int,
-    output_action: OutputAction,
+    input_output: InputOutput,
 ) -> List[Path]:
     """
     Compute the footprints using the C++ pipeline.
@@ -687,8 +701,8 @@ def _compute_footprints(
         Path to the output footprints template file, with one '{iteration}' placeholder which will be replaced with the iteration number.
     n_iterations : int
         Number of iterations for footprint computation.
-    output_action : OutputAction
-        The output action to use for handling input and output files.
+    input_output : InputOutput
+        The handler for input and output file issues.
 
     Raises
     ------
@@ -696,6 +710,12 @@ def _compute_footprints(
         If the output footprint file already exists and overwrite is False.
     """
     logging.info("\n\nO----- Computing footprints -----O\n")
+
+    message_prefix = "Footprints computation"
+    input_output.handle_input(
+        message_prefix=message_prefix,
+        input_files=[lidar_hd_file, lod22_file, roofprints_file],
+    )
 
     # Check the template
     if str(output_footprints_template_file).count("{iteration}") != 1:
@@ -710,10 +730,10 @@ def _compute_footprints(
         for n in iterations
     ]
 
-    output_action.handle_input_output(
-        message_prefix="Footprints computation",
-        input_files=[lidar_hd_file, lod22_file, roofprints_file],
-        output_files=output_footprints_files,
+    input_output.handle_output(
+        message_prefix=message_prefix,
+        behaviour=OutputBehaviour.ALL_OR_NOTHING,
+        output_files=[output_footprints_files],
     )
 
     logging.info(f"Computing footprints with n_iterations={n_iterations}...")
@@ -738,7 +758,7 @@ def _compute_footprints(
         str(n_iterations),
     ]
 
-    if output_action.is_overwrite():
+    if input_output.is_overwrite():
         command.append("--overwrite")
 
     return_code = run_command_with_tqdm_logging(command)
@@ -756,7 +776,7 @@ def run_pipeline_implementation(
     tile_dir: Path,
     stop_after_roofprints: bool,
     stop_after_lod22: bool,
-    output_action: OutputAction,
+    input_output: InputOutput,
     num_workers: Optional[int],
 ):
     """Execute the complete pipeline to compute roofprints from LiDAR HD data.
@@ -771,8 +791,8 @@ def run_pipeline_implementation(
         Whether to stop after computing roofprints
     stop_after_lod22 : bool
         Whether to stop after computing LoD2.2 models
-    output_action: OutputAction
-        The output action to use for handling input and output files.
+    input_output: InputOutput
+        The handler for input and output file issues.
     num_workers : Optional[int]
         Number of worker processes for multiprocessing (None = CPU count)
     """
@@ -789,10 +809,7 @@ def run_pipeline_implementation(
     tile_footprints_dir = tile_dir / "footprints"
     tile_footprints_dir.mkdir(exist_ok=True)
 
-    initial_laz_file = tile_dir / "lidar_hd.copc.laz"
-    if initial_laz_file.exists():
-        initial_laz_file.move(tile_lidar_hd_dir / initial_laz_file.name)
-    initial_laz_file = tile_lidar_hd_dir / initial_laz_file.name
+    initial_laz_file = tile_lidar_hd_dir / "lidar_hd.copc.laz"
 
     # Build the C++ tools
     _build_cpp_tool()
@@ -816,7 +833,7 @@ def run_pipeline_implementation(
         output_edges_file=cropped_edges_file,
         output_intersections_file=cropped_intersections_file,
         output_building_groups_file=cropped_groups_file,
-        output_action=output_action,
+        input_output=input_output,
     )
 
     # -------------------------------------------------------------------- #
@@ -831,7 +848,7 @@ def run_pipeline_implementation(
         initial_laz_file=initial_laz_file,
         laz_with_inwards_roof_file=las_with_inwards_roof_file,
         template_flight_strip_file=template_flight_strip_file,
-        output_action=output_action,
+        input_output=input_output,
     )
 
     # Compute trajectories in parallel
@@ -842,7 +859,7 @@ def run_pipeline_implementation(
     successes = _compute_trajectories_parallel(
         flight_strip_files=all_flight_strip_files,
         trajectory_files=trajectory_files,
-        output_action=output_action,
+        input_output=input_output,
         num_workers=num_workers,
     )
 
@@ -868,7 +885,7 @@ def run_pipeline_implementation(
         trajectory_files=trajectory_files,
         distances_files=distances_files,
         edges_files=edges_files,
-        output_action=output_action,
+        input_output=input_output,
         num_workers=num_workers,
     )
 
@@ -880,7 +897,7 @@ def run_pipeline_implementation(
         edges_files=edges_files,
         merged_distances_file=merged_distances_file,
         merged_edges_file=merged_edges_file,
-        output_action=output_action,
+        input_output=input_output,
     )
 
     # -------------------------------------------------------------------- #
@@ -896,7 +913,7 @@ def run_pipeline_implementation(
         bd_topo_intersections_file=cropped_intersections_file,
         output_roofprints_template_file=roofprints_template_file,
         n_iterations=n_iterations_roofprints,
-        output_action=output_action,
+        input_output=input_output,
     )
 
     if stop_after_roofprints:
@@ -913,8 +930,7 @@ def run_pipeline_implementation(
         input_file=initial_laz_file,
         output_file=reclassified_lidar_hd_file,
         mapping={1: 6, 64: 6, 65: 6, 67: 6},
-        overwrite=output_action.is_overwrite(),
-        skip_existing=output_action.is_skip_existing(),
+        input_output=input_output,
     )
 
     # Compute the LoD22 models
@@ -925,7 +941,7 @@ def run_pipeline_implementation(
             lidar_hd_reclassified_file=reclassified_lidar_hd_file,
             roofprints_file=roofprints_file,
             output_lod22_cj_file=lod22_file,
-            output_action=output_action,
+            input_output=input_output,
         )
         lod22_files.append(lod22_file)
 
@@ -949,7 +965,7 @@ def run_pipeline_implementation(
             roofprints_file=roofprints_file,
             output_footprints_template_file=output_footprints_template_file,
             n_iterations=n_iterations_footprints,
-            output_action=output_action,
+            input_output=input_output,
         )
 
     logging.info("Pipeline completed successfully.")
@@ -960,7 +976,7 @@ def run_pipeline_call(
     tile_dir: Path,
     stop_after_roofprints: bool,
     stop_after_lod22: bool,
-    output_action: OutputAction,
+    input_output: InputOutput,
     verbose: Verbose,
     num_workers: Optional[int],
 ):
@@ -976,8 +992,8 @@ def run_pipeline_call(
         Whether to stop after computing roofprints
     stop_after_lod22: bool
         Whether to stop after computing LoD2.2 models
-    output_action: OutputAction
-        The output action to use for handling input and output files.
+    input_output: InputOutput
+        The handler for input and output file issues.
     verbose: Verbose
         The verbosity level for logging.
     num_workers: Optional[int]
@@ -989,14 +1005,14 @@ def run_pipeline_call(
             tile_dir=tile_dir,
             stop_after_roofprints=stop_after_roofprints,
             stop_after_lod22=stop_after_lod22,
-            output_action=output_action,
+            input_output=input_output,
             num_workers=num_workers,
         )
 
 
 def _compare_polygon_datasets_single_job(
     args: Tuple[
-        Path, Path, Path, Path, Path, str, float, Optional[List[str]], OutputAction
+        Path, Path, Path, Path, Path, str, float, Optional[List[str]], InputOutput
     ],
 ) -> Tuple[Path, Path, Path]:
     """Run one validation comparison job in a worker process."""
@@ -1009,7 +1025,7 @@ def _compare_polygon_datasets_single_job(
         id_column,
         spacing_m,
         keep_columns,
-        output_action,
+        input_output,
     ) = args
 
     from ..validation.metrics import compare_polygon_datasets_implementation
@@ -1041,7 +1057,7 @@ def _compare_polygon_datasets_single_job(
                 id_column=id_column,
                 spacing_m=spacing_m,
                 keep_columns=keep_columns,
-                output_action=output_action,
+                input_output=input_output,
             )
             compare_polygon_datasets_implementation(
                 ground_truth_path=validation_dataset_aggreg_file,
@@ -1050,7 +1066,7 @@ def _compare_polygon_datasets_single_job(
                 id_column=id_column,
                 spacing_m=spacing_m,
                 keep_columns=keep_columns,
-                output_action=output_action,
+                input_output=input_output,
             )
         except Exception:
             logging.exception("Worker failed for %s.", scored_file)
@@ -1069,7 +1085,7 @@ def compute_metrics_implementation(
     id_column: str,
     spacing_m: float,
     keep_columns: Optional[List[str]],
-    output_action: OutputAction,
+    input_output: InputOutput,
     num_workers: Optional[int],
 ):
     """Compare the pipeline output to a validation dataset.
@@ -1094,11 +1110,21 @@ def compute_metrics_implementation(
         Spacing in meters to use for the comparison.
     keep_columns: Optional[List[str]]
          List of additional column names to keep in the output comparison results (in addition to the id_column). If None, only the id_column will be kept.
-    output_action: OutputAction
-        The output action to use for handling input and output files.
+    input_output: InputOutput
+        The handler for input and output file issues.
     num_workers: Optional[int]
         Number of worker processes for multiprocessing (None = CPU count)
     """
+
+    message_prefix = "Computing metrics for pipeline output"
+    input_output.handle_input(
+        message_prefix=message_prefix,
+        input_files=[
+            validation_dataset_indiv_file,
+            validation_dataset_aggreg_file,
+            bd_topo_file,
+        ],
+    )
 
     # Check the output format
     valid_formats = ["parquet", "csv", "json"]
@@ -1112,7 +1138,7 @@ def compute_metrics_implementation(
 
     comparison_jobs: List[
         Tuple[
-            Path, Path, Path, Path, Path, str, float, Optional[List[str]], OutputAction
+            Path, Path, Path, Path, Path, str, float, Optional[List[str]], InputOutput
         ]
     ] = []
 
@@ -1138,19 +1164,19 @@ def compute_metrics_implementation(
                 / f"{tile_name}-{roofprint_name}-aggreg.{output_format}"
             )
 
+    input_output.handle_input(
+        message_prefix=message_prefix,
+        input_files=scored_files,
+    )
+    input_output.handle_output(
+        message_prefix=message_prefix,
+        behaviour=OutputBehaviour.ALL_OR_NOTHING,
+        output_files=list(zip(output_indiv_files, output_aggreg_files)),
+    )
+
     for scored_file, output_indiv_file, output_aggreg_file in zip(
         scored_files, output_indiv_files, output_aggreg_files
     ):
-        output_action.handle_input_output(
-            message_prefix="Comparison",
-            input_files=[
-                scored_file,
-                validation_dataset_indiv_file,
-                validation_dataset_aggreg_file,
-            ],
-            output_files=[output_indiv_file, output_aggreg_file],
-        )
-
         comparison_jobs.append(
             (
                 scored_file,
@@ -1161,7 +1187,7 @@ def compute_metrics_implementation(
                 id_column,
                 spacing_m,
                 keep_columns,
-                output_action,
+                input_output,
             )
         )
 
@@ -1209,7 +1235,7 @@ def compute_metrics_call(
     id_column: str,
     spacing_m: float,
     keep_columns: Optional[List[str]],
-    output_action: OutputAction,
+    input_output: InputOutput,
     verbose: Verbose,
     num_workers: Optional[int],
 ):
@@ -1235,8 +1261,8 @@ def compute_metrics_call(
         Spacing in meters to use for the comparison.
     keep_columns: Optional[List[str]]
         List of additional column names to keep in the output comparison results (in addition to the id_column). If None, only the id_column will be kept.
-    output_action: OutputAction
-        The output action to use for handling input and output files.
+    input_output: InputOutput
+        The handler for input and output file issues.
     verbose: Verbose
         The verbosity level for logging.
     num_workers: Optional[int]
@@ -1254,6 +1280,6 @@ def compute_metrics_call(
             id_column=id_column,
             spacing_m=spacing_m,
             keep_columns=keep_columns,
-            output_action=output_action,
+            input_output=input_output,
             num_workers=num_workers,
         )

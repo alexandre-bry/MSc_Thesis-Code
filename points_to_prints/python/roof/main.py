@@ -4,7 +4,7 @@ from typing import Annotated
 import typer
 
 from ..utils.custom_logging import Verbose
-from ..utils.input_output import OutputAction
+from ..utils.input_output import InputOutput
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -69,7 +69,7 @@ def roofprints_to_lod22_command(
         point_cloud_path=las_file,
         roofprints_path=roofprints_file,
         roof_path=output_file,
-        output_action=OutputAction.from_flags(overwrite, skip_existing),
+        input_output=InputOutput.from_flags(overwrite, skip_existing),
         verbose=Verbose.from_int(verbose_int),
     )
 

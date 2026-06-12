@@ -21,7 +21,7 @@ from shapely.ops import unary_union
 from shapely.strtree import STRtree
 
 from ..utils.custom_logging import LoggingContext, Verbose
-from ..utils.input_output import OutputAction
+from ..utils.input_output import InputOutput
 
 
 @dataclass(slots=True)
@@ -453,7 +453,7 @@ def clean_polygon_topology_implementation(
     input_path: Path,
     output_path: Path,
     threshold_m: float,
-    output_action: OutputAction,
+    input_output: InputOutput,
 ) -> None:
     """Clean polygon topology by snapping nearby vertices and rebuilding rings.
 
@@ -465,10 +465,10 @@ def clean_polygon_topology_implementation(
         Path where the cleaned polygon dataset will be written (.parquet or .gpkg).
     threshold_m : float
         Distance threshold in metres used to merge nearby vertices.
-    output_action: OutputAction
-        The output action to use for handling input and output files.
+    input_output: InputOutput
+        The handler for input and output file issues.
     """
-    output_action.handle_input_output(
+    input_output.handle_input_output(
         message_prefix="Cleaning polygon topology",
         input_files=[input_path],
     )
@@ -562,7 +562,7 @@ def clean_polygon_topology_implementation(
     write_polygon_topology_results(
         results=cleaned_dataset,
         output_path=output_path,
-        output_action=output_action,
+        input_output=input_output,
     )
 
     logging.info(
@@ -579,7 +579,7 @@ def clean_polygon_topology_call(
     input_path: Path,
     output_path: Path,
     threshold_m: float,
-    output_action: OutputAction,
+    input_output: InputOutput,
     verbose: Verbose,
 ) -> None:
     """Call wrapper for :func:`clean_polygon_topology_implementation`.
@@ -592,8 +592,8 @@ def clean_polygon_topology_call(
         Path where the cleaned polygon dataset will be written.
     threshold_m : float
         Vertex merge threshold in metres.
-    output_action: OutputAction
-        The output action to use for handling input and output files.
+    input_output: InputOutput
+        The handler for input and output file issues.
     verbose: Verbose
         The verbosity level for logging.
 
@@ -603,14 +603,14 @@ def clean_polygon_topology_call(
             input_path=input_path,
             output_path=output_path,
             threshold_m=threshold_m,
-            output_action=output_action,
+            input_output=input_output,
         )
 
 
 def write_polygon_topology_results(
     results: gpd.GeoDataFrame,
     output_path: Path,
-    output_action: OutputAction,
+    input_output: InputOutput,
 ) -> None:
     """Persist cleaned polygon topology results to disk.
 
@@ -620,10 +620,10 @@ def write_polygon_topology_results(
         Cleaned geometries to persist.
     output_path : Path
         Destination path (.parquet or .gpkg supported).
-    output_action: OutputAction
-        The output action to use for handling input and output files.
+    input_output: InputOutput
+        The handler for input and output file issues.
     """
-    output_action.handle_input_output(
+    input_output.handle_input_output(
         message_prefix="Writing cleaned polygon topology results",
         output_files=[output_path],
     )
@@ -668,7 +668,7 @@ def compare_polygon_datasets_implementation(
     id_column: str,
     spacing_m: float,
     keep_columns: list[str] | None,
-    output_action: OutputAction,
+    input_output: InputOutput,
 ) -> None:
     """Compute metrics against a prebuilt aggregated ground-truth dataset.
 
@@ -686,10 +686,10 @@ def compare_polygon_datasets_implementation(
         Sampling spacing in metres used for boundary distances.
     keep_columns : list[str] | None
         Additional columns from the ground-truth dataset to keep in the output.
-    output_action: OutputAction
-        The output action to use for handling input and output files.
+    input_output: InputOutput
+        The handler for input and output file issues.
     """
-    output_action.handle_input_output(
+    input_output.handle_input_output(
         message_prefix="Comparing polygon datasets",
         input_files=[ground_truth_path, scored_path],
         output_files=[output_path],
@@ -825,7 +825,7 @@ def compare_polygon_datasets_implementation(
         paired_results=paired_results, summary=summary
     )
 
-    write_comparison_results(metrics_result.paired_results, output_path, output_action)
+    write_comparison_results(metrics_result.paired_results, output_path, input_output)
     logging.info(_format_summary(metrics_result.summary, output_path))
 
 
@@ -836,7 +836,7 @@ def compare_polygon_datasets_call(
     id_column: str,
     spacing_m: float,
     keep_columns: list[str] | None,
-    output_action: OutputAction,
+    input_output: InputOutput,
     verbose: Verbose,
 ) -> None:
     """Entry-point wrapper for dataset comparison with logging context.
@@ -855,8 +855,8 @@ def compare_polygon_datasets_call(
         Sampling spacing in metres.
     keep_columns : list[str] | None
         Additional columns from the ground-truth dataset to keep in the output.
-    output_action: OutputAction
-        The output action to use for handling input and output files.
+    input_output: InputOutput
+        The handler for input and output file issues.
     verbose: Verbose
         The verbosity level for logging.
     """
@@ -868,12 +868,12 @@ def compare_polygon_datasets_call(
             id_column=id_column,
             spacing_m=spacing_m,
             keep_columns=keep_columns,
-            output_action=output_action,
+            input_output=input_output,
         )
 
 
 def write_comparison_results(
-    results: pd.DataFrame, output_path: Path, output_action: OutputAction
+    results: pd.DataFrame, output_path: Path, input_output: InputOutput
 ) -> None:
     """Write comparison results to CSV, GeoParquet or JSON.
 
@@ -885,10 +885,10 @@ def write_comparison_results(
         when the output extension is ``.parquet``.
     output_path : Path
         Destination path. Supported extensions: ``.csv``, ``.parquet`` and ``.json``.
-    output_action: OutputAction
-        The output action to use for handling input and output files.
+    input_output: InputOutput
+        The handler for input and output file issues.
     """
-    output_action.handle_input_output(
+    input_output.handle_input_output(
         message_prefix="Writing comparison results",
         output_files=[output_path],
     )

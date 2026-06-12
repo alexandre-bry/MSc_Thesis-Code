@@ -1,11 +1,11 @@
 import logging
 from pathlib import Path
 
-from ..lidar_hd.las_manipulations import get_las_bounds
+from ..point_cloud.las_manipulations import get_las_bounds
 from ..utils.custom_logging import LoggingContext, Verbose
 from ..utils.duckdb_helpers import DuckDBConnectionManager, DuckDBConnector
 from ..utils.geom import Box2154
-from ..utils.input_output import OutputAction
+from ..utils.input_output import InputOutput, OutputBehaviour
 
 SCHEMA_NAME = "intersections"
 
@@ -19,7 +19,6 @@ GRAPH_EDGES_TABLE_NAME = "graph_edges"
 GRAPH_NODE_TO_ROOT_TABLE_NAME = "graph_node_to_root"
 GRAPH_COMPONENTS_TABLE_NAME = "graph_components"
 
-BUILDING_ID_COLUMN_NAME = "cleabs"
 INITIAL_GEOMETRY_COLUMN_NAME = "geometry"
 GEOMETRY_COLUMN_NAME = "geometry"
 EXTENT_COLUMN_NAME = "extent"
@@ -302,15 +301,18 @@ def intersections_implementation(
     output_edges_file: Path,
     output_intersections_file: Path,
     output_building_groups_file: Path,
-    output_action: OutputAction,
+    input_output: InputOutput,
 ):
-    output_action.handle_input_output(
-        message_prefix=f"Computing intersections for BD TOPO file '{bd_topo_file.name}'",
+    message_prefix = f"Computing intersections for BD TOPO file '{bd_topo_file.name}'"
+    input_output.handle_input(
+        message_prefix=message_prefix,
         input_files=[bd_topo_file],
+    )
+    input_output.handle_output(
+        message_prefix=message_prefix,
+        behaviour=OutputBehaviour.ALL_OR_NOTHING,
         output_files=[
-            output_edges_file,
-            output_intersections_file,
-            output_building_groups_file,
+            [output_edges_file, output_intersections_file, output_building_groups_file]
         ],
     )
 
@@ -333,7 +335,7 @@ def intersections_call(
     output_edges_file: Path,
     output_intersections_file: Path,
     output_building_groups_file: Path,
-    output_action: OutputAction,
+    input_output: InputOutput,
     verbose: Verbose,
 ):
     """_summary_
@@ -348,8 +350,8 @@ def intersections_call(
         Output Parquet file where the intersections will be saved.
     output_building_groups_file : Path
         Output Parquet file where the building groups will be saved.
-    output_action: OutputAction
-        The output action to use for handling input and output files.
+    input_output: InputOutput
+        The handler for input and output file issues.
     verbose: Verbose
         The verbosity level for logging.
     """
@@ -359,7 +361,7 @@ def intersections_call(
             output_edges_file=output_edges_file,
             output_intersections_file=output_intersections_file,
             output_building_groups_file=output_building_groups_file,
-            output_action=output_action,
+            input_output=input_output,
         )
 
 
@@ -371,20 +373,23 @@ def crop_intersections_implementation(
     output_edges_file: Path,
     output_intersections_file: Path,
     output_building_groups_file: Path,
-    output_action: OutputAction,
+    input_output: InputOutput,
 ):
-    output_action.handle_input_output(
-        message_prefix=f"Cropping intersections for LAS file '{input_las_file.name}'",
+    message_prefix = f"Cropping intersections for LAS file '{input_las_file.name}'"
+    input_output.handle_input(
+        message_prefix=message_prefix,
         input_files=[
             input_las_file,
             input_edges_file,
             input_intersections_file,
             input_building_groups_file,
         ],
+    )
+    input_output.handle_output(
+        message_prefix=message_prefix,
+        behaviour=OutputBehaviour.ALL_OR_NOTHING,
         output_files=[
-            output_edges_file,
-            output_intersections_file,
-            output_building_groups_file,
+            [output_edges_file, output_intersections_file, output_building_groups_file]
         ],
     )
 
@@ -502,7 +507,7 @@ def crop_intersections_call(
     output_edges_file: Path,
     output_intersections_file: Path,
     output_building_groups_file: Path,
-    output_action: OutputAction,
+    input_output: InputOutput,
     verbose: Verbose,
 ):
     with LoggingContext(verbose=verbose):
@@ -514,5 +519,5 @@ def crop_intersections_call(
             output_edges_file=output_edges_file,
             output_intersections_file=output_intersections_file,
             output_building_groups_file=output_building_groups_file,
-            output_action=output_action,
+            input_output=input_output,
         )

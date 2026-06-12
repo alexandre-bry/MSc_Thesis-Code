@@ -9,14 +9,14 @@ from ..utils.custom_logging import (
     Verbose,
     run_command_with_tqdm_logging,
 )
-from ..utils.input_output import OutputAction
+from ..utils.input_output import InputOutput, OutputBehaviour
 
 
 def roofprints_to_lod22_implementation(
     point_cloud_path: Path,
     roofprints_path: Path,
     roof_path: Path,
-    output_action: OutputAction,
+    input_output: InputOutput,
 ) -> None:
     """
     Creates a 3D roof model from roofprints and a point cloud.
@@ -30,14 +30,18 @@ def roofprints_to_lod22_implementation(
         Path to the roofprints file (Parquet, GeoPackage, Shapefile, ...).
     roof_path : Path
         Path where the resulting 3D roof model will be saved (CityJSON).
-    output_action: OutputAction
-        The output action to use for handling input and output files.
+    input_output: InputOutput
+        The handler for input and output file issues.
     """
-
-    output_action.handle_input_output(
-        message_prefix="Roofprints to LoD2.2",
+    message_prefix = "Roofprints to LoD2.2"
+    input_output.handle_input(
+        message_prefix=message_prefix,
         input_files=[point_cloud_path, roofprints_path],
-        output_files=[roof_path],
+    )
+    input_output.handle_output(
+        message_prefix=message_prefix,
+        behaviour=OutputBehaviour.ALL_OR_NOTHING,
+        output_files=[[roof_path]],
     )
 
     with TemporaryDirectory() as temp_dir:
@@ -113,7 +117,7 @@ def roofprints_to_lod22_call(
     point_cloud_path: Path,
     roofprints_path: Path,
     roof_path: Path,
-    output_action: OutputAction,
+    input_output: InputOutput,
     verbose: Verbose,
 ) -> None:
     """
@@ -128,8 +132,8 @@ def roofprints_to_lod22_call(
         Path to the roofprints file (Parquet, GeoPackage, Shapefile, ...).
     roof_path : Path
         Path where the resulting 3D roof model will be saved (CityJSON).
-    output_action: OutputAction
-        The output action to use for handling input and output files.
+    input_output: InputOutput
+        The handler for input and output file issues.
     verbose: Verbose
         The verbosity level for logging.
     """
@@ -140,5 +144,5 @@ def roofprints_to_lod22_call(
             point_cloud_path=point_cloud_path,
             roofprints_path=roofprints_path,
             roof_path=roof_path,
-            output_action=output_action,
+            input_output=input_output,
         )

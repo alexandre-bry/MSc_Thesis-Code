@@ -4,10 +4,74 @@ from typing import Annotated, List, Optional
 import typer
 
 from ..utils.custom_logging import Verbose
-from ..utils.input_output import OutputAction
-from .pipeline import run_pipeline_call
+from ..utils.input_output import InputOutput
 
 app = typer.Typer(no_args_is_help=True)
+
+
+@app.command(
+    "download_lidar_hd",
+    help="Download LiDAR HD data for a specified bounding box.",
+)
+def download_lidar_hd_pipeline_command(
+    bbox: Annotated[
+        str,
+        typer.Option(
+            "-b",
+            "--bbox",
+            help="Bounding box to download data for, in the format 'xmin,ymin,xmax,ymax'.",
+        ),
+    ],
+    tiles_dir: Annotated[
+        Path,
+        typer.Option(
+            "-t",
+            "--tiles_dir",
+            help="Directory where to download the tiles.",
+        ),
+    ],
+    overwrite: Annotated[
+        bool,
+        typer.Option(
+            "--overwrite",
+            help="Whether to overwrite the output files.",
+        ),
+    ] = False,
+    skip_existing: Annotated[
+        bool,
+        typer.Option(
+            "--skip_existing",
+            help="Whether to skip steps if output files already exist.",
+        ),
+    ] = False,
+    verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
+    concurrency: Annotated[
+        Optional[int],
+        typer.Option(
+            "--concurrency",
+            help="Number of concurrent requests to send.",
+        ),
+    ] = None,
+):
+    from .lidar_hd import download_lidar_hd_pipeline_call
+
+    bbox_values = bbox.split(",")
+    if len(bbox_values) != 4:
+        raise ValueError("Bounding box must be in the format 'xmin,ymin,xmax,ymax'.")
+    xmin, ymin, xmax, ymax = map(int, bbox_values)
+
+    download_lidar_hd_pipeline_call(
+        xmin=xmin,
+        ymin=ymin,
+        xmax=xmax,
+        ymax=ymax,
+        tiles_dir=tiles_dir,
+        input_output=InputOutput.from_flags(
+            overwrite=overwrite, skip_existing=skip_existing
+        ),
+        verbose=Verbose.from_int(verbose_int),
+        concurrency=concurrency,
+    )
 
 
 @app.command(
@@ -60,7 +124,7 @@ def prepare_bd_topo_command(
     prepare_bd_topo_call(
         bd_topo_source_file=bd_topo_source_file,
         bd_topo_output_dir=bd_topo_output_dir,
-        output_action=OutputAction.from_flags(overwrite, skip_existing),
+        input_output=InputOutput.from_flags(overwrite, skip_existing),
         verbose=Verbose.from_int(verbose_int),
     )
 
@@ -131,12 +195,14 @@ def run_pipeline_command(
         ),
     ] = None,
 ):
+    from .pipeline import run_pipeline_call
+
     run_pipeline_call(
         bd_topo_dir=bd_topo_dir,
         tile_dir=tile_dir,
         stop_after_roofprints=stop_after_roofprints,
         stop_after_lod22=stop_after_lod22,
-        output_action=OutputAction.from_flags(overwrite, skip_existing),
+        input_output=InputOutput.from_flags(overwrite, skip_existing),
         verbose=Verbose.from_int(verbose_int),
         num_workers=num_workers,
     )
@@ -256,7 +322,7 @@ def compute_metrics_command(
         id_column=id_column,
         spacing_m=spacing_m,
         keep_columns=keep_columns,
-        output_action=OutputAction.from_flags(overwrite, skip_existing),
+        input_output=InputOutput.from_flags(overwrite, skip_existing),
         verbose=Verbose.from_int(verbose_int),
         num_workers=num_workers,
     )

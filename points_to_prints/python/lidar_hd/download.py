@@ -10,7 +10,7 @@ from tqdm import tqdm
 
 from ..utils.custom_logging import LoggingContext, Verbose
 from ..utils.geom import Box2154, Point2154
-from ..utils.input_output import OutputAction
+from ..utils.input_output import InputOutput, OutputAction, OutputActionEnum
 
 WFS_BASE_URL = "https://data.geopf.fr/wfs"
 WFS_TYPENAME = "IGNF_LIDAR-HD_METADONNEE:metadata"
@@ -516,13 +516,13 @@ def validate_downloaded_files(
     return valid_count, invalid_files
 
 
-async def download_lidar_hd_data_implementation(
+async def download_lidar_hd_data_async(
     xmin: int,
     xmax: int,
     ymin: int,
     ymax: int,
     output_path_template: Path,
-    output_action: OutputAction,
+    input_output: InputOutput,
     concurrency: Optional[int],
 ) -> None:
     """Download LIDAR HD tiles covering a requested EPSG:2154 bounding box.
@@ -539,8 +539,8 @@ async def download_lidar_hd_data_implementation(
         Maximum Y coordinate of the requested bounding box in EPSG:2154.
     output_path_template : Path
         Output path template supporting the tile placeholders.
-    output_action: OutputAction
-        The output action to use for handling input and output files.
+    input_output: InputOutput
+        The handler for input and output file issues.
     concurrency : Optional[int]
         Maximum HTTP concurrency for tile discovery and downloading.
     """
@@ -590,13 +590,23 @@ async def download_lidar_hd_data_implementation(
             file_name=file_name,
         )
 
-        if Path(output_path).exists():
-            existing_files.append(file_name)
-        else:
-            name_to_path[tile_name] = Path(output_path)
+        name_to_path[tile_name] = Path(output_path)
 
-    name_to_url = {name: name_to_url[name] for name in name_to_path.keys()}
+    # Handle input/output
+    output_actions = input_output.get_output_actions(
+        message_prefix="Downloaded LiDAR HD tiles",
+        output_files=list(map(lambda path: [path], name_to_path.values())),
+    )
 
+    initial_keys = list(name_to_path.keys())
+    for output_action, name in zip(output_actions, initial_keys):
+        if output_action == OutputActionEnum.SKIP:
+            name_to_url.pop(name)
+            name_to_path.pop(name)
+        elif output_action == OutputActionEnum.ERROR:
+            raise Exception(f"Unexpected error when handling input/output for {name}")
+
+    # Return if all tiles have already been downloaded
     if len(name_to_url) == 0:
         logging.info("No tiles to download after filtering. Exiting.")
         return
@@ -624,14 +634,13 @@ async def download_lidar_hd_data_implementation(
             logging.error(f"  - {file_name}: {error}")
 
 
-def download_lidar_hd_call(
+def download_lidar_hd_data_implementation(
     xmin: int,
     xmax: int,
     ymin: int,
     ymax: int,
     output_path_template: Path,
-    output_action: OutputAction,
-    verbose_int: int,
+    input_output: InputOutput,
     concurrency: Optional[int],
 ):
     """Download LiDAR HD data for a specified bounding box.
@@ -648,19 +657,62 @@ def download_lidar_hd_call(
         Maximum Y coordinate of the requested bounding box in EPSG:2154.
     output_path_template : Path
         Path to save the downloaded files. The path can contain the values {xmin}, {ymin}, {xmax}, {ymax}, {file_name} which will be replaced with the corresponding values. The values also have their kilometre equivalents {xmin_km}, {ymin_km}, {xmax_km}, {ymax_km}.
-    output_action: OutputAction
-        The output action to use for handling input and output files.
+    input_output: InputOutput
+        The handler for input and output file issues.
+    concurrency: Optional[int]
+        Maximum number of concurrent download workers.
+    """
+    asyncio.run(
+        download_lidar_hd_data_async(
+            xmin=xmin,
+            xmax=xmax,
+            ymin=ymin,
+            ymax=ymax,
+            output_path_template=output_path_template,
+            input_output=input_output,
+            concurrency=concurrency,
+        )
+    )
+
+
+def download_lidar_hd_call(
+    xmin: int,
+    xmax: int,
+    ymin: int,
+    ymax: int,
+    output_path_template: Path,
+    input_output: InputOutput,
+    verbose: Verbose,
+    concurrency: Optional[int],
+):
+    """Download LiDAR HD data for a specified bounding box.
+
+    Parameters
+    ----------
+    xmin : int
+        Minimum X coordinate of the requested bounding box in EPSG:2154.
+    xmax : int
+        Maximum X coordinate of the requested bounding box in EPSG:2154.
+    ymin : int
+        Minimum Y coordinate of the requested bounding box in EPSG:2154.
+    ymax : int
+        Maximum Y coordinate of the requested bounding box in EPSG:2154.
+    output_path_template : Path
+        Path to save the downloaded files. The path can contain the values {xmin}, {ymin}, {xmax}, {ymax}, {file_name} which will be replaced with the corresponding values. The values also have their kilometre equivalents {xmin_km}, {ymin_km}, {xmax_km}, {ymax_km}.
+    input_output: InputOutput
+        The handler for input and output file issues.
     verbose: Verbose
-        The verbosity level for logging."""
-    with LoggingContext(verbose=Verbose.from_int(verbose_int)):
-        asyncio.run(
-            download_lidar_hd_data_implementation(
-                xmin=xmin,
-                xmax=xmax,
-                ymin=ymin,
-                ymax=ymax,
-                output_path_template=output_path_template,
-                output_action=output_action,
-                concurrency=concurrency,
-            )
+        The verbosity level for logging.
+    concurrency: Optional[int]
+        Maximum number of concurrent download workers.
+    """
+    with LoggingContext(verbose=verbose):
+        download_lidar_hd_data_implementation(
+            xmin=xmin,
+            xmax=xmax,
+            ymin=ymin,
+            ymax=ymax,
+            output_path_template=output_path_template,
+            input_output=input_output,
+            concurrency=concurrency,
         )

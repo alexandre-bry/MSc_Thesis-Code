@@ -9,7 +9,9 @@ import typer
 
 from .bd_topo.main import app as bd_topo_app
 from .lidar_hd.main import app as lidar_hd_app
+from .outline.main import app as outline_app
 from .pipeline.main import app as pipeline_app
+from .point_cloud.main import app as point_cloud_app
 from .polygon_deformation.main import app as polygon_deformation_app
 from .roof.main import app as roof_app
 from .validation.main import app as validation_app
@@ -29,6 +31,16 @@ main_app.add_typer(
 main_app.add_typer(
     lidar_hd_app,
     name="lidar_hd",
+    help="Download and process the LiDAR HD dataset.",
+)
+main_app.add_typer(
+    outline_app,
+    name="outline",
+    help="Compute and manipulate the outline of a building.",
+)
+main_app.add_typer(
+    point_cloud_app,
+    name="point_cloud",
     help="Download and process the LiDAR HD dataset, and more generally manipulate LAS/LAZ point clouds.",
 )
 main_app.add_typer(
