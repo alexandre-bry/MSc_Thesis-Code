@@ -26,14 +26,12 @@ def export_parquet(
     output_file: Path,
 ):
     # Get the columns of the table
-    columns = con.execute(
-        f"""
+    columns = con.execute(f"""
         SELECT column_name
         FROM information_schema.columns
         WHERE table_name = '{table_name.split('.')[-1]}'
             AND table_schema = '{table_name.split('.')[0]}';
-    """
-    ).fetchall()
+    """).fetchall()
 
     if not columns:
         raise ValueError(f"Could not retrieve columns for table '{table_name}'")
@@ -51,16 +49,14 @@ def export_parquet(
         columns.append(bbox_column)
 
     # Calculate dataset bounds
-    bounds_result = con.execute(
-        f"""
+    bounds_result = con.execute(f"""
         SELECT
             MIN(ST_XMin("{geom_col_name}")) as xmin,
             MIN(ST_YMin("{geom_col_name}")) as ymin,
             MAX(ST_XMax("{geom_col_name}")) as xmax,
             MAX(ST_YMax("{geom_col_name}")) as ymax
         FROM {table_name};
-    """
-    ).fetchone()
+    """).fetchone()
 
     if not bounds_result or any(v is None for v in bounds_result):
         raise ValueError("Could not calculate dataset bounds from table")
@@ -107,14 +103,12 @@ class DuckDBConnector:
         self, schema_name: str, table_name: str, geom_col_name: str, output_file: Path
     ):
         # Get the columns of the table
-        columns = self.execute(
-            f"""
+        columns = self.execute(f"""
             SELECT column_name
             FROM information_schema.columns
             WHERE table_name = '{table_name}'
                 AND table_schema = '{schema_name}';
-        """
-        ).fetchall()
+        """).fetchall()
 
         if not columns:
             raise ValueError(
@@ -134,16 +128,14 @@ class DuckDBConnector:
             columns.append(bbox_column)
 
         # Calculate dataset bounds
-        bounds_result = self.execute(
-            f"""
+        bounds_result = self.execute(f"""
             SELECT
                 MIN(ST_XMin("{geom_col_name}")) as xmin,
                 MIN(ST_YMin("{geom_col_name}")) as ymin,
                 MAX(ST_XMax("{geom_col_name}")) as xmax,
                 MAX(ST_YMax("{geom_col_name}")) as ymax
             FROM {schema_name}.{table_name};
-        """
-        ).fetchone()
+        """).fetchone()
 
         if not bounds_result or any(v is None for v in bounds_result):
             raise ValueError("Could not calculate dataset bounds from table")

@@ -11,7 +11,7 @@ These libraries are:
 - [indicators](https://github.com/p-ranav/indicators)
 - [json](https://github.com/nlohmann/json)
 
-## Compilation and execution
+## Usage
 
 This repo uses CMake as the build system, and executables are built in the [build/](./build/) directory.
 
@@ -29,7 +29,7 @@ For example, to run the command `hello_world` with the argument `name` equal to 
 ```bash
 # The current directory is cpp/
 
-# If already compiled:
+# if already compiled:
 ./build/Release/executable/Points2Prints hello_world --name Alexandre
 
 # or with just:
@@ -38,6 +38,6 @@ just run release hello_world --name Alexandre
 # or with pixi:
 pixi run cpp run release -- hello_world --name Alexandre
 
-# or with pixi and the p2p-cpp command
+# or with pixi and the p2p-cpp command:
 pixi run p2p-cpp hello_world --name Alexandre
 ```

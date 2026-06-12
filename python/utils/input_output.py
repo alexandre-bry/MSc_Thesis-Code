@@ -4,12 +4,6 @@ from pathlib import Path
 from typing import List, Sequence
 
 
-class OutputResult(Enum):
-    NONE_EXISTS = "none_exists"
-    SOME_EXIST = "some_exist"
-    ALL_EXIST = "all_exist"
-
-
 class OutputActionEnum(Enum):
     PROCEED = "proceed"
     SKIP = "skip"

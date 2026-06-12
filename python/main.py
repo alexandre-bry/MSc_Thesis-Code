@@ -21,37 +21,37 @@ main_app = typer.Typer(no_args_is_help=True)
 main_app.add_typer(
     pipeline_app,
     name="pipeline",
-    help="Run the whole pipeline to produce roofprints and footprints in one go.",
+    help="Wrappers to run the entire pipeline on the BD TOPO and LiDAR HD datasets.",
 )
 main_app.add_typer(
     bd_topo_app,
     name="bd_topo",
-    help="Pre-process the BD TOPO dataset.",
+    help="Functions specific to the BD TOPO dataset.",
 )
 main_app.add_typer(
     lidar_hd_app,
     name="lidar_hd",
-    help="Download and process the LiDAR HD dataset.",
+    help="Functions specific to the LiDAR HD dataset.",
 )
 main_app.add_typer(
     outline_app,
     name="outline",
-    help="Compute and manipulate the outline of a building.",
+    help="Manipulate building outlines.",
 )
 main_app.add_typer(
     point_cloud_app,
     name="point_cloud",
-    help="Download and process the LiDAR HD dataset, and more generally manipulate LAS/LAZ point clouds.",
+    help="Manipulate point clouds.",
 )
 main_app.add_typer(
     roof_app,
     name="roof",
-    help="Compute and manipulate the roof of a building.",
+    help="Compute the roof of a building.",
 )
 main_app.add_typer(
     validation_app,
     name="validation",
-    help="Clean up the validation dataset and compute metrics.",
+    help="Clean up the validation dataset and use it to compute metrics.",
 )
 main_app.add_typer(
     polygon_deformation_app,
