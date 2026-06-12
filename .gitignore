@@ -1,3 +1,11 @@
+# Binaries, cache, build, log
+.venv/
+.cache/
+.temp/
+.tmp/
+build/
+__pycache__/
+**/roofer.log.json
+
+# Data
 data/
-ahn_3Dbag_cpp/
-3dbag_preprocessing/

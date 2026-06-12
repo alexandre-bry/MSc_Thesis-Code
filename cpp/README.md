@@ -37,4 +37,7 @@ just run release hello_world --name Alexandre
 
 # or with pixi:
 pixi run cpp run release -- hello_world --name Alexandre
+
+# or with pixi and the p2p-cpp command
+pixi run p2p-cpp hello_world --name Alexandre
 ```
