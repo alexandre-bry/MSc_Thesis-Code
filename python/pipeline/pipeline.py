@@ -21,7 +21,7 @@ from ..utils.custom_logging import (
     Verbose,
     run_command_with_tqdm_logging,
 )
-from ..utils.input_output import InputOutput, OutputBehaviour
+from ..utils.input_output import InputOutput, OutputActionEnum, OutputBehaviour
 
 
 def _build_cpp_tool():
@@ -63,11 +63,13 @@ def _compute_inward_direction(
         message_prefix=message_prefix,
         input_files=[input_las_path],
     )
-    input_output.handle_output(
+    output_action = input_output.handle_output(
         message_prefix=message_prefix,
         behaviour=OutputBehaviour.ALL_OR_NOTHING,
         output_files=[[output_las_path]],
     )
+    if output_action == OutputActionEnum.SKIP:
+        return
 
     command_inwards = [
         "pixi",
@@ -145,11 +147,13 @@ def _compute_trajectory(
         message_prefix=message_prefix,
         input_files=[input_las_path],
     )
-    input_output.handle_output(
+    output_action = input_output.handle_output(
         message_prefix=message_prefix,
         behaviour=OutputBehaviour.ALL_OR_NOTHING,
         output_files=[[output_trajectory_path]],
     )
+    if output_action == OutputActionEnum.SKIP:
+        return True
 
     command_trajectory_file_1 = input_las_path.parent / f"{input_las_path.stem}_1.txt"
     command_trajectory_file_2 = input_las_path.parent / f"{input_las_path.stem}_2.txt"
@@ -158,7 +162,7 @@ def _compute_trajectory(
     return_code = run_command_with_tqdm_logging(command, display=display)
     if return_code != 0:
         logging.error(f"Failed to compute trajectory for {input_las_path.name}.")
-        return False
+        raise RuntimeError(f"Failed to compute trajectory for {input_las_path.name}.")
     else:
         logging.info(f"Successfully computed trajectory for {input_las_path.name}.")
 
@@ -167,7 +171,9 @@ def _compute_trajectory(
         logging.error(
             f"Could not find the expected output ({command_trajectory_file_1}) for the trajectory of {input_las_path.name}."
         )
-        return False
+        raise RuntimeError(
+            f"Could not find the expected output ({command_trajectory_file_1}) for the trajectory of {input_las_path.name}."
+        )
 
     # Rename it to match the expected format for the next steps
     command_trajectory_file_1.rename(output_trajectory_path)
@@ -177,7 +183,9 @@ def _compute_trajectory(
         logging.error(
             f"Second trajectory file found for {input_las_path.name}: {command_trajectory_file_2}. This means that the initial point cloud was not split properly between the different flight axes."
         )
-        return False
+        raise RuntimeError(
+            f"Second trajectory file found for {input_las_path.name}: {command_trajectory_file_2}. This means that the initial point cloud was not split properly between the different flight axes."
+        )
     # Remove the other output file if it exists, since it is not needed
     other_output_file = (
         input_las_path.parent / f"{input_las_path.stem}_center_refine.txt"
@@ -247,7 +255,7 @@ def _process_bd_topo_data(
             input_building_groups_file,
         ],
     )
-    input_output.handle_output(
+    output_action = input_output.handle_output(
         message_prefix=message_prefix,
         behaviour=OutputBehaviour.ALL_OR_NOTHING,
         output_files=[
@@ -258,6 +266,8 @@ def _process_bd_topo_data(
             ]
         ],
     )
+    if output_action == OutputActionEnum.SKIP:
+        return
 
     # Crop the BD TOPO data to the bounds of the source LAS/LAZ file
     crop_intersections_implementation(
@@ -394,11 +404,13 @@ def _compute_distances_and_edges(
         message_prefix=message_prefix,
         input_files=[laz_file, trajectory_file],
     )
-    input_output.handle_output(
+    output_action = input_output.handle_output(
         message_prefix=message_prefix,
         behaviour=OutputBehaviour.ALL_OR_NOTHING,
         output_files=[[distance_file, edge_file]],
     )
+    if output_action == OutputActionEnum.SKIP:
+        return
 
     command = [
         "pixi",
@@ -622,11 +634,13 @@ def _compute_roofprints(
         for n in iterations
     ]
 
-    input_output.handle_output(
+    output_action = input_output.handle_output(
         message_prefix=message_prefix,
         behaviour=OutputBehaviour.ALL_OR_NOTHING,
         output_files=[output_roofprints_files],
     )
+    if output_action == OutputActionEnum.SKIP:
+        return output_roofprints_files
 
     logging.info(f"Computing roofprints with n_iterations={n_iterations}...")
 
@@ -730,11 +744,13 @@ def _compute_footprints(
         for n in iterations
     ]
 
-    input_output.handle_output(
+    output_action = input_output.handle_output(
         message_prefix=message_prefix,
         behaviour=OutputBehaviour.ALL_OR_NOTHING,
         output_files=[output_footprints_files],
     )
+    if output_action == OutputActionEnum.SKIP:
+        return output_footprints_files
 
     logging.info(f"Computing footprints with n_iterations={n_iterations}...")
 
@@ -810,6 +826,12 @@ def run_pipeline_implementation(
     tile_footprints_dir.mkdir(exist_ok=True)
 
     initial_laz_file = tile_lidar_hd_dir / "lidar_hd.copc.laz"
+    if not initial_laz_file.exists():
+        initial_laz_file = tile_lidar_hd_dir / "lidar_hd.laz"
+    input_output.handle_input(
+        message_prefix="Initial LiDAR HD file",
+        input_files=[initial_laz_file],
+    )
 
     # Build the C++ tools
     _build_cpp_tool()
@@ -1168,11 +1190,13 @@ def compute_metrics_implementation(
         message_prefix=message_prefix,
         input_files=scored_files,
     )
-    input_output.handle_output(
+    output_action = input_output.handle_output(
         message_prefix=message_prefix,
         behaviour=OutputBehaviour.ALL_OR_NOTHING,
         output_files=list(zip(output_indiv_files, output_aggreg_files)),
     )
+    if output_action == OutputActionEnum.SKIP:
+        return
 
     for scored_file, output_indiv_file, output_aggreg_file in zip(
         scored_files, output_indiv_files, output_aggreg_files

@@ -155,9 +155,9 @@ class InputOutput(Enum):
         """
         # Check for existing output files
         input_outputs: List[OutputAction] = []
-        for files in output_files:
-            existing_files = []
-            for file_path in files:
+        for linked_output_files in output_files:
+            existing_files: List[Path] = []
+            for file_path in linked_output_files:
                 if file_path.exists():
                     existing_files.append(file_path)
                 else:
@@ -165,12 +165,12 @@ class InputOutput(Enum):
 
             existing_files_str = ", ".join(str(f) for f in existing_files)
             not_existing_files_str = ", ".join(
-                str(f) for f in output_files if f not in existing_files
+                str(f) for f in linked_output_files if f not in existing_files
             )
 
             match self:
                 case InputOutput.SKIP_EXISTING:
-                    if len(existing_files) == len(output_files):
+                    if len(existing_files) == len(linked_output_files):
                         message = f"{message_prefix}: These output files already exist and will be skipped: {existing_files_str}."
                         input_output = OutputAction(OutputActionEnum.SKIP, message)
                     elif len(existing_files) > 0:
@@ -209,8 +209,8 @@ class InputOutput(Enum):
         self,
         message_prefix: str,
         behaviour: OutputBehaviour,
-        output_files: Sequence[Sequence[Path]] = [],
-    ) -> None:
+        output_files: Sequence[Sequence[Path]],
+    ) -> OutputActionEnum:
         """Handle output files based on the specified output action.
 
         Parameters
@@ -223,7 +223,11 @@ class InputOutput(Enum):
             A list of list of paths to output files.
             The first level of the handles all elements independently while the second level expects all or none to exist.
             For example, if output_files = [[path1, path2], [path3]], we need path1 and path2 to both exist or none to exist, and path3 can exist or not independently.
-            By default [].
+
+        Returns
+        -------
+        OutputActionEnum
+            The output action corresponding to the input and output files.
         """
         output_actions = self.get_output_actions(
             message_prefix=message_prefix, output_files=output_files
@@ -233,5 +237,16 @@ class InputOutput(Enum):
             case OutputBehaviour.ALL_OR_NOTHING:
                 for action in output_actions:
                     action.raise_if_error().log()
+
+                all_proceed = all(action.is_proceed() for action in output_actions)
+                all_skip = all(action.is_skip() for action in output_actions)
+                if all_proceed:
+                    return OutputActionEnum.PROCEED
+                elif all_skip:
+                    return OutputActionEnum.SKIP
+                else:
+                    raise RuntimeError(
+                        f"{message_prefix}: Inconsistent output actions: {output_actions}. All output files must either be created or skipped."
+                    )
             case _:
                 raise NotImplementedError(f"Invalid OutputBehaviour value: {behaviour}")

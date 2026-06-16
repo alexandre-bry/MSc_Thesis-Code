@@ -13,7 +13,7 @@ from tqdm import tqdm
 
 from ..utils.custom_logging import LoggingContext
 from ..utils.geom import Box2154, Point2154
-from ..utils.input_output import InputOutput, OutputBehaviour
+from ..utils.input_output import InputOutput, OutputActionEnum, OutputBehaviour
 
 
 def get_las_bounds(las_file: Path) -> Box2154:
@@ -105,11 +105,13 @@ def merge_files(
         message_prefix=message_prefix,
         input_files=input_files,
     )
-    input_output.handle_output(
+    output_action = input_output.handle_output(
         message_prefix=message_prefix,
         behaviour=OutputBehaviour.ALL_OR_NOTHING,
         output_files=[[output_file]],
     )
+    if output_action == OutputActionEnum.SKIP:
+        return
 
     # Create pipeline
     pipeline = create_merge_pipeline(input_files, output_file)
@@ -189,28 +191,23 @@ def split_point_cloud_implementation(
     ]
 
     # Check if the output files already exist
-    input_output.handle_output(
+    output_action = input_output.handle_output(
         message_prefix=message_prefix,
         behaviour=OutputBehaviour.ALL_OR_NOTHING,
         output_files=[output_files],
     )
+    if output_action == OutputActionEnum.SKIP:
+        return output_files
 
     # Write every output to a separate file
     tqdm_iterable = tqdm(
-        enumerate(processing_pipeline.arrays),
-        total=len(processing_pipeline.arrays),
+        zip(processing_pipeline.arrays, dimension_unique_values, output_files),
+        total=len(dimension_unique_values),
         desc="Writing output files",
     )
-    all_output_files = []
-    for i, arr in tqdm_iterable:
-        # Get the value of the dimension for this array
-        dimension_value = arr[dimension][0]
+    for arr, dimension_value, output_file in tqdm_iterable:
         tqdm_iterable.set_postfix({dimension: dimension_value})
         tqdm_iterable.refresh()
-
-        # Replace the # placeholder in the output file template
-        output_file = Path(str(output_file_template).replace("#", f"{dimension_value}"))
-        all_output_files.append(output_file)
 
         # Write the array to the output file
         writer = Writer(
@@ -220,7 +217,7 @@ def split_point_cloud_implementation(
         pipeline_writer = Pipeline([writer], arrays=[arr])
         pipeline_writer.execute()
 
-    return all_output_files
+    return output_files
 
 
 def split_point_cloud_call(
@@ -265,11 +262,13 @@ def classification_mapping_implementation(
     """
     message_prefix = "Reclassifying point cloud"
     input_output.handle_input(message_prefix=message_prefix, input_files=[input_file])
-    input_output.handle_output(
+    output_action = input_output.handle_output(
         message_prefix=message_prefix,
         behaviour=OutputBehaviour.ALL_OR_NOTHING,
         output_files=[[output_file]],
     )
+    if output_action == OutputActionEnum.SKIP:
+        return
 
     # Create pipeline
     reader = Reader(str(input_file))

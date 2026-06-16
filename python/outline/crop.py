@@ -4,7 +4,7 @@ from pathlib import Path
 from ..point_cloud.las_manipulations import get_las_bounds
 from ..utils.duckdb_helpers import connect_to_duckdb, create_schema, export_parquet
 from ..utils.geom import Box2154
-from ..utils.input_output import InputOutput, OutputBehaviour
+from ..utils.input_output import InputOutput, OutputActionEnum, OutputBehaviour
 
 SCHEMA_NAME = "crop"
 FINAL_TABLE_NAME = "cropped_buildings"
@@ -22,11 +22,13 @@ def crop_parquet(
         message_prefix=message_prefix,
         input_files=[input_parquet_file],
     )
-    input_output.handle_output(
+    output_action = input_output.handle_output(
         message_prefix=message_prefix,
         behaviour=OutputBehaviour.ALL_OR_NOTHING,
         output_files=[[output_parquet_file]],
     )
+    if output_action == OutputActionEnum.SKIP:
+        return
 
     logging.debug(f"{output_parquet_file = }")
     db_path = output_parquet_file.parent / (output_parquet_file.stem + ".duckdb")
@@ -68,11 +70,13 @@ def crop_parquet_from_las(
         message_prefix=message_prefix,
         input_files=[input_las_file, input_parquet_file],
     )
-    input_output.handle_output(
+    output_action = input_output.handle_output(
         message_prefix=message_prefix,
         behaviour=OutputBehaviour.ALL_OR_NOTHING,
         output_files=[[output_parquet_file]],
     )
+    if output_action == OutputActionEnum.SKIP:
+        return
 
     bounds = get_las_bounds(input_las_file)
     crop_parquet(

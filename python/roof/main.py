@@ -41,10 +41,7 @@ def roofprints_to_lod22_command(
             "-o",
             "--output_roof_file",
             help="Path to the output roof file (Parquet).",
-            exists=True,
-            file_okay=True,
-            dir_okay=False,
-            readable=True,
+            exists=False,
         ),
     ],
     overwrite: Annotated[

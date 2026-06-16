@@ -10,7 +10,7 @@ import pandas as pd
 from shapely.ops import unary_union
 
 from ..utils.custom_logging import LoggingContext, Verbose
-from ..utils.input_output import InputOutput, OutputBehaviour
+from ..utils.input_output import InputOutput, OutputActionEnum, OutputBehaviour
 from .metrics import (
     _normalize_keep_columns,
     _read_polygon_dataset,
@@ -127,11 +127,13 @@ def _write_polygon_dataset(
     input_output: InputOutput,
 ) -> None:
     message_prefix = "Writing polygon dataset"
-    input_output.handle_output(
+    output_action = input_output.handle_output(
         message_prefix=message_prefix,
         behaviour=OutputBehaviour.ALL_OR_NOTHING,
         output_files=[[output_path]],
     )
+    if output_action == OutputActionEnum.SKIP:
+        return
 
     _ensure_supported_output_path(output_path)
 
@@ -163,11 +165,13 @@ def prepare_validation_dataset_implementation(
         message_prefix=message_prefix,
         input_files=[input_ground_truth_path],
     )
-    input_output.handle_output(
+    output_action = input_output.handle_output(
         message_prefix=message_prefix,
         behaviour=OutputBehaviour.ALL_OR_NOTHING,
         output_files=[[individual_output_path, aggregated_output_path]],
     )
+    if output_action == OutputActionEnum.SKIP:
+        return
 
     ground_truth = _read_polygon_dataset(input_ground_truth_path)
     _validate_input_columns(ground_truth, id_column, "ground-truth")

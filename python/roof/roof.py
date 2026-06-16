@@ -9,7 +9,7 @@ from ..utils.custom_logging import (
     Verbose,
     run_command_with_tqdm_logging,
 )
-from ..utils.input_output import InputOutput, OutputBehaviour
+from ..utils.input_output import InputOutput, OutputActionEnum, OutputBehaviour
 
 
 def roofprints_to_lod22_implementation(
@@ -38,11 +38,13 @@ def roofprints_to_lod22_implementation(
         message_prefix=message_prefix,
         input_files=[point_cloud_path, roofprints_path],
     )
-    input_output.handle_output(
+    output_action = input_output.handle_output(
         message_prefix=message_prefix,
         behaviour=OutputBehaviour.ALL_OR_NOTHING,
         output_files=[[roof_path]],
     )
+    if output_action == OutputActionEnum.SKIP:
+        return
 
     with TemporaryDirectory() as temp_dir:
         # ----------------- Convert roofprints to GeoPackage ----------------- #

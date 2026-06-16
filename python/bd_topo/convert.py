@@ -8,7 +8,7 @@ from ..utils.custom_logging import (
     run_command_with_tqdm_logging,
 )
 from ..utils.duckdb_helpers import DuckDBConnectionManager
-from ..utils.input_output import InputOutput, OutputBehaviour
+from ..utils.input_output import InputOutput, OutputActionEnum, OutputBehaviour
 
 SCHEMA_NAME = "bd_topo"
 TABLE_NAME = "buildings"
@@ -38,11 +38,13 @@ def convert_bd_topo_implementation(
         message_prefix=message_prefix,
         input_files=[input_path],
     )
-    input_output.handle_output(
+    output_action = input_output.handle_output(
         message_prefix=message_prefix,
         behaviour=OutputBehaviour.ALL_OR_NOTHING,
         output_files=[[output_path]],
     )
+    if output_action == OutputActionEnum.SKIP:
+        return
 
     # Create a temporary directory to store intermediate files
     logging.info(f"Creating temporary directory for processing {input_path.name}.")

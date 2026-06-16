@@ -5,7 +5,7 @@ from ..point_cloud.las_manipulations import get_las_bounds
 from ..utils.custom_logging import LoggingContext, Verbose
 from ..utils.duckdb_helpers import DuckDBConnectionManager, DuckDBConnector
 from ..utils.geom import Box2154
-from ..utils.input_output import InputOutput, OutputBehaviour
+from ..utils.input_output import InputOutput, OutputActionEnum, OutputBehaviour
 
 SCHEMA_NAME = "intersections"
 
@@ -308,13 +308,15 @@ def intersections_implementation(
         message_prefix=message_prefix,
         input_files=[bd_topo_file],
     )
-    input_output.handle_output(
+    output_action = input_output.handle_output(
         message_prefix=message_prefix,
         behaviour=OutputBehaviour.ALL_OR_NOTHING,
         output_files=[
             [output_edges_file, output_intersections_file, output_building_groups_file]
         ],
     )
+    if output_action == OutputActionEnum.SKIP:
+        return
 
     db_path = output_edges_file.parent / (output_edges_file.stem + ".duckdb")
     with DuckDBConnectionManager(db_path) as con:
@@ -385,13 +387,15 @@ def crop_intersections_implementation(
             input_building_groups_file,
         ],
     )
-    input_output.handle_output(
+    output_action = input_output.handle_output(
         message_prefix=message_prefix,
         behaviour=OutputBehaviour.ALL_OR_NOTHING,
         output_files=[
             [output_edges_file, output_intersections_file, output_building_groups_file]
         ],
     )
+    if output_action == OutputActionEnum.SKIP:
+        return
 
     bounding_box = get_las_bounds(input_las_file)
 
