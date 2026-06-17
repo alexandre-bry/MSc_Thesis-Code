@@ -5,8 +5,7 @@ from typing import Annotated, List, Optional
 
 import typer
 
-from ..utils.custom_logging import LoggingContext
-from ..utils.input_output import InputOutput
+from ..utils import InputOutput, LoggingContext
 from .las_manipulations import (
     classification_mapping_call,
     merge_files,

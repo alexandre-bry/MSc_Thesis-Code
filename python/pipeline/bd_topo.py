@@ -1,7 +1,6 @@
 from pathlib import Path
 
-from ..utils.custom_logging import LoggingContext, Verbose
-from ..utils.input_output import InputOutput
+from ..utils import InputOutput, LoggingContext, Verbose
 
 
 def prepare_bd_topo_implementation(
@@ -21,8 +20,8 @@ def prepare_bd_topo_implementation(
         The handler for input and output file issues.
     """
 
-    from ..bd_topo.convert import convert_bd_topo_implementation
-    from ..outline.intersections import intersections_implementation
+    from ..bd_topo import convert_bd_topo_implementation
+    from ..outline import intersections_implementation
 
     full_output_path = bd_topo_output_dir / f"bd_topo.parquet"
     edges_path = bd_topo_output_dir / f"edges.parquet"

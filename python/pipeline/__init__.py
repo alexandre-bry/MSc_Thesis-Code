@@ -4,9 +4,11 @@ Run the pipeline with the expected structure, using LiDAR HD and BD TOPO as the 
 
 from .bd_topo import prepare_bd_topo_implementation
 from .lidar_hd import download_lidar_hd_pipeline_implementation
+from .main import app
 from .pipeline import compute_metrics_implementation, run_pipeline_implementation
 
 __all__ = [
+    "app",
     "prepare_bd_topo_implementation",
     "download_lidar_hd_pipeline_implementation",
     "run_pipeline_implementation",

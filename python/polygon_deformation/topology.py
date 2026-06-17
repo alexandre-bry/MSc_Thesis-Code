@@ -1,6 +1,6 @@
 from typing import List
 
-from ..utils.result import Result
+from ..utils import Result
 from .constants import *
 from .geometry import Line, Segment, Vector
 

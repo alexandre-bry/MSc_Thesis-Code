@@ -7,21 +7,23 @@ from typing import List, Optional, Tuple
 
 from tqdm import tqdm
 
-from ..outline.intersections import (
+from ..outline import (
     crop_intersections_implementation,
 )
-from ..point_cloud.las_manipulations import (
+from ..point_cloud import (
     classification_mapping_implementation,
     merge_files,
     split_point_cloud_implementation,
 )
-from ..roof.roof import roofprints_to_lod22_implementation
-from ..utils.custom_logging import (
+from ..roof import roofprints_to_lod22_implementation
+from ..utils import (
+    InputOutput,
     LoggingContext,
+    OutputActionEnum,
+    OutputBehaviour,
     Verbose,
     run_command_with_tqdm_logging,
 )
-from ..utils.input_output import InputOutput, OutputActionEnum, OutputBehaviour
 
 
 def _build_cpp_tool():
@@ -1050,7 +1052,7 @@ def _compare_polygon_datasets_single_job(
         input_output,
     ) = args
 
-    from ..validation.metrics import compare_polygon_datasets_implementation
+    from ..validation import compare_polygon_datasets_implementation
 
     with TemporaryDirectory() as tmp_dir:
         valid_scored_file = Path(tmp_dir) / scored_file.name
@@ -1190,17 +1192,21 @@ def compute_metrics_implementation(
         message_prefix=message_prefix,
         input_files=scored_files,
     )
-    output_action = input_output.handle_output(
+    output_actions = input_output.get_output_actions(
         message_prefix=message_prefix,
-        behaviour=OutputBehaviour.ALL_OR_NOTHING,
         output_files=list(zip(output_indiv_files, output_aggreg_files)),
     )
-    if output_action == OutputActionEnum.SKIP:
+    if all(action.is_skip() for action in output_actions):
+        logging.info("All comparison jobs are skipped.")
         return
 
-    for scored_file, output_indiv_file, output_aggreg_file in zip(
-        scored_files, output_indiv_files, output_aggreg_files
+    for output_action, scored_file, output_indiv_file, output_aggreg_file in zip(
+        output_actions, scored_files, output_indiv_files, output_aggreg_files
     ):
+        output_action.raise_if_error()
+        if output_action.is_skip():
+            logging.info("Skipping comparison for %s.", scored_file)
+            continue
         comparison_jobs.append(
             (
                 scored_file,

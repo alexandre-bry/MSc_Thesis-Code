@@ -9,8 +9,13 @@ import geopandas as gpd
 import pandas as pd
 from shapely.ops import unary_union
 
-from ..utils.custom_logging import LoggingContext, Verbose
-from ..utils.input_output import InputOutput, OutputActionEnum, OutputBehaviour
+from ..utils import (
+    InputOutput,
+    LoggingContext,
+    OutputActionEnum,
+    OutputBehaviour,
+    Verbose,
+)
 from .metrics import (
     _normalize_keep_columns,
     _read_polygon_dataset,

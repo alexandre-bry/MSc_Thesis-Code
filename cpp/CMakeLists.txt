@@ -39,16 +39,6 @@ else()
 endif()
 target_link_libraries(${PROJECT_NAME} PRIVATE ${PDAL_LIBRARIES})
 
-# # GEOS
-# find_package(GEOS CONFIG REQUIRED)
-# if (GEOS_FOUND)
-#   message(STATUS "GEOS found")
-# else()
-#   message(SEND_ERROR "GEOS library is required")
-#   return()
-# endif()
-# target_link_libraries(${PROJECT_NAME} PRIVATE GEOS::geos GEOS::geos_c)
-
 # Arrow
 find_package(Arrow CONFIG REQUIRED QUIET)
 find_package(Parquet CONFIG REQUIRED QUIET)
@@ -72,5 +62,3 @@ target_link_libraries(${PROJECT_NAME} PRIVATE GDAL::GDAL)
 
 # Header-only libraries
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/include)
-
-# install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION bin)

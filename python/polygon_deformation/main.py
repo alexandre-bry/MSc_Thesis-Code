@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import tqdm
 import typer
 
-from ..utils.custom_logging import LoggingContext
+from ..utils import LoggingContext
 from .algorithm import EdgeShiftingAlgorithm
 from .constants import *
 from .criterion import LinearCriterion

@@ -6,22 +6,22 @@
 # Runs the binary built in the given mode, with the given arguments. It assumes the binary is already built and will not configure or build it.
 @run-only mode *ARGS:
     just _print "Running in {{ uppercamelcase(mode) }} mode"
-    sh -eu -c 'bin=$(find "cpp/build/{{ uppercamelcase(mode) }}/executable" -maxdepth 1 -type f | head -n 1); [ -n "$bin" ] || { echo "No executable found in cpp/build/{{ uppercamelcase(mode) }}/executable" >&2; exit 1; }; exec "$bin" "$@"' _ {{ ARGS }}
+    sh -eu -c 'bin=$(find "build/{{ uppercamelcase(mode) }}/executable" -maxdepth 1 -type f | head -n 1); [ -n "$bin" ] || { echo "No executable found in cpp/build/{{ uppercamelcase(mode) }}/executable" >&2; exit 1; }; exec "$bin" "$@"' _ {{ ARGS }}
 
 # Builds the binary in the given mode. It will configure the build system if necessary.
 @build mode:
     just cmake {{ mode }}
     just _print "Building in {{ uppercamelcase(mode) }} mode"
-    cmake --build cpp/build/{{ uppercamelcase(mode) }}
+    cmake --build build/{{ uppercamelcase(mode) }}
 
 # Configures the build system for the given mode.
 @cmake mode:
     just _print "Configuring for {{ uppercamelcase(mode) }} mode"
-    cmake -B cpp/build/{{ uppercamelcase(mode) }} -S cpp -D CMAKE_BUILD_TYPE={{ uppercamelcase(mode) }} -Wno-dev
+    cmake -B build/{{ uppercamelcase(mode) }} -S . -D CMAKE_BUILD_TYPE={{ uppercamelcase(mode) }} -Wno-dev
 
 # Removes the build directory.
 @clean:
-    rm -rf cpp/build
+    rm -rf build
 
 @_print message:
     echo '{{ BOLD + CYAN }}----- {{ message }} -----{{ NORMAL }}'

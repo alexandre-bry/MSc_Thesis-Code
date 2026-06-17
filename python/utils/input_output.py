@@ -246,7 +246,7 @@ class InputOutput(Enum):
                     return OutputActionEnum.SKIP
                 else:
                     raise RuntimeError(
-                        f"{message_prefix}: Inconsistent output actions: {output_actions}. All output files must either be created or skipped."
+                        f"{message_prefix}: Inconsistent output actions: [\n{"\n".join("\t" + str(action) for action in output_actions)}\n]. All output files must either be created or skipped."
                     )
             case _:
                 raise NotImplementedError(f"Invalid OutputBehaviour value: {behaviour}")

@@ -8,4 +8,7 @@ __pycache__/
 **/roofer.log.json
 
 # Data
-data/
+data/*
+!data/validation
+data/validation/*
+!data/validation/validation-roofprints.parquet

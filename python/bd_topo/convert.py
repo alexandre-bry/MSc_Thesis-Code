@@ -2,13 +2,15 @@ import logging
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from ..utils.custom_logging import (
+from ..utils import (
+    DuckDBConnectionManager,
+    InputOutput,
     LoggingContext,
+    OutputActionEnum,
+    OutputBehaviour,
     Verbose,
     run_command_with_tqdm_logging,
 )
-from ..utils.duckdb_helpers import DuckDBConnectionManager
-from ..utils.input_output import InputOutput, OutputActionEnum, OutputBehaviour
 
 SCHEMA_NAME = "bd_topo"
 TABLE_NAME = "buildings"
@@ -126,7 +128,7 @@ def convert_bd_topo_call(
     input_output: InputOutput,
     verbose: Verbose,
 ):
-    """_summary_
+    """Convert a BD TOPO file to Parquet format.
 
     Parameters
     ----------

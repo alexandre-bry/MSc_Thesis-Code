@@ -8,9 +8,15 @@ from typing import Dict, List, Optional, Tuple
 import httpx
 from tqdm import tqdm
 
-from ..utils.custom_logging import LoggingContext, Verbose
-from ..utils.geom import Box2154, Point2154
-from ..utils.input_output import InputOutput, OutputAction, OutputActionEnum
+from ..utils import (
+    Box2154,
+    InputOutput,
+    LoggingContext,
+    OutputAction,
+    OutputActionEnum,
+    Point2154,
+    Verbose,
+)
 
 WFS_BASE_URL = "https://data.geopf.fr/wfs"
 WFS_TYPENAME = "IGNF_LIDAR-HD_METADONNEE:metadata"

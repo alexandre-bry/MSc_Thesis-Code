@@ -20,8 +20,7 @@ from shapely.geometry import (
 from shapely.ops import unary_union
 from shapely.strtree import STRtree
 
-from ..utils.custom_logging import LoggingContext, Verbose
-from ..utils.input_output import InputOutput
+from ..utils import InputOutput, LoggingContext, OutputBehaviour, Verbose
 
 
 @dataclass(slots=True)
@@ -468,7 +467,7 @@ def clean_polygon_topology_implementation(
     input_output: InputOutput
         The handler for input and output file issues.
     """
-    input_output.handle_input_output(
+    input_output.handle_input(
         message_prefix="Cleaning polygon topology",
         input_files=[input_path],
     )
@@ -623,9 +622,10 @@ def write_polygon_topology_results(
     input_output: InputOutput
         The handler for input and output file issues.
     """
-    input_output.handle_input_output(
+    input_output.handle_output(
         message_prefix="Writing cleaned polygon topology results",
-        output_files=[output_path],
+        behaviour=OutputBehaviour.ALL_OR_NOTHING,
+        output_files=[[output_path]],
     )
 
     suffix = output_path.suffix.lower()
@@ -689,10 +689,14 @@ def compare_polygon_datasets_implementation(
     input_output: InputOutput
         The handler for input and output file issues.
     """
-    input_output.handle_input_output(
+    input_output.handle_input(
         message_prefix="Comparing polygon datasets",
         input_files=[ground_truth_path, scored_path],
-        output_files=[output_path],
+    )
+    input_output.handle_output(
+        message_prefix="Comparing polygon datasets",
+        behaviour=OutputBehaviour.ALL_OR_NOTHING,
+        output_files=[[output_path]],
     )
 
     ground_truth_dataset = _read_polygon_dataset(ground_truth_path)
@@ -888,9 +892,10 @@ def write_comparison_results(
     input_output: InputOutput
         The handler for input and output file issues.
     """
-    input_output.handle_input_output(
+    input_output.handle_output(
         message_prefix="Writing comparison results",
-        output_files=[output_path],
+        behaviour=OutputBehaviour.ALL_OR_NOTHING,
+        output_files=[[output_path]],
     )
 
     suffix = output_path.suffix.lower()

@@ -4,12 +4,14 @@ from glob import glob
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from ..utils.custom_logging import (
+from ..utils import (
+    InputOutput,
     LoggingContext,
+    OutputActionEnum,
+    OutputBehaviour,
     Verbose,
     run_command_with_tqdm_logging,
 )
-from ..utils.input_output import InputOutput, OutputActionEnum, OutputBehaviour
 
 
 def roofprints_to_lod22_implementation(

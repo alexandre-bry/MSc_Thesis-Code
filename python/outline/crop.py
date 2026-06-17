@@ -1,10 +1,14 @@
 import logging
 from pathlib import Path
 
-from ..point_cloud.las_manipulations import get_las_bounds
-from ..utils.duckdb_helpers import connect_to_duckdb, create_schema, export_parquet
-from ..utils.geom import Box2154
-from ..utils.input_output import InputOutput, OutputActionEnum, OutputBehaviour
+from ..point_cloud import get_las_bounds
+from ..utils import (
+    Box2154,
+    DuckDBConnectionManager,
+    InputOutput,
+    OutputActionEnum,
+    OutputBehaviour,
+)
 
 SCHEMA_NAME = "crop"
 FINAL_TABLE_NAME = "cropped_buildings"
@@ -30,33 +34,31 @@ def crop_parquet(
     if output_action == OutputActionEnum.SKIP:
         return
 
-    logging.debug(f"{output_parquet_file = }")
     db_path = output_parquet_file.parent / (output_parquet_file.stem + ".duckdb")
-    logging.debug(f"{db_path = }")
-    con = connect_to_duckdb(db_path)
-    create_schema(con, SCHEMA_NAME)
-    query = f"""
-        CREATE OR REPLACE TABLE {SCHEMA_NAME}.{FINAL_TABLE_NAME} AS
-        SELECT *
-        FROM read_parquet('{input_parquet_file}')
-        WHERE ST_Covers(
-            ST_MakeEnvelope(
-                {bounds.p_min.x},
-                {bounds.p_min.y},
-                {bounds.p_max.x},
-                {bounds.p_max.y}
-            ),
-            {GEOMETRY_COLUMN_NAME}
-        )
-    """
-    con.execute(query)
+    with DuckDBConnectionManager(db_path) as con:
+        con.create_schema(SCHEMA_NAME)
+        query = f"""
+                CREATE OR REPLACE TABLE {SCHEMA_NAME}.{FINAL_TABLE_NAME} AS
+                SELECT *
+                FROM read_parquet('{input_parquet_file}')
+                WHERE ST_Covers(
+                    ST_MakeEnvelope(
+                        {bounds.p_min.x},
+                        {bounds.p_min.y},
+                        {bounds.p_max.x},
+                        {bounds.p_max.y}
+                    ),
+                    {GEOMETRY_COLUMN_NAME}
+                )
+            """
+        con.execute(query)
 
-    export_parquet(
-        con=con,
-        table_name=f"{SCHEMA_NAME}.{FINAL_TABLE_NAME}",
-        geom_col_name=GEOMETRY_COLUMN_NAME,
-        output_file=output_parquet_file,
-    )
+        con.export_parquet(
+            schema_name=SCHEMA_NAME,
+            table_name=FINAL_TABLE_NAME,
+            geom_col_name=GEOMETRY_COLUMN_NAME,
+            output_file=output_parquet_file,
+        )
 
 
 def crop_parquet_from_las(

@@ -7,7 +7,7 @@ from matplotlib.artist import Artist
 from matplotlib.axes import Axes
 from matplotlib.patches import ArrowStyle
 
-from ..utils.result import Result
+from ..utils import Result
 from .constants import (
     LINE_COLOR,
     LINE_WIDTH,

@@ -7,14 +7,14 @@ from typing import Annotated
 
 import typer
 
-from .bd_topo.main import app as bd_topo_app
-from .lidar_hd.main import app as lidar_hd_app
-from .outline.main import app as outline_app
-from .pipeline.main import app as pipeline_app
-from .point_cloud.main import app as point_cloud_app
-from .polygon_deformation.main import app as polygon_deformation_app
-from .roof.main import app as roof_app
-from .validation.main import app as validation_app
+from .bd_topo import app as bd_topo_app
+from .lidar_hd import app as lidar_hd_app
+from .outline import app as outline_app
+from .pipeline import app as pipeline_app
+from .point_cloud import app as point_cloud_app
+from .polygon_deformation import app as polygon_deformation_app
+from .roof import app as roof_app
+from .validation import app as validation_app
 
 main_app = typer.Typer(no_args_is_help=True)
 
@@ -67,7 +67,7 @@ main_app.add_typer(
 def test(verbose_int: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0):
     import logging
 
-    from .utils.custom_logging import LoggingContext
+    from .utils import LoggingContext
 
     with LoggingContext(verbose=verbose_int):
         logging.debug("This is a debug message.")
