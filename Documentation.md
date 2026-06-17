@@ -17,9 +17,9 @@ Each tile has its own folder in `data/tiles`, which will have the following stru
 
 ```bash
 <tile_folder>
-├── bdtopo
+├── bd_topo
 ├── footprints
-├── lidarhd
+├── lidar_hd
 ├── roof
 └── roofprints
 ```
@@ -49,11 +49,11 @@ If you know the bounding box on which you want to run the pipeline, you can down
 # General command:
 pixi run p2p-py pipeline download_lidar_hd \
     --bbox "<minx>,<miny>,<maxx>,<maxy>" \
-    --tiles_dir "output_tiles_directory>"
+    --tiles-dir "output_tiles_directory>"
 # Example:
 pixi run p2p-py pipeline download_lidar_hd \
     --bbox "668000,6859000,670000,6861000" \
-    --tiles_dir "data/tiles" \
+    --tiles-dir "data/tiles" \
     -vv
 ```
 
@@ -95,5 +95,5 @@ pixi run p2p-py pipeline points_to_prints \
     -vv
 ```
 
-In case you do not have a lot of RAM available, adding `--num_workers 1` can reduce the amount of RAM used by the pipeline, at the cost of slower performance.
+In case you do not have a lot of RAM available, adding `--num-workers 1` can reduce the amount of RAM used by the pipeline, at the cost of slower performance.
 This command will produce many intermediate and output files in the tile folder.

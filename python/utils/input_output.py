@@ -80,7 +80,7 @@ class InputOutput(Enum):
     def from_flags(cls, overwrite: bool, skip_existing: bool) -> "InputOutput":
         if overwrite and skip_existing:
             raise ValueError(
-                "Cannot use both --overwrite and --skip_existing flags at the same time."
+                "Cannot use both --overwrite and --skip-existing flags at the same time."
             )
         if overwrite:
             return InputOutput.OVERWRITE
@@ -190,7 +190,7 @@ class InputOutput(Enum):
                     input_output = OutputAction(OutputActionEnum.PROCEED, message)
                 case InputOutput.NONE:
                     if len(existing_files) > 0:
-                        error_message = f"{message_prefix}: Some output files already exist: {existing_files_str}. Use --overwrite to overwrite them or --skip_existing to skip processing if they already exist."
+                        error_message = f"{message_prefix}: Some output files already exist: {existing_files_str}. Use --overwrite to overwrite them or --skip-existing to skip processing if they already exist."
                         input_output = OutputAction(
                             OutputActionEnum.ERROR, error_message
                         )

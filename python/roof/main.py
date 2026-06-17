@@ -15,7 +15,7 @@ def roofprints_to_lod22_command(
         Path,
         typer.Option(
             "-l",
-            "--las_file",
+            "--las-file",
             help="Path to the input LAS/LAZ file.",
             exists=True,
             file_okay=True,
@@ -27,7 +27,7 @@ def roofprints_to_lod22_command(
         Path,
         typer.Option(
             "-r",
-            "--roofprints_file",
+            "--roofprints-file",
             help="Path to the input roofprints file.",
             exists=True,
             file_okay=True,
@@ -39,7 +39,7 @@ def roofprints_to_lod22_command(
         Path,
         typer.Option(
             "-o",
-            "--output_roof_file",
+            "--output-roof-file",
             help="Path to the output roof file (Parquet).",
             exists=False,
         ),
@@ -54,7 +54,7 @@ def roofprints_to_lod22_command(
     skip_existing: Annotated[
         bool,
         typer.Option(
-            "--skip_existing",
+            "--skip-existing",
             help="Whether to skip steps if output files already exist.",
         ),
     ] = False,

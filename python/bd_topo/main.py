@@ -19,7 +19,7 @@ def convert_bd_topo_command(
         Path,
         typer.Option(
             "-i",
-            "--input_path",
+            "--input-path",
             help="Path to the input BD TOPO file containing all the layers including the buildings layer (e.g., a .gpkg file).",
             exists=True,
             file_okay=True,
@@ -31,7 +31,7 @@ def convert_bd_topo_command(
         Path,
         typer.Option(
             "-o",
-            "--output_path",
+            "--output-path",
             help="Path to the output parquet file.",
         ),
     ],
@@ -45,7 +45,7 @@ def convert_bd_topo_command(
     skip_existing: Annotated[
         bool,
         typer.Option(
-            "--skip_existing",
+            "--skip-existing",
             help="Whether to skip steps if output files already exist.",
         ),
     ] = False,

@@ -23,7 +23,7 @@ def download_lidar_hd(
         Path,
         typer.Option(
             "-o",
-            "--output_path",
+            "--output-path",
             help="Path to save the downloaded files. The path can contain the values {xmin}, {ymin}, {xmax}, {ymax}, {file_name} which will be replaced with the corresponding values. The values also have their kilometre equivalents {xmin_km}, {ymin_km}, {xmax_km}, {ymax_km}.",
         ),
     ],
@@ -37,7 +37,7 @@ def download_lidar_hd(
     skip_existing: Annotated[
         bool,
         typer.Option(
-            "--skip_existing",
+            "--skip-existing",
             help="Whether to skip steps if output files already exist.",
         ),
     ] = False,

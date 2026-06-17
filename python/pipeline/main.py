@@ -26,7 +26,7 @@ def download_lidar_hd_pipeline_command(
         Path,
         typer.Option(
             "-t",
-            "--tiles_dir",
+            "--tiles-dir",
             help="Directory where to download the tiles.",
         ),
     ],
@@ -40,7 +40,7 @@ def download_lidar_hd_pipeline_command(
     skip_existing: Annotated[
         bool,
         typer.Option(
-            "--skip_existing",
+            "--skip-existing",
             help="Whether to skip steps if output files already exist.",
         ),
     ] = False,
@@ -83,7 +83,7 @@ def prepare_bd_topo_command(
         Path,
         typer.Option(
             "-s",
-            "--bd_topo_source_file",
+            "--bd-topo-source-file",
             help="Path to the source BD TOPO file (e.g., GeoPackage) to prepare.",
             exists=True,
             file_okay=True,
@@ -95,7 +95,7 @@ def prepare_bd_topo_command(
         Path,
         typer.Option(
             "-o",
-            "--bd_topo_output_dir",
+            "--bd-topo-output-dir",
             help="Directory where the prepared BD TOPO files will be saved.",
             exists=False,
             file_okay=False,
@@ -113,7 +113,7 @@ def prepare_bd_topo_command(
     skip_existing: Annotated[
         bool,
         typer.Option(
-            "--skip_existing",
+            "--skip-existing",
             help="Whether to skip steps if output files already exist.",
         ),
     ] = False,
@@ -138,7 +138,7 @@ def run_pipeline_command(
         Path,
         typer.Option(
             "-b",
-            "--bd_topo_dir",
+            "--bd-topo-dir",
             help="Directory containing the BD TOPO data needed for the pipeline.",
             exists=True,
             file_okay=False,
@@ -150,7 +150,7 @@ def run_pipeline_command(
         Path,
         typer.Option(
             "-t",
-            "--tile_dir",
+            "--tile-dir",
             help="Directory containing the downloaded LAS/LAZ tile (in `<tile_dir>/lidar_hd/lidar_hd.copc.laz`).",
             exists=True,
             file_okay=False,
@@ -161,14 +161,14 @@ def run_pipeline_command(
     stop_after_roofprints: Annotated[
         bool,
         typer.Option(
-            "--stop_after_roofprints",
+            "--stop-after-roofprints",
             help="Whether to stop the pipeline after computing roofprints (skipping LoD22 and footprints).",
         ),
     ] = False,
     stop_after_lod22: Annotated[
         bool,
         typer.Option(
-            "--stop_after_lod22",
+            "--stop-after-lod22",
             help="Whether to stop the pipeline after computing LoD22 (skipping footprints).",
         ),
     ] = False,
@@ -182,7 +182,7 @@ def run_pipeline_command(
     skip_existing: Annotated[
         bool,
         typer.Option(
-            "--skip_existing",
+            "--skip-existing",
             help="Whether to skip processing files that already have output files.",
         ),
     ] = False,
@@ -217,7 +217,7 @@ def compute_metrics_command(
         Path,
         typer.Option(
             "-i",
-            "--validation_dataset_indiv",
+            "--validation-dataset-indiv",
             help="Path to the individual building validation dataset (Parquet file).",
         ),
     ],
@@ -225,7 +225,7 @@ def compute_metrics_command(
         Path,
         typer.Option(
             "-a",
-            "--validation_dataset_aggreg",
+            "--validation-dataset-aggreg",
             help="Path to the aggregated building validation dataset (Parquet file).",
         ),
     ],
@@ -233,7 +233,7 @@ def compute_metrics_command(
         Path,
         typer.Option(
             "-b",
-            "--bd_topo",
+            "--bd-topo",
             help="Path to the BD TOPO polygon dataset to compare.",
         ),
     ],
@@ -241,7 +241,7 @@ def compute_metrics_command(
         List[Path],
         typer.Option(
             "-t",
-            "--tiles_dir",
+            "--tiles-dir",
             help="List of tile directories containing the pipeline output to compare.",
         ),
     ],
@@ -249,28 +249,28 @@ def compute_metrics_command(
         Path,
         typer.Option(
             "-o",
-            "--output_comparison_dir",
+            "--output-comparison-dir",
             help="Directory where the comparison results will be saved.",
         ),
     ],
     output_format: Annotated[
         str,
         typer.Option(
-            "--output_format",
+            "--output-format",
             help="Format to save the comparison results (e.g., 'parquet', 'csv', 'json').",
         ),
     ],
     id_column: Annotated[
         str,
         typer.Option(
-            "--id_column",
+            "--id-column",
             help="Name of the column containing the building IDs in the datasets.",
         ),
     ],
     spacing_m: Annotated[
         float,
         typer.Option(
-            "--spacing_m",
+            "--spacing-m",
             help="Spacing in meters to use for the comparison.",
         ),
     ],
@@ -278,7 +278,7 @@ def compute_metrics_command(
         Optional[List[str]],
         typer.Option(
             "-k",
-            "--keep_columns",
+            "--keep-columns",
             help=(
                 "List of additional column names to keep in the output comparison results (in addition to the id_column). If not provided, only the id_column will be kept."
             ),
@@ -294,7 +294,7 @@ def compute_metrics_command(
     skip_existing: Annotated[
         bool,
         typer.Option(
-            "--skip_existing",
+            "--skip-existing",
             help="Whether to skip steps if output files already exist.",
         ),
     ] = False,

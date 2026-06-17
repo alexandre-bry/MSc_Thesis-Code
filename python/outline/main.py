@@ -19,7 +19,7 @@ def intersections_command(
         Path,
         typer.Option(
             "-b",
-            "--bd_topo_file",
+            "--bd-topo-file",
             help="Path to the BD_TOPO parquet file.",
             exists=True,
             file_okay=True,
@@ -31,7 +31,7 @@ def intersections_command(
         Path,
         typer.Option(
             "-e",
-            "--output_edges_file",
+            "--output-edges-file",
             help="Path to the output edges parquet file.",
         ),
     ],
@@ -39,7 +39,7 @@ def intersections_command(
         Path,
         typer.Option(
             "-i",
-            "--output_intersections_file",
+            "--output-intersections-file",
             help="Path to the output intersections parquet file.",
         ),
     ],
@@ -47,7 +47,7 @@ def intersections_command(
         Path,
         typer.Option(
             "-g",
-            "--output_groups_file",
+            "--output-groups-file",
             help="Path to the output building groups parquet file.",
         ),
     ],
@@ -61,7 +61,7 @@ def intersections_command(
     skip_existing: Annotated[
         bool,
         typer.Option(
-            "--skip_existing",
+            "--skip-existing",
             help="Whether to skip steps if output files already exist.",
         ),
     ] = False,
@@ -88,7 +88,7 @@ def crop_intersections_command(
         Path,
         typer.Option(
             "-l",
-            "--las_file",
+            "--las-file",
             help="Path to the input LAS/LAZ file.",
             exists=True,
             file_okay=True,
@@ -100,7 +100,7 @@ def crop_intersections_command(
         Path,
         typer.Option(
             "-e",
-            "--edges_file",
+            "--edges-file",
             help="Path to the edges parquet file.",
             exists=True,
             file_okay=True,
@@ -112,7 +112,7 @@ def crop_intersections_command(
         Path,
         typer.Option(
             "-i",
-            "--intersections_file",
+            "--intersections-file",
             help="Path to the intersections parquet file.",
             exists=True,
             file_okay=True,
@@ -124,7 +124,7 @@ def crop_intersections_command(
         Path,
         typer.Option(
             "-g",
-            "--groups_file",
+            "--groups-file",
             help="Path to the building groups parquet file.",
             exists=True,
             file_okay=True,
@@ -136,7 +136,7 @@ def crop_intersections_command(
         Path,
         typer.Option(
             "-o",
-            "--output_edges_file",
+            "--output-edges-file",
             help="Path to the output cropped edges parquet file.",
         ),
     ],
@@ -144,7 +144,7 @@ def crop_intersections_command(
         Path,
         typer.Option(
             "-p",
-            "--output_intersections_file",
+            "--output-intersections-file",
             help="Path to the output cropped intersections parquet file.",
         ),
     ],
@@ -152,7 +152,7 @@ def crop_intersections_command(
         Path,
         typer.Option(
             "-q",
-            "--output_groups_file",
+            "--output-groups-file",
             help="Path to the output cropped building groups parquet file.",
         ),
     ],
@@ -166,7 +166,7 @@ def crop_intersections_command(
     skip_existing: Annotated[
         bool,
         typer.Option(
-            "--skip_existing",
+            "--skip-existing",
             help="Whether to skip steps if output files already exist.",
         ),
     ] = False,

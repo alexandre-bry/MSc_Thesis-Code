@@ -37,7 +37,7 @@ def split_point_cloud_command(
         Path,
         typer.Option(
             "-o",
-            "--output_file_template",
+            "--output-file-template",
             help="Template for the output LAS/LAZ files. Use # as a placeholder for the dimension value.",
         ),
     ],
@@ -59,7 +59,7 @@ def split_point_cloud_command(
     skip_existing: Annotated[
         bool,
         typer.Option(
-            "--skip_existing",
+            "--skip-existing",
             help="Whether to skip steps if output files already exist.",
         ),
     ] = False,
@@ -94,7 +94,7 @@ def merge_las(
         Path,
         typer.Option(
             "-o",
-            "--output_file",
+            "--output-file",
             help="Path to the output LAS/LAZ file.",
         ),
     ],
@@ -108,7 +108,7 @@ def merge_las(
     skip_existing: Annotated[
         bool,
         typer.Option(
-            "--skip_existing",
+            "--skip-existing",
             help="Whether to skip steps if output files already exist.",
         ),
     ] = False,
@@ -168,7 +168,7 @@ def classification_mapping(
     skip_existing: Annotated[
         bool,
         typer.Option(
-            "--skip_existing",
+            "--skip-existing",
             help="Whether to skip steps if output files already exist.",
         ),
     ] = False,
