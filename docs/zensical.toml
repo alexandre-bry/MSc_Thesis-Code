@@ -27,18 +27,29 @@ site_author = "Alexandre Bry"
 # The site_url is the canonical URL for your site. When building online
 # documentation you should set this.
 # Read more: https://zensical.org/docs/setup/basics/#site_url
-#site_url = "https://www.example.com/"
+site_url = "https://alexandre-bry.github.io/MSc_Thesis-Code/"
 
 # The copyright notice appears in the page footer and can contain an HTML
 # fragment.
 #
 # Read more: https://zensical.org/docs/setup/basics/#copyright
 copyright = """
-Copyright &copy; 2026 The authors
+Copyright &copy; 2026 Alexandre Bry
 """
 
 repo_url = "https://github.com/alexandre-bry/MSc_Thesis-Code"
+repo_name = "alexandre-bry/MSc_Thesis-Code"
 
+nav = [
+  { "Home" = [
+    "index.md",
+    "installation.md",
+    "usage.md",
+    "tips.md",
+    "troubleshooting.md",
+  ] },
+  { "API reference" = "reference/api.md" },
+]
 # Zensical supports both implicit navigation and explicitly defined navigation.
 # If you decide not to define a navigation here then Zensical will simply
 # derive the navigation structure from the directory structure of your
@@ -46,13 +57,6 @@ repo_url = "https://github.com/alexandre-bry/MSc_Thesis-Code"
 # can be defined using TOML syntax.
 #
 # Read more: https://zensical.org/docs/setup/navigation/
-nav = [
-  "index.md",
-  "installation.md",
-  "usage.md",
-  "tips.md",
-  "troubleshooting.md",
-]
 
 # With the "extra_css" option you can add your own CSS styling to customize
 # your Zensical project according to your needs. You can add any number of
@@ -62,7 +66,7 @@ nav = [
 #
 # Read more: https://zensical.org/docs/customization/#additional-css
 #
-#extra_css = ["stylesheets/extra.css"]
+extra_css = ["css/apidocs.css"]
 
 # With the `extra_javascript` option you can add your own JavaScript to your
 # project to customize the behavior according to your needs.
@@ -127,13 +131,13 @@ features = [
   # will generate an edit button for the page. This works for common
   # repository hosting services.
   # https://zensical.org/docs/setup/repository/#content-actions
-  #"content.action.edit",
+  "content.action.edit",
 
   # If you have a repository configured and turn on this feature, Zensical
   # will generate a button that allows the user to view the Markdown
   # code for the current page.
   # https://zensical.org/docs/setup/repository/#content-actions
-  #"content.action.view",
+  "content.action.view",
 
   # Code annotations allow you to add an icon with a tooltip to your
   # code blocks to provide explanations at crucial points.
@@ -200,7 +204,7 @@ features = [
   # In order to provide a better user experience on slow connections when
   # using instant navigation, a progress indicator can be enabled.
   # https://zensical.org/docs/setup/navigation/#progress-indicator
-  #"navigation.instant.progress",
+  "navigation.instant.progress",
 
   # When navigation paths are activated, a breadcrumb navigation is rendered
   # above the title of each page
@@ -210,7 +214,7 @@ features = [
   # When pruning is enabled, only the visible navigation items are included
   # in the rendered HTML, reducing the size of the built site by 33% or more.
   # https://zensical.org/docs/setup/navigation/#navigation-pruning
-  #"navigation.prune",
+  "navigation.prune",
 
   # When sections are enabled, top-level sections are rendered as groups in
   # the sidebar for viewports above 1220px, but remain as-is on mobile.
@@ -220,12 +224,12 @@ features = [
   # When tabs are enabled, top-level sections are rendered in a menu layer
   # below the header for viewports above 1220px, but remain as-is on mobile.
   # https://zensical.org/docs/setup/navigation/#navigation-tabs
-  #"navigation.tabs",
+  "navigation.tabs",
 
   # When sticky tabs are enabled, navigation tabs will lock below the header
   # and always remain visible when scrolling down.
   # https://zensical.org/docs/setup/navigation/#sticky-navigation-tabs
-  #"navigation.tabs.sticky",
+  "navigation.tabs.sticky",
 
   # A back-to-top button can be shown when the user, after scrolling down,
   # starts to scroll up again.
@@ -316,9 +320,9 @@ toggle.name = "Switch to light mode"
 # ----------------------------------------------------------------------------
 # The "extra" section contains miscellaneous settings.
 # ----------------------------------------------------------------------------
-#[[project.extra.social]]
-#icon = "fontawesome/brands/github"
-#link = "https://github.com/user/repo"
+[[project.extra.social]]
+icon = "fontawesome/brands/github"
+link = "https://github.com/alexandre-bry"
 
 # ----------------------------------------------------------------------------
 # In this section you can configure the Markdown extensions that are used when
@@ -356,6 +360,7 @@ pygments_lang_class = true
 [project.markdown_extensions.pymdownx.superfences]
 custom_fences = [
   { name = "mermaid", class = "mermaid", format = "pymdownx.superfences.fence_code_format" },
+  { name = "python", class = "python", format = "markdown_exec.formatter", validator = "markdown_exec.validator" },
 ]
 [project.markdown_extensions.pymdownx.tabbed]
 alternate_style = true
@@ -363,18 +368,32 @@ combine_header_slug = true
 [project.markdown_extensions.pymdownx.tasklist]
 custom_checkbox = true
 [project.markdown_extensions.pymdownx.tilde]
+[project.markdown_extensions.zensical.extensions.preview]
+configurations = [{ targets.include = ["reference/api.md"] }]
 
 
-# ----------------------------------------------------------------------------
 # mkdocstrings
 [project.plugins.mkdocstrings.handlers.python]
 inventories = ["https://docs.python.org/3/objects.inv"]
-paths = ["../python"]
+paths = ["../src"]
 
 [project.plugins.mkdocstrings.handlers.python.options]
 docstring_style = "numpy"
+backlinks = "tree"
+docstring_options = { "ignore_init_summary" = true }
+docstring_section_style = "list"
+filters = "public"
+heading_level = 1
 inherited_members = true
-show_source = false
-
-[project.plugins.gen-files]
-scripts = ["scripts/gen_ref_pages.py"]
+merge_init_into_class = true
+parameter_headings = true
+separate_signature = true
+show_root_heading = true
+show_root_full_path = false
+show_signature_annotations = true
+show_source = true
+show_symbol_type_heading = true
+show_symbol_type_toc = true
+signature_crossrefs = true
+summary = true
+unwrap_annotated = true

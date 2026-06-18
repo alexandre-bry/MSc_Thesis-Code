@@ -1,0 +1,13 @@
+[workspace]
+authors = ["Alexandre Bry <abry.pro@proton.me>"]
+channels = ["conda-forge"]
+name = "docs"
+platforms = ["linux-64"]
+version = "0.1.0"
+
+[tasks]
+
+[dependencies]
+zensical = ">=0.0.45,<0.0.46"
+mkdocstrings-python = ">=2.0.4,<3"
+markdown-exec = ">=1.12.1,<2"

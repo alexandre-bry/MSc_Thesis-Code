@@ -1,8 +1,8 @@
 [workspace]
-authors = ["Alexandre Bry <alexandre.bry@ign.fr>"]
+authors = ["Alexandre Bry <abry.pro@proton.me>"]
 channels = ["conda-forge"]
 name = "points_to_prints"
-platforms = ["linux-64", "win-64"]
+platforms = ["linux-64", "win-64", "osx-64", "osx-arm64"]
 version = "0.1.0"
 
 [feature.general.dependencies]
@@ -55,6 +55,3 @@ default = ["general", "cpp", "python"]
 
 [dependencies]
 pip = ">=26.0.1,<27"
-zensical = ">=0.0.45,<0.0.46"
-mkdocstrings-python = ">=2.0.4,<3"
-mkdocs-gen-files = ">=0.6.0,<0.7"

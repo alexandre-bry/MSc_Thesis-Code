@@ -2,7 +2,7 @@
 
 ## Dependencies
 
-All the dependencies are indicated in the [pixi.toml](../pixi.toml) file.
+All the dependencies are indicated in the [pixi.toml](../../pixi.toml) file.
 Since many of the commands invoke other tools or C++ programs, this Python package actually depends on all the dependencies specified there, and not only the ones in the `python` category.
 
 The package is subdivided in many individual packages which can depend one on the other.
