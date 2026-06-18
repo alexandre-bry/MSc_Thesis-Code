@@ -23,9 +23,9 @@ jobs:
           auth-host: prefix.dev
           auth-token: ${{ secrets.PREFIX_DEV_TOKEN }}
           working-directory: ./docs
-      - run: pixi run zensical build --clean
-        with:
-          working-directory: ./docs
+      - name: Build Zensical documentation
+        working-directory: ./docs
+        run: pixi run zensical build --clean
       - uses: actions/upload-pages-artifact@v4
         with:
           working-directory: ./docs
