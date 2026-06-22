@@ -39,6 +39,7 @@ Copyright &copy; 2026 Alexandre Bry
 
 repo_url = "https://github.com/alexandre-bry/MSc_Thesis-Code"
 repo_name = "alexandre-bry/MSc_Thesis-Code"
+edit_uri = "edit/main/docs/docs/"
 
 nav = [
   { "Home" = [
@@ -103,7 +104,7 @@ extra_css = ["css/apidocs.css"]
 # - https://zensical.org/docs/setup/logo-and-icons/#favicon
 # - https://developer.mozilla.org/en-US/docs/Glossary/Favicon
 #
-#favicon = "images/favicon.png"
+favicon = "assets/favicon.png"
 
 # Zensical supports more than 60 different languages. This means that the
 # labels and tooltips that Zensical's templates produce are translated.
@@ -275,8 +276,8 @@ features = [
 # - https://zensical.org/docs/setup/logo-and-icons
 # - https://github.com/zensical/ui/tree/master/dist/.icons
 # ----------------------------------------------------------------------------
-#[project.theme.icon]
-#logo = "lucide/smile"
+[project.theme.icon]
+logo = "lucide/book-text"
 
 # ----------------------------------------------------------------------------
 # In the "font" subsection you can configure the fonts used. By default, fonts

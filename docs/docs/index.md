@@ -2,4 +2,8 @@
 icon: lucide/file-text
 ---
 
---8<-- "README.md"
+# From Points to Prints
+
+![Summary](assets/summary.png)
+
+--8<-- "README.md:introduction"
