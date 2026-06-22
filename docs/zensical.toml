@@ -376,6 +376,9 @@ custom_checkbox = true
 [project.markdown_extensions.zensical.extensions.preview]
 configurations = [{ targets.include = ["reference/api.md"] }]
 
+# GLightBox
+[project.markdown_extensions.zensical.extensions.glightbox]
+auto_caption = true
 
 # mkdocstrings
 [project.plugins.mkdocstrings.handlers.python]
