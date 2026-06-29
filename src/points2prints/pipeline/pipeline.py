@@ -29,7 +29,7 @@ from ..utils import (
 def _build_cpp_tool():
     """Builds the C++ program to be able to use it in the rest of the pipeline."""
     logging.info(f"Building the C++ tools...")
-    command_build = ["pixi", "run", "--quiet", "just", "build", "release"]
+    command_build = ["pixi", "run", "--quiet", "cpp-build"]
     return_code = run_command_with_tqdm_logging(command_build)
     if return_code != 0:
         logging.error("C++ build failed.")
@@ -76,9 +76,7 @@ def _compute_inward_direction(
     command_inwards = [
         "pixi",
         "run",
-        "just",
-        "run-only",
-        "release",
+        "cpp-run-only",
         "inward_directions",
         "-i",
         str(input_las_path),
@@ -170,12 +168,10 @@ def _compute_trajectory(
 
     # Check if the trajectory file was created
     if not command_trajectory_file_1.exists():
-        logging.error(
+        logging.warning(
             f"Could not find the expected output ({command_trajectory_file_1}) for the trajectory of {input_las_path.name}."
         )
-        raise RuntimeError(
-            f"Could not find the expected output ({command_trajectory_file_1}) for the trajectory of {input_las_path.name}."
-        )
+        return False
 
     # Rename it to match the expected format for the next steps
     command_trajectory_file_1.rename(output_trajectory_path)
@@ -418,9 +414,7 @@ def _compute_distances_and_edges(
         "pixi",
         "run",
         "--quiet",
-        "just",
-        "run-only",
-        "release",
+        "cpp-run-only",
         "roof_edge_points",
         "-i",
         str(laz_file),
@@ -650,9 +644,7 @@ def _compute_roofprints(
         "pixi",
         "run",
         "--quiet",
-        "just",
-        "run-only",
-        "release",
+        "cpp-run-only",
         "roofprints",
         "-l",
         str(merged_edges_file),
@@ -760,9 +752,7 @@ def _compute_footprints(
         "pixi",
         "run",
         "--quiet",
-        "just",
-        "run-only",
-        "release",
+        "cpp-run-only",
         "footprints",
         "-p",
         str(lidar_hd_file),

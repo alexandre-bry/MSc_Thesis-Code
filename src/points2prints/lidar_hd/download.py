@@ -363,8 +363,9 @@ async def collect_existing_tiles(
                     if candidate_box is None:
                         continue
 
-                    overlap = _intersection_area(tile_box, candidate_box)
-                    if overlap > best_overlap:
+                    overlap = _intersection_area(tile_box, candidate_box) / 1000000
+                    # We only accept a match if the overlap is greater than 90% of the requested tile area
+                    if overlap > best_overlap and overlap > 0.9:
                         best_overlap = overlap
                         matched_url = tile_url
                         matched_tile_name = tile_name

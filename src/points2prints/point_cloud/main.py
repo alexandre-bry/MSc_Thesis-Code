@@ -73,16 +73,12 @@ def split_point_cloud_command(
     )
 
 
-@app.command(
-    "merge_las", help="Merge multiple LAS/LAZ files into a single LAS/LAZ file."
-)
-def merge_las(
+@app.command("merge", help="Merge multiple LAS/LAZ files into a single LAS/LAZ file.")
+def merge(
     input_files: Annotated[
         List[Path],
-        typer.Option(
-            "-i",
-            "--input",
-            help="Paths to the LAS/LAZ files. Can be used multiple times.",
+        typer.Argument(
+            help="Paths to the LAS/LAZ files.",
             exists=True,
             file_okay=True,
             dir_okay=False,

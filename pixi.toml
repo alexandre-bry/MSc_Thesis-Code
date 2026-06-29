@@ -10,6 +10,7 @@ entwine = ">=3.2.1,<4"
 duckdb = ">=1.5.2,<2"
 gdal = ">=3.12.3,<4"
 pdal = ">=2.10.0,<3"
+pdal_wrench = ">=1.4.0,<2"
 
 [feature.general.pypi-dependencies]
 geoparquet-io = ">=0.8.0,<0.9"
@@ -29,7 +30,7 @@ shapely = ">=2.1.1,<3"
 fastquadtree = ">=2.1.1, <3"
 
 [feature.python.tasks]
-p2p-py = { cmd = "cd \"$INIT_CWD\" && PYTHONPATH=\"$PIXI_PROJECT_ROOT\" PYTHONNOUSERSITE=1 python -m python.main", description = "Run a Python command with subcommands and arguments.\n\tYou can use `pixi run p2p-py --help` to get a list of available commands." }
+p2p-py = { cmd = "cd \"$INIT_CWD\" && PYTHONPATH=\"$PIXI_PROJECT_ROOT\" PYTHONNOUSERSITE=1 python -m src.points2prints.main", description = "Run a Python command with subcommands and arguments.\n\tYou can use `pixi run p2p-py --help` to get a list of available commands." }
 
 [feature.cpp.dependencies]
 just = ">=1.50.0,<2"
@@ -45,7 +46,8 @@ cpp = { args = [
     "command",
     { arg = "mode", "default" = "" },
 ], cmd = "cd \"$INIT_CWD\" && just --justfile cpp/justfile {{ command }} {{ mode }}", description = "Run the C++ code of the project through the `just` build system.\n\tYou can use `pixi run cpp --list` to get a list of available commands.\n\tYou need to transform them from `<name> <arg_1> ... <arg_n> *ARGS` into `pixi run <name> <arg_1> ... <arg_n> -- *ARGS`." }
-
+cpp-build = { cmd = "cd \"$INIT_CWD\" && just --justfile cpp/justfile build release", description = "Build the C++ code of the project through the `just` build system." }
+cpp-run-only = { cmd = "cd \"$INIT_CWD\" && just --justfile cpp/justfile run-only release" }
 
 [tasks]
 traj-estimation = { cmd = "cd \"$INIT_CWD\" && $PIXI_PROJECT_ROOT/LiDARHD_Traj_Estimation/build/SensorLiDARHD", description = "Compute the trajectories of each flight line in a LAS/LAZ file." }
