@@ -12,3 +12,4 @@ data/*
 !data/validation
 data/validation/*
 !data/validation/validation-roofprints.parquet
+!data/validation/validation-footprints.parquet
