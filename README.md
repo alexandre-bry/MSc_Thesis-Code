@@ -1,3 +1,12 @@
+
+---
+
+> [!WARNING]  
+> This repository contains the final version of the code produced during the MSc thesis.
+> Further work on the method will be published in [this other repository](https://github.com/umrlastig/Points2Prints).
+
+---
+
 # MSc Thesis - Code
 
 ![Summary](docs/docs/assets/summary.svg)
@@ -6,6 +15,7 @@
 
 This is the code produced during my MSc thesis about deforming an existing inaccurate building outline into a roofprint and a footprint coherent with each other and aligned on an ALS point cloud.
 It was part of the MSc Geomatics at TU Delft, in collaboration with the IGN (Institut national de l’information géographique et forestière) from November 2025 to June 2026.
+Further work on the method will be published in [this other repository](https://github.com/umrlastig/Points2Prints).
 
 <!-- --8<-- [end:introduction] -->
 
