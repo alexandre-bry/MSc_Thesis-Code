@@ -1,7 +1,7 @@
 [workspace]
 authors = ["Alexandre Bry <abry.pro@proton.me>"]
 channels = ["conda-forge"]
-name = "points_to_prints"
+name = "points2prints"
 platforms = ["linux-64", "win-64", "osx-64", "osx-arm64"]
 version = "0.1.0"
 
@@ -27,13 +27,12 @@ geopandas = ">=1.1.1,<2"
 shapely = ">=2.1.1,<3"
 
 [feature.python.pypi-dependencies]
-fastquadtree = ">=2.1.1, <3"
+fastquadtree = ">=2.1.1,<3"
 
 [feature.python.tasks]
 p2p-py = { cmd = "cd \"$INIT_CWD\" && PYTHONPATH=\"$PIXI_PROJECT_ROOT\" PYTHONNOUSERSITE=1 python -m src.points2prints.main", description = "Run a Python command with subcommands and arguments.\n\tYou can use `pixi run p2p-py --help` to get a list of available commands." }
 
 [feature.cpp.dependencies]
-just = ">=1.50.0,<2"
 cgal = ">=6.0.1,<7"
 libarrow-all = ">=23.0.0,<24"
 cmake = ">=4.3.2,<5"
@@ -41,13 +40,15 @@ doxygen = ">=1.13.2,<2"
 eigen = ">=3.4.0,<4"
 
 [feature.cpp.tasks]
-p2p-cpp = { cmd = "cd \"$INIT_CWD\" && just --justfile cpp/justfile run release", description = "Run the C++ command with subcommands and arguments.\n\tYou can use `pixi run p2p-cpp --help` to get a list of available commands." }
-cpp = { args = [
-    "command",
-    { arg = "mode", "default" = "" },
-], cmd = "cd \"$INIT_CWD\" && just --justfile cpp/justfile {{ command }} {{ mode }}", description = "Run the C++ code of the project through the `just` build system.\n\tYou can use `pixi run cpp --list` to get a list of available commands.\n\tYou need to transform them from `<name> <arg_1> ... <arg_n> *ARGS` into `pixi run <name> <arg_1> ... <arg_n> -- *ARGS`." }
-cpp-build = { cmd = "cd \"$INIT_CWD\" && just --justfile cpp/justfile build release", description = "Build the C++ code of the project through the `just` build system." }
-cpp-run-only = { cmd = "cd \"$INIT_CWD\" && just --justfile cpp/justfile run-only release" }
+p2p-cpp-clean = { cmd = "cd \"$INIT_CWD\" && rm -rf $PIXI_PROJECT_ROOT/cpp/build", cwd = "." }
+p2p-cpp-cmake = { cmd = "cd \"$INIT_CWD\" && cmake -B $PIXI_PROJECT_ROOT/cpp/build/Release -S $PIXI_PROJECT_ROOT/cpp/ -D CMAKE_BUILD_TYPE=Release -Wno-dev" }
+p2p-cpp-build = { cmd = "cd \"$INIT_CWD\" && cmake --build $PIXI_PROJECT_ROOT/cpp/build/Release", cwd = ".", depends-on = [
+    "p2p-cpp-cmake",
+] }
+p2p-cpp-run-only = { cmd = "cd \"$INIT_CWD\" && $PIXI_PROJECT_ROOT/cpp/build/Release/executable/Points2Prints", cwd = "." }
+p2p-cpp = { cmd = "cd \"$INIT_CWD\" && $PIXI_PROJECT_ROOT/cpp/build/Release/executable/Points2Prints", depends-on = [
+    "p2p-cpp-build",
+], description = "Run the C++ command with subcommands and arguments.\n\tYou can use `pixi run p2p-cpp --help` to get a list of available commands." }
 
 [tasks]
 traj-estimation = { cmd = "cd \"$INIT_CWD\" && $PIXI_PROJECT_ROOT/LiDARHD_Traj_Estimation/build/SensorLiDARHD", description = "Compute the trajectories of each flight line in a LAS/LAZ file." }

@@ -29,7 +29,7 @@ from ..utils import (
 def _build_cpp_tool():
     """Builds the C++ program to be able to use it in the rest of the pipeline."""
     logging.info(f"Building the C++ tools...")
-    command_build = ["pixi", "run", "--quiet", "cpp-build"]
+    command_build = ["pixi", "run", "--quiet", "p2p-cpp-build"]
     return_code = run_command_with_tqdm_logging(command_build)
     if return_code != 0:
         logging.error("C++ build failed.")
@@ -76,7 +76,7 @@ def _compute_inward_direction(
     command_inwards = [
         "pixi",
         "run",
-        "cpp-run-only",
+        "p2p-cpp-run-only",
         "inward_directions",
         "-i",
         str(input_las_path),
@@ -414,7 +414,7 @@ def _compute_distances_and_edges(
         "pixi",
         "run",
         "--quiet",
-        "cpp-run-only",
+        "p2p-cpp-run-only",
         "roof_edge_points",
         "-i",
         str(laz_file),
@@ -644,7 +644,7 @@ def _compute_roofprints(
         "pixi",
         "run",
         "--quiet",
-        "cpp-run-only",
+        "p2p-cpp-run-only",
         "roofprints",
         "-l",
         str(merged_edges_file),
@@ -752,7 +752,7 @@ def _compute_footprints(
         "pixi",
         "run",
         "--quiet",
-        "cpp-run-only",
+        "p2p-cpp-run-only",
         "footprints",
         "-p",
         str(lidar_hd_file),

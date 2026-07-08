@@ -15,29 +15,21 @@ These libraries are:
 
 This repo uses CMake as the build system, and executables are built in the [build/](./build/) directory.
 
-For the sake of simplicity, a [`justfile`](https://github.com/casey/just) is used to make, build and run the executables.
-It is available [at the root of the repository](../justfile).
-
-Then, if you use `pixi` to install the dependencies, I also created commands in `pixi` that will call `just` to build and run the executables.
+For the sake of simplicity, pixi tasks are used to make, build and run the executables.
+They are defined in the [pixi.toml](../pixi.toml) at the root of the repository.
 This is useful to run the executables in a `pixi` shell, which has all the dependencies available.
 
-For example, the `justfile` defines a `run` command which makes, builds and runs the `main` executable and gives access to the CLI.
-It can be run with `just run <mode> <args>`.
-If you use `pixi`, you can access all the commands from `just` using `pixi run cpp <just-command> <mode> -- <args>`.
 For example, to run the command `hello_world` with the argument `name` equal to `Alexandre`, you can run either of:
 
 ```bash
-# The current directory is cpp/
+# These commands are run from the root
 
 # if already compiled:
-./build/Release/executable/Points2Prints hello_world --name Alexandre
+./cpp/build/Release/executable/Points2Prints hello_world --name Alexandre
 
-# or with just:
-just run release hello_world --name Alexandre
+# with pixi if already compiled:
+pixi run p2p-cpp-run-only hello_world --name Alexandre
 
-# or with pixi:
-pixi run cpp run release -- hello_world --name Alexandre
-
-# or with pixi and the p2p-cpp command:
+# or with pixi by compiling first if necessary:
 pixi run p2p-cpp hello_world --name Alexandre
 ```
